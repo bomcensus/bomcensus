@@ -1,0 +1,12 @@
+bomcensus Commercial License
+
+Copyright (C) 2026 JC-Lab
+
+"LicenseRef-bomcensus-Commercial" refers to a commercial license agreement
+signed between JC-Lab and a licensee. It is not a public license. It grants
+no rights to anyone who has not signed such an agreement with JC-Lab.
+
+Without a signed agreement, bomcensus is available only under the
+AGPL-3.0-only. See LICENSING.md.
+
+Contact: joseph@jc-lab.net
