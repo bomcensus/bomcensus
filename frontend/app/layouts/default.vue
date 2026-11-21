@@ -1,5 +1,12 @@
+<!--
+  Copyright (C) 2026 JC-Lab
+  SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-bomcensus-Commercial
+  Additional terms apply. See LICENSING.md.
+-->
+
 <script setup lang="ts">
 import type { Component as VueComponent } from 'vue'
+import { logout } from '~/api'
 import {
   Activity,
   Boxes,
@@ -7,6 +14,7 @@ import {
   Download,
   KeyRound,
   LayoutDashboard,
+  LogOut,
   Menu,
   Moon,
   Network,
@@ -14,7 +22,6 @@ import {
   Radio,
   Server,
   Settings,
-  ShieldAlert,
   Sun,
   Terminal,
   X,
@@ -39,10 +46,7 @@ const nav: { title?: string; items: NavItem[] }[] = [
   },
   {
     title: '위험',
-    items: [
-      { to: '/vulnerabilities', label: '취약점', icon: ShieldAlert },
-      { to: '/processes', label: '프로세스', icon: Activity },
-    ],
+    items: [{ to: '/processes', label: '프로세스', icon: Activity }],
   },
   {
     title: '수집',
@@ -57,6 +61,17 @@ const nav: { title?: string; items: NavItem[] }[] = [
 ]
 
 const route = useRoute()
+const meta = useMeta()
+const user = useCurrentUser()
+
+async function signOut() {
+  try {
+    await logout()
+  } finally {
+    user.value = null
+    await navigateTo('/login')
+  }
+}
 const isActive = (to: string) => (to === '/' ? route.path === '/' : route.path === to || route.path.startsWith(`${to}/`))
 
 const menuOpen = ref(false)
@@ -115,7 +130,7 @@ function toggleTheme() {
       </nav>
 
       <div class="shrink-0 border-t border-line px-4 py-2.5 text-2xs text-ink-3">
-        <div class="flex items-center gap-1.5"><Network :size="12" aria-hidden="true" /> 서버 <span class="mono">0.1.0-mock</span></div>
+        <div class="flex items-center gap-1.5"><Network :size="12" aria-hidden="true" /> 서버 <span class="mono">{{ meta?.version ?? '—' }}</span></div>
       </div>
     </aside>
 
@@ -124,7 +139,6 @@ function toggleTheme() {
         <button type="button" class="inline-flex size-8 items-center justify-center rounded-md text-ink-2 hover:bg-surface-2 lg:hidden" aria-label="메뉴 열기" @click="menuOpen = true">
           <Menu :size="17" aria-hidden="true" />
         </button>
-        <span class="whitespace-nowrap rounded-sm bg-medium-soft px-1.5 py-px text-2xs font-semibold leading-5 text-medium">목업 데이터</span>
         <div class="ml-auto flex items-center gap-1">
           <button
             type="button"
@@ -134,7 +148,18 @@ function toggleTheme() {
           >
             <component :is="theme === 'dark' ? Sun : Moon" :size="16" aria-hidden="true" />
           </button>
-          <span class="ml-1 whitespace-nowrap text-xs text-ink-2">admin</span>
+          <template v-if="user">
+            <span class="ml-1 max-w-40 truncate whitespace-nowrap text-xs text-ink-2">{{ user.name }}</span>
+            <button
+              type="button"
+              class="inline-flex size-8 items-center justify-center rounded-md text-ink-2 hover:bg-surface-2 hover:text-ink"
+              aria-label="로그아웃"
+              title="로그아웃"
+              @click="signOut"
+            >
+              <LogOut :size="16" aria-hidden="true" />
+            </button>
+          </template>
         </div>
       </div>
 

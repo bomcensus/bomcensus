@@ -1,0 +1,78 @@
+{{- /*
+  Copyright (C) 2026 JC-Lab
+  SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-bomcensus-Commercial
+  Additional terms apply. See LICENSING.md.
+*/ -}}
+
+{{- $fullname := include "bomcensus-manager.fullname" . }}
+{{- $ns := .Release.Namespace }}
+{{- $webTLS := include "bomcensus-manager.webTLS" . }}
+{{- $mode := include "bomcensus-manager.databaseMode" . }}
+bomcensus server {{ $fullname }} is installed in namespace {{ $ns }}.
+
+Console:
+{{- if .Values.ingress.enabled }}
+{{- range .Values.ingress.hosts }}
+  http{{ if $.Values.ingress.tls }}s{{ end }}://{{ .host }}/
+{{- end }}
+{{- else }}
+  kubectl -n {{ $ns }} port-forward svc/{{ include "bomcensus-manager.webService" . }} {{ .Values.web.service.port }}
+  then open http{{ if ne $webTLS "off" }}s{{ end }}://localhost:{{ .Values.web.service.port }}/
+{{- if ne $webTLS "off" }}
+  (the certificate comes from the server's internal web CA until one is
+  uploaded in the console)
+{{- end }}
+{{- end }}
+
+Agent listener (give agents this address and add every external name to
+agent.extraServerNames):
+  https://{{ include "bomcensus-manager.agentService" . }}.{{ $ns }}.svc:{{ .Values.agent.service.port }}  (inside the cluster)
+  Server names in the Agent TLS certificate:
+    {{ include "bomcensus-manager.agentServerNames" . | replace "," "\n    " }}
+
+Database: {{ if eq $mode "url" }}URL from the Secret {{ $fullname }}-database
+{{- else if eq $mode "existingSecret" }}URL from the Secret {{ .Values.database.existingSecret.name }}
+{{- else if eq $mode "cnpgCluster" }}CloudNativePG Cluster {{ include "bomcensus-manager.cnpgClusterName" . }} (Secret {{ include "bomcensus-manager.cnpgClusterName" . }}-app)
+  The server restarts until the cluster is ready; that takes a minute or two.
+{{- else }}database {{ include "bomcensus-manager.cnpgDatabaseName" . }} in the CloudNativePG Cluster {{ .Values.cnpg.database.namespace | default $ns }}/{{ .Values.cnpg.database.cluster }}
+{{- if not .Values.cnpg.database.createRole }}
+
+  The role is not created by this chart (cnpg.database.createRole=false).
+  Add it to the Cluster {{ .Values.cnpg.database.cluster }}:
+
+    spec:
+      managed:
+        roles:
+          - name: {{ include "bomcensus-manager.cnpgDatabaseOwner" . }}
+            ensure: present
+            login: true
+            passwordSecret:
+              name: {{ include "bomcensus-manager.cnpgDatabaseObject" . }}-role
+{{- end }}
+{{- end }}
+
+{{- if not .Values.masterKey.existingSecret.name }}
+
+*** MASTER KEY ***
+The master key in the Secret {{ include "bomcensus-manager.masterKeySecret" . }} encrypts the CA keys and every
+stored credential. If it is lost, the PKI and the credentials are lost and
+every agent and scanner has to enroll again. Back it up now:
+
+  kubectl -n {{ $ns }} get secret {{ include "bomcensus-manager.masterKeySecret" . }} -o jsonpath='{.data.master-key}' | base64 -d
+
+The Secret is kept by "helm uninstall" (helm.sh/resource-policy: keep);
+a later install with the same release name uses it again.
+{{- end }}
+{{- if .Values.scanner.enabled }}
+
+In-cluster scanner:
+{{- if include "bomcensus-manager.scannerBootstrap" . }}
+  The Job {{ $fullname }}-scanner-bootstrap-{{ .Release.Revision }} creates a Register Key and writes the
+  enrollment string into the Secret {{ include "bomcensus-manager.scannerSecret" . }}; the scanner starts after it.
+    kubectl -n {{ $ns }} logs job/{{ $fullname }}-scanner-bootstrap-{{ .Release.Revision }}
+  The Secret and the Register Key stay after "helm uninstall"; delete the
+  Secret and revoke the key in the console when the scanner is gone.
+{{- end }}
+  Register this cluster in the console (Kubernetes) with the scanner and the
+  in-cluster connection to start collecting.
+{{- end }}

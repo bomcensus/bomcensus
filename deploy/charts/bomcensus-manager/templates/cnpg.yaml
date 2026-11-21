@@ -1,0 +1,142 @@
+{{- /*
+  Copyright (C) 2026 JC-Lab
+  SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-bomcensus-Commercial
+  Additional terms apply. See LICENSING.md.
+*/ -}}
+
+{{- $mode := include "bomcensus-manager.databaseMode" . }}
+{{- $fullname := include "bomcensus-manager.fullname" . }}
+{{- if eq $mode "cnpgCluster" }}
+{{- if not (.Capabilities.APIVersions.Has "postgresql.cnpg.io/v1/Cluster") }}
+{{- fail "cnpg.cluster.create=true needs the CloudNativePG operator: the API postgresql.cnpg.io/v1 Cluster is not available in this cluster. Install the operator first (https://cloudnative-pg.io), or pass --api-versions postgresql.cnpg.io/v1/Cluster to helm template." }}
+{{- end }}
+{{- $c := .Values.cnpg.cluster }}
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: {{ include "bomcensus-manager.cnpgClusterName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "bomcensus-manager.labels" . | nindent 4 }}
+    app.kubernetes.io/component: database
+spec:
+  instances: {{ $c.instances }}
+  {{- with $c.imageName }}
+  imageName: {{ . | quote }}
+  {{- end }}
+  # The operator creates the Secret <name>-app for the owner, with the
+  # connection URI under "uri"; the server reads it from there.
+  bootstrap:
+    initdb:
+      database: {{ $c.database | quote }}
+      owner: {{ $c.owner | quote }}
+  storage:
+    size: {{ $c.storage.size }}
+    {{- with $c.storage.storageClass }}
+    storageClass: {{ . | quote }}
+    {{- end }}
+  {{- with $c.parameters }}
+  postgresql:
+    parameters:
+      {{- range $k, $v := . }}
+      {{ $k }}: {{ $v | toString | quote }}
+      {{- end }}
+  {{- end }}
+  {{- with $c.resources }}
+  resources:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with $c.affinity }}
+  affinity:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+{{- else if eq $mode "cnpgDatabase" }}
+{{- $d := .Values.cnpg.database }}
+{{- if not $d.cluster }}
+{{- fail "cnpg.database.cluster is required: the name of the existing CloudNativePG Cluster" }}
+{{- end }}
+{{- if not (.Capabilities.APIVersions.Has "postgresql.cnpg.io/v1/Database") }}
+{{- fail "cnpg.database.create=true needs the CloudNativePG operator with the Database API (postgresql.cnpg.io/v1 Database, CloudNativePG 1.25 or later), which is not available in this cluster. Pass --api-versions postgresql.cnpg.io/v1/Database to helm template." }}
+{{- end }}
+{{- if and $d.createRole (not (.Capabilities.APIVersions.Has "postgresql.cnpg.io/v1/DatabaseRole")) }}
+{{- fail "cnpg.database.createRole=true needs the DatabaseRole API (postgresql.cnpg.io/v1 DatabaseRole, CloudNativePG 1.30 or later). With an older operator set cnpg.database.createRole=false and declare the role in the Cluster's spec.managed.roles (see the chart README), or pass --api-versions postgresql.cnpg.io/v1/DatabaseRole to helm template." }}
+{{- end }}
+{{- $ns := include "bomcensus-manager.cnpgDatabaseNamespace" . }}
+{{- $obj := include "bomcensus-manager.cnpgDatabaseObject" . }}
+{{- $db := include "bomcensus-manager.cnpgDatabaseName" . }}
+{{- $owner := include "bomcensus-manager.cnpgDatabaseOwner" . }}
+{{- $urlSecret := printf "%s-database" $fullname }}
+{{- /* The password is generated once and kept in the release's database Secret. */}}
+{{- $password := "" }}
+{{- $old := lookup "v1" "Secret" .Release.Namespace $urlSecret }}
+{{- if and $old $old.data (index $old.data "password") }}
+{{- $password = index $old.data "password" | b64dec }}
+{{- else }}
+{{- $password = randAlphaNum 40 }}
+{{- end }}
+{{- $host := default (printf "%s-rw.%s.svc" $d.cluster $ns) $d.host }}
+# Password of the owner role, in the namespace of the Cluster, where the
+# operator reads it.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $obj }}-role
+  namespace: {{ $ns }}
+  labels:
+    {{- include "bomcensus-manager.labels" . | nindent 4 }}
+    app.kubernetes.io/component: database
+    cnpg.io/reload: "true"
+type: kubernetes.io/basic-auth
+data:
+  username: {{ $owner | b64enc | quote }}
+  password: {{ $password | b64enc | quote }}
+---
+{{- if $d.createRole }}
+apiVersion: postgresql.cnpg.io/v1
+kind: DatabaseRole
+metadata:
+  name: {{ $obj }}
+  namespace: {{ $ns }}
+  labels:
+    {{- include "bomcensus-manager.labels" . | nindent 4 }}
+    app.kubernetes.io/component: database
+spec:
+  cluster:
+    name: {{ $d.cluster | quote }}
+  name: {{ $owner | quote }}
+  comment: {{ printf "bomcensus %s/%s" .Release.Namespace .Release.Name | quote }}
+  login: true
+  passwordSecret:
+    name: {{ $obj }}-role
+  databaseRoleReclaimPolicy: {{ $d.reclaimPolicy }}
+---
+{{- end }}
+apiVersion: postgresql.cnpg.io/v1
+kind: Database
+metadata:
+  name: {{ $obj }}
+  namespace: {{ $ns }}
+  labels:
+    {{- include "bomcensus-manager.labels" . | nindent 4 }}
+    app.kubernetes.io/component: database
+spec:
+  cluster:
+    name: {{ $d.cluster | quote }}
+  name: {{ $db | quote }}
+  owner: {{ $owner | quote }}
+  databaseReclaimPolicy: {{ $d.reclaimPolicy }}
+---
+# Connection URL for the server, in the release namespace.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $urlSecret }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "bomcensus-manager.labels" . | nindent 4 }}
+    app.kubernetes.io/component: database
+type: Opaque
+data:
+  password: {{ $password | b64enc | quote }}
+  url: {{ printf "postgresql://%s:%s@%s:%v/%s" (urlquery $owner) $password $host $d.port (urlquery $db) | b64enc | quote }}
+{{- end }}

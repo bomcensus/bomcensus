@@ -1,0 +1,6 @@
+{
+  "data-root": "/srv/docker",
+  "features": {
+    "containerd-snapshotter": true
+  }
+}

@@ -1,0 +1,75 @@
+{{- /*
+  Copyright (C) 2026 JC-Lab
+  SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-bomcensus-Commercial
+  Additional terms apply. See LICENSING.md.
+*/ -}}
+
+{{- $web := .Values.web.service }}
+{{- $agent := .Values.agent.service }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "bomcensus-manager.webService" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "bomcensus-manager.labels" . | nindent 4 }}
+    app.kubernetes.io/component: server
+  {{- with $web.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ $web.type }}
+  selector:
+    {{- include "bomcensus-manager.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: server
+  ports:
+    - name: web
+      port: {{ $web.port }}
+      targetPort: web
+      protocol: TCP
+      {{- if and (ne $web.type "ClusterIP") $web.nodePort }}
+      nodePort: {{ $web.nodePort }}
+      {{- end }}
+---
+# Agent listener. There is deliberately no Ingress for it: agents present
+# client certificates (mTLS) and the server signs its responses with the
+# key of its own Agent TLS certificate, so TLS must end in the server
+# process. Anything in front of this port may only forward TCP.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "bomcensus-manager.agentService" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "bomcensus-manager.labels" . | nindent 4 }}
+    app.kubernetes.io/component: server
+  {{- with $agent.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ $agent.type }}
+  selector:
+    {{- include "bomcensus-manager.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: server
+  {{- if and (ne $agent.type "ClusterIP") $agent.externalTrafficPolicy }}
+  externalTrafficPolicy: {{ $agent.externalTrafficPolicy }}
+  {{- end }}
+  {{- if eq $agent.type "LoadBalancer" }}
+  {{- with $agent.loadBalancerIP }}
+  loadBalancerIP: {{ . }}
+  {{- end }}
+  {{- with $agent.loadBalancerSourceRanges }}
+  loadBalancerSourceRanges:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- end }}
+  ports:
+    - name: agent
+      port: {{ $agent.port }}
+      targetPort: agent
+      protocol: TCP
+      {{- if and (ne $agent.type "ClusterIP") $agent.nodePort }}
+      nodePort: {{ $agent.nodePort }}
+      {{- end }}

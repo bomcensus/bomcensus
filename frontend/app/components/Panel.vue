@@ -1,5 +1,11 @@
+<!--
+  Copyright (C) 2026 JC-Lab
+  SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-bomcensus-Commercial
+  Additional terms apply. See LICENSING.md.
+-->
+
 <script setup lang="ts">
-// 테두리 있는 영역. flush 를 주면 본문 여백이 없다(표를 바로 넣을 때).
+// Bordered area. With flush, the body has no padding (for putting a table directly inside).
 defineProps<{ title?: string; description?: string; flush?: boolean }>()
 </script>
 

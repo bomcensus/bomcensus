@@ -1,4 +1,6 @@
-import { MOCK_NOW } from '~/mock'
+// Copyright (C) 2026 JC-Lab
+// SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-bomcensus-Commercial
+// Additional terms apply. See LICENSING.md.
 
 const pad = (n: number) => String(n).padStart(2, '0')
 
@@ -16,10 +18,10 @@ export function formatDate(iso?: string): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 }
 
-/** "3분 전", "2시간 전", "5일 후". 기준 시각은 MOCK_NOW. */
+/** "3분 전", "2시간 전", "5일 후" (3 minutes ago, 2 hours ago, in 5 days), relative to the current time. */
 export function formatRelative(iso?: string): string {
   if (!iso) return '—'
-  const diff = new Date(MOCK_NOW).getTime() - new Date(iso).getTime()
+  const diff = Date.now() - new Date(iso).getTime()
   const abs = Math.abs(diff)
   const suffix = diff >= 0 ? '전' : '후'
   const min = Math.round(abs / 60_000)
@@ -32,12 +34,13 @@ export function formatRelative(iso?: string): string {
   return `${Math.round(day / 30)}개월 ${suffix}`
 }
 
-/** 기준 시각으로부터 남은 일수. 지났으면 음수. */
+/** Days remaining from now. Negative if already past. */
 export function daysUntil(iso: string): number {
-  return Math.floor((new Date(iso).getTime() - new Date(MOCK_NOW).getTime()) / 86_400_000)
+  return Math.floor((new Date(iso).getTime() - Date.now()) / 86_400_000)
 }
 
-export function formatBytes(bytes: number): string {
+export function formatBytes(bytes?: number): string {
+  if (bytes === undefined) return '—'
   if (bytes < 1024) return `${bytes} B`
   const units = ['KB', 'MB', 'GB', 'TB']
   let value = bytes / 1024
@@ -53,17 +56,11 @@ export function formatNumber(n: number): string {
   return n.toLocaleString('ko-KR')
 }
 
-/** sha256:ab12…ef90 형태로 줄인다 */
+/** Shorten to the form sha256:ab12…ef90 */
 export function shortHash(hash?: string, head = 12): string {
   if (!hash) return '—'
   const [prefix, rest] = hash.includes(':') ? hash.split(':') : ['', hash]
   const body = rest ?? ''
   const short = body.length > head + 4 ? `${body.slice(0, head)}…` : body
   return prefix ? `${prefix}:${short}` : short
-}
-
-/** EPSS 0.0312 → "3.1%" */
-export function formatEpss(epss?: number): string {
-  if (epss === undefined) return '—'
-  return `${(epss * 100).toFixed(1)}%`
 }

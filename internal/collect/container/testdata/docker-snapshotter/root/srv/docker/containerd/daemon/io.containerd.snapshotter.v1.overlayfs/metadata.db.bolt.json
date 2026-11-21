@@ -1,0 +1,46 @@
+{
+ "v1": {
+  "snapshots": {
+   "moby/10/8473ee65f0f5607623fccf9f78b755df98e3522383da1258806039e21ff0fc56": {
+    "id": {
+     "$hex": "06"
+    }
+   },
+   "moby/12/fa28a60d54562728e6da4e3282dcbc6da71c44dddb910d36c942aa61e6d2e5f4-init": {
+    "id": {
+     "$hex": "07"
+    }
+   },
+   "moby/13/fa28a60d54562728e6da4e3282dcbc6da71c44dddb910d36c942aa61e6d2e5f4": {
+    "id": {
+     "$hex": "08"
+    }
+   },
+   "moby/2/sha256:08bc4e534116aa76b16015484b82eac51f9a593416feae9296c8a2d4bb7aa4a2": {
+    "id": {
+     "$hex": "01"
+    }
+   },
+   "moby/4/sha256:97e4ece8f8a4d01b66df2c55c1f1e8a2860597b54dffbbc0df2f9942062cb34d": {
+    "id": {
+     "$hex": "02"
+    }
+   },
+   "moby/6/6423a4ec5ace4b555d7b405e61a7173dacf1614c747bec5561752cf5981c083f-init": {
+    "id": {
+     "$hex": "03"
+    }
+   },
+   "moby/7/6423a4ec5ace4b555d7b405e61a7173dacf1614c747bec5561752cf5981c083f": {
+    "id": {
+     "$hex": "04"
+    }
+   },
+   "moby/9/8473ee65f0f5607623fccf9f78b755df98e3522383da1258806039e21ff0fc56-init": {
+    "id": {
+     "$hex": "05"
+    }
+   }
+  }
+ }
+}

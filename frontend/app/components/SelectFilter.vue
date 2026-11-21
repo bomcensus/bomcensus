@@ -1,5 +1,11 @@
+<!--
+  Copyright (C) 2026 JC-Lab
+  SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-bomcensus-Commercial
+  Additional terms apply. See LICENSING.md.
+-->
+
 <script setup lang="ts">
-// 값이 '' 이면 "전체". options 의 value 는 문자열.
+// A value of '' means "All". The value of each option is a string.
 const model = defineModel<string>({ default: '' })
 defineProps<{ label: string; options: { value: string; label: string }[] }>()
 </script>

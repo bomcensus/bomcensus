@@ -1,0 +1,164 @@
+{{- /*
+  Copyright (C) 2026 JC-Lab
+  SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-bomcensus-Commercial
+  Additional terms apply. See LICENSING.md.
+*/ -}}
+
+{{- $fullname := include "bomcensus-scanner.fullname" . }}
+{{- $stateDir := include "bomcensus-scanner.stateDir" . }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $fullname }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "bomcensus-scanner.labels" . | nindent 4 }}
+spec:
+  # A scanner is one identity; a second replica would enroll as a second
+  # scanner. One scanner covers the whole cluster.
+  replicas: 1
+  serviceName: {{ $fullname }}
+  podManagementPolicy: OrderedReady
+  updateStrategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      {{- include "bomcensus-scanner.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "bomcensus-scanner.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: scanner
+        app.kubernetes.io/part-of: bomcensus
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      annotations:
+        {{- if .Values.enrollment.token }}
+        checksum/enrollment: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+        {{- end }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "bomcensus-scanner.serviceAccountName" . }}
+      # The token is needed: the scanner reads the cluster with it.
+      automountServiceAccountToken: true
+      enableServiceLinks: false
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.priorityClassName }}
+      priorityClassName: {{ . }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      initContainers:
+        # Enrolls on the first start and resumes a pending enrollment. On
+        # later starts the state directory already holds the approved
+        # identity and --if-not-enrolled makes this a no-op.
+        - name: enroll
+          image: {{ include "bomcensus-scanner.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - enroll
+            - --if-not-enrolled
+            - --server={{ include "bomcensus-scanner.serverURL" . }}
+            {{- with .Values.server.name }}
+            - --server-name={{ . }}
+            {{- end }}
+            - --tls-verify={{ .Values.server.tlsVerify }}
+            - --state-dir={{ $stateDir }}
+            - --log-level={{ .Values.logLevel }}
+          env:
+            # Taken from the environment so that it never shows in the
+            # process list or the pod spec.
+            - name: BOMCENSUS_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "bomcensus-scanner.tokenSecretName" . }}
+                  key: {{ include "bomcensus-scanner.tokenSecretKey" . }}
+            {{- with .Values.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: {{ include "bomcensus-scanner.dataDir" . }}
+            - name: tmp
+              mountPath: /tmp
+      containers:
+        - name: scanner
+          image: {{ include "bomcensus-scanner.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - run
+            - --state-dir={{ $stateDir }}
+            - --log-level={{ .Values.logLevel }}
+            - --workers={{ .Values.workers }}
+            - --backlog={{ .Values.backlog }}
+            {{- range .Values.extraArgs }}
+            - {{ . | quote }}
+            {{- end }}
+          {{- with .Values.extraEnv }}
+          env:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: {{ include "bomcensus-scanner.dataDir" . }}
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 256Mi
+        {{- if not .Values.persistence.enabled }}
+        # The identity is lost with the pod; see persistence.enabled.
+        - name: data
+          emptyDir:
+            sizeLimit: 64Mi
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+  {{- if .Values.persistence.enabled }}
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Retain
+    whenScaled: Retain
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          {{- include "bomcensus-scanner.selectorLabels" . | nindent 10 }}
+        {{- with .Values.persistence.annotations }}
+        annotations:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+      spec:
+        accessModes:
+          {{- toYaml .Values.persistence.accessModes | nindent 10 }}
+        {{- with .Values.persistence.storageClass }}
+        storageClassName: {{ . | quote }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.persistence.size }}
+  {{- end }}

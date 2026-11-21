@@ -1,0 +1,290 @@
+{
+ "v1": {
+  "default": {
+   "containers": {
+    "plain": {
+     "image": "docker.io/library/alpine:3.20",
+     "labels": {},
+     "sandboxid": "",
+     "snapshotKey": "plain",
+     "snapshotter": "overlayfs"
+    }
+   },
+   "images": {
+    "docker.io/library/alpine:3.20": {
+     "target": {
+      "digest": "sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc",
+      "mediatype": "application/vnd.oci.image.index.v1+json",
+      "size": {
+       "$hex": "949001"
+      }
+     }
+    }
+   },
+   "snapshots": {
+    "overlayfs": {
+     "plain": {
+      "name": "default/3/plain",
+      "parent": "sha256:08bc4e534116aa76b16015484b82eac51f9a593416feae9296c8a2d4bb7aa4a2"
+     }
+    }
+   }
+  },
+  "k8s.io": {
+   "containers": {
+    "1ed696fc57766b68f2060b6fc191208fb6083dbbec57d96369931a6795fdd6ad": {
+     "image": "docker.io/rancher/mirrored-pause:3.6",
+     "labels": {
+      "io.cri-containerd.kind": "sandbox",
+      "io.kubernetes.pod.name": "coredns-7896679cc-bqqv5",
+      "io.kubernetes.pod.namespace": "kube-system",
+      "io.kubernetes.pod.uid": "b73d9d32-0fe8-49bb-9068-30f449848929"
+     },
+     "sandboxid": "",
+     "snapshotKey": "1ed696fc57766b68f2060b6fc191208fb6083dbbec57d96369931a6795fdd6ad",
+     "snapshotter": "overlayfs"
+    },
+    "2a76ed4f1e98d1ab3b852d34ea92fdc192199425becf352f40131877d2f545fb": {
+     "image": "docker.io/rancher/mirrored-coredns-coredns:1.12.3",
+     "labels": {
+      "io.cri-containerd.kind": "container",
+      "io.kubernetes.container.name": "coredns",
+      "io.kubernetes.pod.name": "coredns-7896679cc-bqqv5",
+      "io.kubernetes.pod.namespace": "kube-system",
+      "io.kubernetes.pod.uid": "b73d9d32-0fe8-49bb-9068-30f449848929"
+     },
+     "sandboxid": "1ed696fc57766b68f2060b6fc191208fb6083dbbec57d96369931a6795fdd6ad",
+     "snapshotKey": "2a76ed4f1e98d1ab3b852d34ea92fdc192199425becf352f40131877d2f545fb",
+     "snapshotter": "overlayfs"
+    },
+    "409e30b3c16a8b2fa979860a02041d9c5c92708e422cc8df037dd475bf03d09c": {
+     "image": "docker.io/library/alpine:3.20",
+     "labels": {
+      "io.cri-containerd.kind": "container",
+      "io.kubernetes.container.name": "demo",
+      "io.kubernetes.pod.name": "demo",
+      "io.kubernetes.pod.namespace": "default",
+      "io.kubernetes.pod.uid": "02df285d-a56b-4457-a509-40cc9ed37ff5"
+     },
+     "sandboxid": "de26a0aaedb269684c6d86cd8e9d79c47c87418531269bd5949a9c5d79327be3",
+     "snapshotKey": "409e30b3c16a8b2fa979860a02041d9c5c92708e422cc8df037dd475bf03d09c",
+     "snapshotter": "overlayfs"
+    },
+    "c09d940cd58f26b761b3472cb93afbf074dcc86721d5f432176fc45454d626cf": {
+     "image": "docker.io/library/busybox:1.36",
+     "labels": {
+      "io.cri-containerd.kind": "container",
+      "io.kubernetes.container.name": "oneshot",
+      "io.kubernetes.pod.name": "oneshot",
+      "io.kubernetes.pod.namespace": "default",
+      "io.kubernetes.pod.uid": "eaf6fb08-bec2-473e-ba56-d8c467734e7c"
+     },
+     "sandboxid": "fe2474114374eecc215190cd261abe3dd97f19b7b9605406458b5244dae73641",
+     "snapshotKey": "c09d940cd58f26b761b3472cb93afbf074dcc86721d5f432176fc45454d626cf",
+     "snapshotter": "overlayfs"
+    },
+    "de26a0aaedb269684c6d86cd8e9d79c47c87418531269bd5949a9c5d79327be3": {
+     "image": "docker.io/rancher/mirrored-pause:3.6",
+     "labels": {
+      "io.cri-containerd.kind": "sandbox",
+      "io.kubernetes.pod.name": "demo",
+      "io.kubernetes.pod.namespace": "default",
+      "io.kubernetes.pod.uid": "02df285d-a56b-4457-a509-40cc9ed37ff5"
+     },
+     "sandboxid": "",
+     "snapshotKey": "de26a0aaedb269684c6d86cd8e9d79c47c87418531269bd5949a9c5d79327be3",
+     "snapshotter": "overlayfs"
+    },
+    "fe2474114374eecc215190cd261abe3dd97f19b7b9605406458b5244dae73641": {
+     "image": "docker.io/rancher/mirrored-pause:3.6",
+     "labels": {
+      "io.cri-containerd.kind": "sandbox",
+      "io.kubernetes.pod.name": "oneshot",
+      "io.kubernetes.pod.namespace": "default",
+      "io.kubernetes.pod.uid": "eaf6fb08-bec2-473e-ba56-d8c467734e7c"
+     },
+     "sandboxid": "",
+     "snapshotKey": "fe2474114374eecc215190cd261abe3dd97f19b7b9605406458b5244dae73641",
+     "snapshotter": "overlayfs"
+    }
+   },
+   "images": {
+    "docker.io/library/alpine:3.20": {
+     "labels": {
+      "io.cri-containerd.image": "managed"
+     },
+     "target": {
+      "digest": "sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc",
+      "mediatype": "application/vnd.oci.image.index.v1+json",
+      "size": {
+       "$hex": "949001"
+      }
+     }
+    },
+    "docker.io/library/alpine@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc": {
+     "labels": {
+      "io.cri-containerd.image": "managed"
+     },
+     "target": {
+      "digest": "sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc",
+      "mediatype": "application/vnd.oci.image.index.v1+json",
+      "size": {
+       "$hex": "949001"
+      }
+     }
+    },
+    "docker.io/library/busybox:1.36": {
+     "labels": {
+      "io.cri-containerd.image": "managed"
+     },
+     "target": {
+      "digest": "sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662",
+      "mediatype": "application/vnd.oci.image.index.v1+json",
+      "size": {
+       "$hex": "fe9401"
+      }
+     }
+    },
+    "docker.io/library/busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662": {
+     "labels": {
+      "io.cri-containerd.image": "managed"
+     },
+     "target": {
+      "digest": "sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662",
+      "mediatype": "application/vnd.oci.image.index.v1+json",
+      "size": {
+       "$hex": "fe9401"
+      }
+     }
+    },
+    "docker.io/rancher/mirrored-coredns-coredns:1.12.3": {
+     "labels": {
+      "io.cri-containerd.image": "managed"
+     },
+     "target": {
+      "digest": "sha256:1391544c978029fcddc65068f6ad67f396e55585b664ecccd7fefba029b9b706",
+      "mediatype": "application/vnd.docker.distribution.manifest.list.v2+json",
+      "size": {
+       "$hex": "b21f"
+      }
+     }
+    },
+    "docker.io/rancher/mirrored-coredns-coredns@sha256:1391544c978029fcddc65068f6ad67f396e55585b664ecccd7fefba029b9b706": {
+     "labels": {
+      "io.cri-containerd.image": "managed"
+     },
+     "target": {
+      "digest": "sha256:1391544c978029fcddc65068f6ad67f396e55585b664ecccd7fefba029b9b706",
+      "mediatype": "application/vnd.docker.distribution.manifest.list.v2+json",
+      "size": {
+       "$hex": "b21f"
+      }
+     }
+    },
+    "docker.io/rancher/mirrored-pause:3.6": {
+     "labels": {
+      "io.cri-containerd.image": "managed"
+     },
+     "target": {
+      "digest": "sha256:74c4244427b7312c5b901fe0f67cbc53683d06f4f24c6faee65d4182bf0fa893",
+      "mediatype": "application/vnd.docker.distribution.manifest.list.v2+json",
+      "size": {
+       "$hex": "fe36"
+      }
+     }
+    },
+    "docker.io/rancher/mirrored-pause@sha256:74c4244427b7312c5b901fe0f67cbc53683d06f4f24c6faee65d4182bf0fa893": {
+     "labels": {
+      "io.cri-containerd.image": "managed"
+     },
+     "target": {
+      "digest": "sha256:74c4244427b7312c5b901fe0f67cbc53683d06f4f24c6faee65d4182bf0fa893",
+      "mediatype": "application/vnd.docker.distribution.manifest.list.v2+json",
+      "size": {
+       "$hex": "fe36"
+      }
+     }
+    },
+    "sha256:0392ee038903218dcdc9765e0a0970ea34d07da25da8ccefb17b254be1355d6c": {
+     "labels": {
+      "io.cri-containerd.image": "managed"
+     },
+     "target": {
+      "digest": "sha256:1391544c978029fcddc65068f6ad67f396e55585b664ecccd7fefba029b9b706",
+      "mediatype": "application/vnd.docker.distribution.manifest.list.v2+json",
+      "size": {
+       "$hex": "b21f"
+      }
+     }
+    },
+    "sha256:6270bb605e12e581514ada5fd5b3216f727db55dc87d5889c790e4c760683fee": {
+     "labels": {
+      "io.cri-containerd.image": "managed"
+     },
+     "target": {
+      "digest": "sha256:74c4244427b7312c5b901fe0f67cbc53683d06f4f24c6faee65d4182bf0fa893",
+      "mediatype": "application/vnd.docker.distribution.manifest.list.v2+json",
+      "size": {
+       "$hex": "fe36"
+      }
+     }
+    },
+    "sha256:b116e155074440ffd9e449559433feb4cd2341eb3554b1da1c638c976e56451d": {
+     "labels": {
+      "io.cri-containerd.image": "managed"
+     },
+     "target": {
+      "digest": "sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662",
+      "mediatype": "application/vnd.oci.image.index.v1+json",
+      "size": {
+       "$hex": "fe9401"
+      }
+     }
+    },
+    "sha256:bf8527eb54c3680e728d5b4b383a8ba730d72dae7236fbc8dff97ed6b224a731": {
+     "labels": {
+      "io.cri-containerd.image": "managed"
+     },
+     "target": {
+      "digest": "sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc",
+      "mediatype": "application/vnd.oci.image.index.v1+json",
+      "size": {
+       "$hex": "949001"
+      }
+     }
+    }
+   },
+   "snapshots": {
+    "overlayfs": {
+     "1ed696fc57766b68f2060b6fc191208fb6083dbbec57d96369931a6795fdd6ad": {
+      "name": "k8s.io/3/1ed696fc57766b68f2060b6fc191208fb6083dbbec57d96369931a6795fdd6ad",
+      "parent": "sha256:1021ef88c7974bfff89c5a0ec4fd3160daac6c48a075f74cff721f85dd104e68"
+     },
+     "2a76ed4f1e98d1ab3b852d34ea92fdc192199425becf352f40131877d2f545fb": {
+      "name": "k8s.io/32/2a76ed4f1e98d1ab3b852d34ea92fdc192199425becf352f40131877d2f545fb",
+      "parent": "sha256:fe7393dc95d32173c6b2d84b86f41b04102ed0b31d826dfd325e3c25b76f5f91"
+     },
+     "409e30b3c16a8b2fa979860a02041d9c5c92708e422cc8df037dd475bf03d09c": {
+      "name": "k8s.io/36/409e30b3c16a8b2fa979860a02041d9c5c92708e422cc8df037dd475bf03d09c",
+      "parent": "sha256:08bc4e534116aa76b16015484b82eac51f9a593416feae9296c8a2d4bb7aa4a2"
+     },
+     "c09d940cd58f26b761b3472cb93afbf074dcc86721d5f432176fc45454d626cf": {
+      "name": "k8s.io/40/c09d940cd58f26b761b3472cb93afbf074dcc86721d5f432176fc45454d626cf",
+      "parent": "sha256:97e4ece8f8a4d01b66df2c55c1f1e8a2860597b54dffbbc0df2f9942062cb34d"
+     },
+     "de26a0aaedb269684c6d86cd8e9d79c47c87418531269bd5949a9c5d79327be3": {
+      "name": "k8s.io/33/de26a0aaedb269684c6d86cd8e9d79c47c87418531269bd5949a9c5d79327be3",
+      "parent": "sha256:1021ef88c7974bfff89c5a0ec4fd3160daac6c48a075f74cff721f85dd104e68"
+     },
+     "fe2474114374eecc215190cd261abe3dd97f19b7b9605406458b5244dae73641": {
+      "name": "k8s.io/37/fe2474114374eecc215190cd261abe3dd97f19b7b9605406458b5244dae73641",
+      "parent": "sha256:1021ef88c7974bfff89c5a0ec4fd3160daac6c48a075f74cff721f85dd104e68"
+     }
+    }
+   }
+  },
+  "version": {
+   "$hex": "08"
+  }
+ }
+}

@@ -1,0 +1,32 @@
+# Copyright (C) 2026 JC-Lab
+# SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-bomcensus-Commercial
+# Additional terms apply. See LICENSING.md.
+
+# Build context of deploy/docker/Dockerfile (the repository root).
+# Keys, local state and build output never enter the context.
+
+.git
+.devstate
+.claude
+.idea
+.vscode
+
+/bin
+/build
+/dist
+
+frontend/node_modules
+frontend/.nuxt
+frontend/.output
+frontend/.data
+frontend/dist
+
+# The console is built in the image; only the placeholder is taken.
+internal/server/console/dist/*
+!internal/server/console/dist/placeholder
+
+deploy/docker/.env
+deploy/docker/*.tar
+
+**/*.test
+**/*.out

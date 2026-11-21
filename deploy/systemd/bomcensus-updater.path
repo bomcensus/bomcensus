@@ -1,0 +1,20 @@
+# Copyright (C) 2026 JC-Lab
+# SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-bomcensus-Commercial
+# Additional terms apply. See LICENSING.md.
+
+# Starts the updater when the agent puts a file into the update spool
+# (a release bundle, a confirm-<version> file or a rollback request).
+
+[Unit]
+Description=bomcensus update spool watcher
+Documentation=https://github.com/bomcensus/bomcensus
+
+[Path]
+# The agent writes bundles under a temporary name and renames them, so a
+# change event always means a complete file or a deleted one.
+PathChanged=/var/lib/bomcensus/update-spool
+Unit=bomcensus-updater.service
+MakeDirectory=no
+
+[Install]
+WantedBy=multi-user.target

@@ -1,8 +1,14 @@
+/*
+ * Copyright (C) 2026 JC-Lab
+ * SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-bomcensus-Commercial
+ * Additional terms apply. See LICENSING.md.
+ */
+
 @import 'pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css';
 @import '@fontsource-variable/jetbrains-mono/index.css';
 @import 'tailwindcss';
 
-/* 색과 글꼴은 여기 정의한 토큰만 쓴다. 컴포넌트에서 값을 직접 쓰지 않는다. */
+/* Only use the color and font tokens defined here. Components must not hard-code values. */
 :root {
   --paper: oklch(98.2% 0.003 250);
   --surface: oklch(100% 0 0);
@@ -198,7 +204,7 @@
     line-height: 1.5;
   }
 
-  /* 정의 목록: 라벨과 값을 두 열로 */
+  /* Definition list: label and value in two columns */
   .kv {
     display: grid;
     grid-template-columns: minmax(96px, 148px) minmax(0, 1fr);

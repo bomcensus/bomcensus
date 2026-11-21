@@ -1,5 +1,11 @@
+<!--
+  Copyright (C) 2026 JC-Lab
+  SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-bomcensus-Commercial
+  Additional terms apply. See LICENSING.md.
+-->
+
 <script setup lang="ts">
-// 라벨 + 입력 + 도움말. 기본 슬롯에 .input / .select 요소를 넣는다.
+// Label + input + help text. Put .input / .select elements in the default slot.
 defineProps<{ label: string; hint?: string; error?: string }>()
 </script>
 

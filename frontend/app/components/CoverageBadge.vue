@@ -1,7 +1,13 @@
+<!--
+  Copyright (C) 2026 JC-Lab
+  SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-bomcensus-Commercial
+  Additional terms apply. See LICENSING.md.
+-->
+
 <script setup lang="ts">
 import type { Coverage } from '~/types'
 
-// 수집 범위. 전체가 아니면 사유를 title로 보여 준다.
+// Collection coverage. When it is not full, the reason is shown as the title.
 defineProps<{ coverage: Coverage; reason?: string }>()
 </script>
 

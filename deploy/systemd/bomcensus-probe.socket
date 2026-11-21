@@ -1,0 +1,28 @@
+# Copyright (C) 2026 JC-Lab
+# SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-bomcensus-Commercial
+# Additional terms apply. See LICENSING.md.
+
+# Socket the agent uses to ask the probe for a report.
+#
+# Only the agent user can connect (owner bomcensus, mode 0600). One probe
+# process is started per connection and exits when the connection ends.
+
+[Unit]
+Description=bomcensus probe socket
+Documentation=https://github.com/bomcensus/bomcensus
+
+[Socket]
+ListenStream=/run/bomcensus/probe.sock
+# systemd creates /run/bomcensus; the socket inside it is what is restricted.
+DirectoryMode=0755
+SocketUser=bomcensus
+SocketGroup=bomcensus
+SocketMode=0600
+Accept=yes
+# The agent asks for one report at a time. A few spare connections cover a
+# reconnect before the previous probe has exited.
+MaxConnections=4
+MaxConnectionsPerSource=4
+
+[Install]
+WantedBy=sockets.target

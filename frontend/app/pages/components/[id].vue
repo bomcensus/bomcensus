@@ -1,21 +1,27 @@
+<!--
+  Copyright (C) 2026 JC-Lab
+  SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-bomcensus-Commercial
+  Additional terms apply. See LICENSING.md.
+-->
+
 <script setup lang="ts">
-import type { ComponentAssetRow, ComponentVulnRow } from '~/mock'
+import type { ComponentAssetRow } from '~/types'
 import type { TableColumn } from '~/types/table'
-import { assetsOfComponent, getComponent, vulnsOfComponent } from '~/mock'
+import { fetchAll, getComponent, listComponentAssets } from '~/api'
 
 const route = useRoute()
-const id = computed(() => String(route.params.id ?? ''))
-const component = computed(() => getComponent(id.value))
+// When only the id changes on the same page, NuxtPage recreates it, so the value at setup time is enough
+const id = String(route.params.id)
+
+const { data: component, error, refresh } = useLoad(`component:${id}`, () => getComponent(id))
+const {
+  data: installed,
+  pending: installedPending,
+  error: installedError,
+  refresh: refreshInstalled,
+} = useLoad(`component:${id}:assets`, () => fetchAll((page) => listComponentAssets(id, page)), () => [])
 
 useHead({ title: computed(() => `${component.value?.name ?? '컴포넌트'} · bomcensus`) })
-
-const tab = ref('assets')
-const installed = computed(() => assetsOfComponent(id.value))
-const vulns = computed(() => vulnsOfComponent(id.value))
-const tabs = computed(() => [
-  { key: 'assets', label: '설치 자산', count: installed.value.length },
-  { key: 'vulns', label: '취약점', count: vulns.value.length },
-])
 
 const assetColumns: TableColumn<ComponentAssetRow>[] = [
   { key: 'asset', label: '자산', sortValue: (r) => r.asset.name },
@@ -24,14 +30,6 @@ const assetColumns: TableColumn<ComponentAssetRow>[] = [
   { key: 'inUse', label: '실행 중', sortValue: (r) => (r.inUse ? 0 : 1) },
   { key: 'firstSeen', label: '최초 발견', align: 'right', sortValue: (r) => r.firstSeen, hideBelow: 'sm' },
   { key: 'raw', label: '출력', align: 'right' },
-]
-
-const vulnColumns: TableColumn<ComponentVulnRow>[] = [
-  { key: 'id', label: 'ID', sortValue: (r) => r.vulnId },
-  { key: 'severity', label: '심각도' },
-  { key: 'fix', label: '수정 상태' },
-  { key: 'basis', label: '판정 근거', hideBelow: 'md' },
-  { key: 'advisory', label: '권고 ID', hideBelow: 'lg' },
 ]
 
 const rawRow = ref<ComponentAssetRow>()
@@ -44,9 +42,13 @@ function showRaw(row: ComponentAssetRow) {
 
 <template>
   <div>
-    <EmptyState v-if="!component" title="찾을 수 없음">
-      <AppButton to="/components">목록으로</AppButton>
-    </EmptyState>
+    <template v-if="!component">
+      <PageHeader title="컴포넌트" :back="{ to: '/components', label: '컴포넌트' }" />
+      <Panel>
+        <LoadError v-if="error" :error="error" :back="{ to: '/components', label: '컴포넌트 목록' }" @retry="refresh" />
+        <LoadingText v-else />
+      </Panel>
+    </template>
 
     <template v-else>
       <PageHeader
@@ -83,15 +85,16 @@ function showRaw(row: ComponentAssetRow) {
       </Panel>
 
       <div class="mt-4">
-        <AppTabs v-model="tab" :tabs="tabs" />
-        <Panel flush class="mt-3">
+        <Panel title="설치 자산" flush>
+          <LoadError v-if="installedError" :error="installedError" @retry="refreshInstalled" />
           <DataTable
-            v-if="tab === 'assets'"
+            v-else
             :columns="assetColumns"
             :rows="installed"
             :row-key="(r) => `${r.assetId}/${r.container ?? ''}`"
             :row-to="(r) => `/assets/${r.assetId}`"
             :page-size="25"
+            :loading="installedPending"
           >
             <template #cell-asset="{ row }">
               <NuxtLink :to="`/assets/${row.assetId}`" class="font-medium hover:underline">{{ row.asset.name }}</NuxtLink>
@@ -114,27 +117,6 @@ function showRaw(row: ComponentAssetRow) {
             <template #cell-raw="{ row }">
               <AppButton v-if="row.versionRaw" size="sm" @click="showRaw(row)">출력 보기</AppButton>
             </template>
-          </DataTable>
-
-          <DataTable
-            v-else
-            :columns="vulnColumns"
-            :rows="vulns"
-            :row-key="(r) => r.vulnId"
-            :row-to="(r) => `/vulnerabilities/${r.vulnId}`"
-            :page-size="25"
-          >
-            <template #cell-id="{ row }">
-              <NuxtLink :to="`/vulnerabilities/${row.vulnId}`" class="mono whitespace-nowrap hover:underline">{{ row.vulnId }}</NuxtLink>
-              <div class="text-xs text-ink-3">{{ row.vuln.title }}</div>
-            </template>
-            <template #cell-severity="{ row }"><SeverityBadge :severity="row.vuln.severity" /></template>
-            <template #cell-fix="{ row }">
-              <template v-if="row.fixedVersion"><span class="mono whitespace-nowrap">{{ row.fixedVersion }}</span></template>
-              <template v-else>{{ fixStateLabel[row.fixState] }}</template>
-            </template>
-            <template #cell-basis="{ row }">{{ matchBasisLabel[row.basis] }}</template>
-            <template #cell-advisory="{ row }"><span class="mono whitespace-nowrap text-xs">{{ row.advisoryId ?? '—' }}</span></template>
           </DataTable>
         </Panel>
       </div>

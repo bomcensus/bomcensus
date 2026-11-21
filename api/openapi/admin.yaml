@@ -1,0 +1,3518 @@
+# Copyright (C) 2026 JC-Lab
+# SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-bomcensus-Commercial
+# Additional terms apply. See LICENSING.md.
+
+openapi: 3.0.3
+info:
+  title: bomcensus admin API
+  version: 1.0.0
+  description: |
+    API used by the bomcensus console.
+
+    Authentication is a session cookie (`bomcensus_session`, `HttpOnly`,
+    `SameSite=Strict`) obtained from `POST /auth/login`.
+
+    Every request other than `GET`, `HEAD` and `OPTIONS` (login included)
+    must carry the header `X-Requested-With: bomcensus`, and its `Origin`
+    (or `Referer`) host, when sent, must equal the request host. Other
+    requests are rejected with `403` and code `forbidden`.
+
+    List endpoints take `q` (free text), endpoint-specific filters, `sort`,
+    `limit` (default 200, max 1000) and `offset`, and return
+    `{items, total}` where `total` counts all matches before paging.
+    A `sort` value is a field name, optionally prefixed with `-` for
+    descending order.
+
+    Errors are returned as `{code, message}`. `code` is a stable
+    snake_case identifier (for example `not_found`, `invalid_argument`,
+    `conflict`); `message` is human-readable English.
+  license:
+    name: AGPL-3.0-only OR LicenseRef-bomcensus-Commercial
+servers:
+  - url: /api/v1
+security:
+  - session: []
+tags:
+  - name: meta
+    description: Server version and features
+  - name: auth
+    description: Session login and logout
+  - name: dashboard
+    description: Dashboard counts
+  - name: assets
+    description: Hosts and workloads
+  - name: components
+    description: Unique software components
+  - name: processes
+    description: Processes and listening sockets
+  - name: images
+    description: Container images aggregated by digest
+  - name: kubernetes
+    description: Clusters, workloads and pods
+  - name: agents
+    description: Agents, scanners and listen targets
+  - name: enrollment
+    description: Register Keys
+  - name: updates
+    description: Releases and the deployed version
+  - name: scans
+    description: Agentless scan targets and credentials
+  - name: settings
+    description: TLS configuration
+
+paths:
+  /meta:
+    get:
+      tags: [meta]
+      operationId: getMeta
+      summary: Server version and enabled features
+      responses:
+        "200":
+          description: Server metadata
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Meta"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /auth/login:
+    post:
+      tags: [auth]
+      operationId: login
+      summary: Start a session
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Logged in. The session cookie is set.
+          headers:
+            Set-Cookie:
+              description: "`bomcensus_session` cookie (`HttpOnly`, `SameSite=Strict`, `Secure` when served over TLS)."
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Principal"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /auth/logout:
+    post:
+      tags: [auth]
+      operationId: logout
+      summary: End the current session
+      responses:
+        "204":
+          description: Logged out. The session cookie is cleared.
+          headers:
+            Set-Cookie:
+              description: Expired `bomcensus_session` cookie.
+              schema:
+                type: string
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /auth/me:
+    get:
+      tags: [auth]
+      operationId: getCurrentUser
+      summary: The authenticated user
+      responses:
+        "200":
+          description: Current principal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Principal"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /dashboard:
+    get:
+      tags: [dashboard]
+      operationId: getDashboard
+      summary: Counts shown on the dashboard
+      responses:
+        "200":
+          description: Dashboard counts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Dashboard"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /assets:
+    get:
+      tags: [assets]
+      operationId: listAssets
+      summary: List assets
+      description: "`q` matches name, address, cluster and namespace, OS name and version, tags and container image references."
+      parameters:
+        - $ref: "#/components/parameters/QueryQ"
+        - name: kind
+          in: query
+          schema:
+            $ref: "#/components/schemas/AssetKind"
+        - name: group
+          in: query
+          schema:
+            type: string
+        - name: tag
+          in: query
+          schema:
+            type: string
+        - name: method
+          in: query
+          schema:
+            $ref: "#/components/schemas/CollectMethod"
+        - name: coverage
+          in: query
+          description: "A coverage value, or `limited` for every coverage other than `full`."
+          schema:
+            type: string
+            enum: [limited, full, partial, process_only, inventory_only, unsupported, failed]
+        - name: clusterId
+          in: query
+          schema:
+            type: string
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [name, "-name", kind, "-kind", os, "-os", group, "-group", method, "-method", coverage, "-coverage", firstSeen, "-firstSeen", lastSeen, "-lastSeen"]
+            default: name
+        - $ref: "#/components/parameters/QueryLimit"
+        - $ref: "#/components/parameters/QueryOffset"
+      responses:
+        "200":
+          description: Assets
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssetList"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /asset-groups:
+    get:
+      tags: [assets]
+      operationId: listAssetGroups
+      summary: List asset groups in use
+      parameters:
+        - $ref: "#/components/parameters/QueryQ"
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [name, "-name", assetCount, "-assetCount"]
+            default: name
+        - $ref: "#/components/parameters/QueryLimit"
+        - $ref: "#/components/parameters/QueryOffset"
+      responses:
+        "200":
+          description: Groups
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssetGroupList"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /assets/{id}:
+    parameters:
+      - $ref: "#/components/parameters/PathId"
+    get:
+      tags: [assets]
+      operationId: getAsset
+      summary: Get an asset
+      responses:
+        "200":
+          description: Asset
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Asset"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /assets/{id}/components:
+    parameters:
+      - $ref: "#/components/parameters/PathId"
+    get:
+      tags: [assets]
+      operationId: listAssetComponents
+      summary: Components installed on an asset
+      description: "`q` matches component name, version, purl, container name and locations."
+      parameters:
+        - $ref: "#/components/parameters/QueryQ"
+        - name: type
+          in: query
+          schema:
+            $ref: "#/components/schemas/ComponentType"
+        - name: origin
+          in: query
+          schema:
+            $ref: "#/components/schemas/ComponentOrigin"
+        - name: container
+          in: query
+          description: Only components found in this container. Cannot be combined with `hostOnly`.
+          schema:
+            type: string
+        - name: hostOnly
+          in: query
+          description: Only components found outside containers.
+          schema:
+            type: boolean
+        - name: layer
+          in: query
+          schema:
+            $ref: "#/components/schemas/ComponentLayer"
+        - name: inUse
+          in: query
+          schema:
+            type: boolean
+        - name: includeRemoved
+          in: query
+          description: Also return components that were removed (with `removedAt` set).
+          schema:
+            type: boolean
+            default: false
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [name, "-name", version, "-version", type, "-type", origin, "-origin", method, "-method", container, "-container", inUse, "-inUse", firstSeen, "-firstSeen"]
+            default: name
+        - $ref: "#/components/parameters/QueryLimit"
+        - $ref: "#/components/parameters/QueryOffset"
+      responses:
+        "200":
+          description: Components of the asset
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssetComponentList"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /assets/{id}/processes:
+    parameters:
+      - $ref: "#/components/parameters/PathId"
+    get:
+      tags: [assets]
+      operationId: listAssetProcesses
+      summary: Processes of an asset
+      description: "`q` matches executable path, user, command line and pid."
+      parameters:
+        - $ref: "#/components/parameters/QueryQ"
+        - name: view
+          in: query
+          schema:
+            type: string
+            enum: [all, restart, suspicious, listen]
+            default: all
+        - name: container
+          in: query
+          schema:
+            type: string
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [pid, "-pid", user, "-user", exe, "-exe", state, "-state", startedAt, "-startedAt"]
+            default: pid
+        - $ref: "#/components/parameters/QueryLimit"
+        - $ref: "#/components/parameters/QueryOffset"
+      responses:
+        "200":
+          description: Processes
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProcessList"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /assets/{id}/instances:
+    parameters:
+      - $ref: "#/components/parameters/PathId"
+    get:
+      tags: [assets]
+      operationId: listAssetInstances
+      summary: Instances (pods) of a workload asset
+      description: A host asset has no separate instances and returns an empty list.
+      parameters:
+        - $ref: "#/components/parameters/QueryQ"
+        - name: phase
+          in: query
+          schema:
+            $ref: "#/components/schemas/K8sPodPhase"
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [name, "-name", node, "-node", phase, "-phase", startedAt, "-startedAt"]
+            default: name
+        - $ref: "#/components/parameters/QueryLimit"
+        - $ref: "#/components/parameters/QueryOffset"
+      responses:
+        "200":
+          description: Pods
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/K8sPodList"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /assets/{id}/collect:
+    parameters:
+      - $ref: "#/components/parameters/PathId"
+    post:
+      tags: [assets]
+      operationId: collectAsset
+      summary: Request a collection now
+      description: |
+        Sends a `collect` directive to the asset's agent, runs its scan target,
+        or schedules an exec collection for a workload. Returns `409` when the
+        asset has no way to be collected (for example a revoked agent).
+      responses:
+        "202":
+          description: Collection requested
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CollectRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /components:
+    get:
+      tags: [components]
+      operationId: listComponents
+      summary: List unique components
+      description: "`q` matches name and purl."
+      parameters:
+        - $ref: "#/components/parameters/QueryQ"
+        - name: type
+          in: query
+          schema:
+            $ref: "#/components/schemas/ComponentType"
+        - name: origin
+          in: query
+          schema:
+            $ref: "#/components/schemas/ComponentOrigin"
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [name, "-name", version, "-version", type, "-type", origin, "-origin", assetCount, "-assetCount", purl, "-purl"]
+            default: name
+        - $ref: "#/components/parameters/QueryLimit"
+        - $ref: "#/components/parameters/QueryOffset"
+      responses:
+        "200":
+          description: Components
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ComponentList"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /components/{id}:
+    parameters:
+      - $ref: "#/components/parameters/PathId"
+    get:
+      tags: [components]
+      operationId: getComponent
+      summary: Get a component
+      responses:
+        "200":
+          description: Component
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ComponentSummary"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /components/{id}/assets:
+    parameters:
+      - $ref: "#/components/parameters/PathId"
+    get:
+      tags: [components]
+      operationId: listComponentAssets
+      summary: Assets on which a component is installed
+      description: "`q` matches asset name, container name and locations."
+      parameters:
+        - $ref: "#/components/parameters/QueryQ"
+        - name: inUse
+          in: query
+          schema:
+            type: boolean
+        - name: method
+          in: query
+          schema:
+            $ref: "#/components/schemas/DetectMethod"
+        - name: includeRemoved
+          in: query
+          schema:
+            type: boolean
+            default: false
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [asset, "-asset", method, "-method", inUse, "-inUse", firstSeen, "-firstSeen"]
+            default: asset
+        - $ref: "#/components/parameters/QueryLimit"
+        - $ref: "#/components/parameters/QueryOffset"
+      responses:
+        "200":
+          description: Installations
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ComponentAssetList"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /processes:
+    get:
+      tags: [processes]
+      operationId: listProcesses
+      summary: Processes across all assets
+      description: |
+        `view=restart`: the executable or a mapped library was replaced on disk
+        (an old version is still in memory). `view=suspicious`: the executable
+        or a mapped library was deleted, or the process runs from a memfd.
+        `q` matches executable path, user and command line.
+      parameters:
+        - $ref: "#/components/parameters/QueryQ"
+        - name: view
+          in: query
+          schema:
+            type: string
+            enum: [all, restart, suspicious]
+            default: all
+        - name: assetId
+          in: query
+          schema:
+            type: string
+        - name: state
+          in: query
+          schema:
+            $ref: "#/components/schemas/ExeState"
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [asset, "-asset", exe, "-exe", user, "-user", state, "-state", startedAt, "-startedAt"]
+            default: asset
+        - $ref: "#/components/parameters/QueryLimit"
+        - $ref: "#/components/parameters/QueryOffset"
+      responses:
+        "200":
+          description: Processes
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProcessList"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /listen-ports:
+    get:
+      tags: [processes]
+      operationId: listListenPorts
+      summary: Listening sockets across all assets
+      description: Includes sockets whose owning process could not be determined (no `processId`).
+      parameters:
+        - $ref: "#/components/parameters/QueryQ"
+        - name: assetId
+          in: query
+          schema:
+            type: string
+        - name: proto
+          in: query
+          schema:
+            $ref: "#/components/schemas/ListenProto"
+        - name: port
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 65535
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [port, "-port", address, "-address", process, "-process", user, "-user", asset, "-asset"]
+            default: port
+        - $ref: "#/components/parameters/QueryLimit"
+        - $ref: "#/components/parameters/QueryOffset"
+      responses:
+        "200":
+          description: Listening sockets
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListenPortList"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /images:
+    get:
+      tags: [images]
+      operationId: listImages
+      summary: Container images, aggregated by digest
+      description: "`q` matches digest and repo tags."
+      parameters:
+        - $ref: "#/components/parameters/QueryQ"
+        - name: inUse
+          in: query
+          description: Only images used by at least one container.
+          schema:
+            type: boolean
+        - name: contentKnown
+          in: query
+          schema:
+            type: boolean
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [tag, "-tag", digest, "-digest", os, "-os", arch, "-arch", size, "-size", instances, "-instances", firstSeen, "-firstSeen"]
+            default: tag
+        - $ref: "#/components/parameters/QueryLimit"
+        - $ref: "#/components/parameters/QueryOffset"
+      responses:
+        "200":
+          description: Images
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContainerImageList"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /images/{digest}:
+    parameters:
+      - $ref: "#/components/parameters/PathDigest"
+    get:
+      tags: [images]
+      operationId: getImage
+      summary: Get an image with the containers that use it and its components
+      responses:
+        "200":
+          description: Image
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContainerImageDetail"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /k8s/clusters:
+    get:
+      tags: [kubernetes]
+      operationId: listK8sClusters
+      summary: List Kubernetes clusters
+      parameters:
+        - $ref: "#/components/parameters/QueryQ"
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [name, "-name", version, "-version", connection, "-connection", execEnabled, "-execEnabled", workloadCount, "-workloadCount", lastSync, "-lastSync"]
+            default: name
+        - $ref: "#/components/parameters/QueryLimit"
+        - $ref: "#/components/parameters/QueryOffset"
+      responses:
+        "200":
+          description: Clusters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/K8sClusterList"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+    post:
+      tags: [kubernetes]
+      operationId: createK8sCluster
+      summary: Register a Kubernetes cluster
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/K8sClusterCreate"
+      responses:
+        "201":
+          description: Cluster created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/K8sCluster"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /k8s/clusters/{id}:
+    parameters:
+      - $ref: "#/components/parameters/PathId"
+    get:
+      tags: [kubernetes]
+      operationId: getK8sCluster
+      summary: Get a Kubernetes cluster
+      responses:
+        "200":
+          description: Cluster
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/K8sCluster"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+    patch:
+      tags: [kubernetes]
+      operationId: updateK8sCluster
+      summary: Change a Kubernetes cluster
+      description: Absent fields are left unchanged.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/K8sClusterUpdate"
+      responses:
+        "200":
+          description: Cluster updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/K8sCluster"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+    delete:
+      tags: [kubernetes]
+      operationId: deleteK8sCluster
+      summary: Remove a Kubernetes cluster and its workload assets
+      responses:
+        "204":
+          description: Cluster deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /k8s/clusters/{id}/workloads:
+    parameters:
+      - $ref: "#/components/parameters/PathId"
+    get:
+      tags: [kubernetes]
+      operationId: listK8sWorkloads
+      summary: Workloads of a cluster
+      description: "`q` matches name, namespace and kind. Workloads excluded by the filter are included with `excluded: true`."
+      parameters:
+        - $ref: "#/components/parameters/QueryQ"
+        - name: namespace
+          in: query
+          schema:
+            type: string
+        - name: kind
+          in: query
+          schema:
+            type: string
+        - name: excluded
+          in: query
+          schema:
+            type: boolean
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [namespace, "-namespace", kind, "-kind", name, "-name", replicas, "-replicas"]
+            default: namespace
+        - $ref: "#/components/parameters/QueryLimit"
+        - $ref: "#/components/parameters/QueryOffset"
+      responses:
+        "200":
+          description: Workloads
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/K8sWorkloadList"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /k8s/workloads/{id}/pods:
+    parameters:
+      - $ref: "#/components/parameters/PathId"
+    get:
+      tags: [kubernetes]
+      operationId: listK8sWorkloadPods
+      summary: Pods of a workload
+      parameters:
+        - $ref: "#/components/parameters/QueryQ"
+        - name: phase
+          in: query
+          schema:
+            $ref: "#/components/schemas/K8sPodPhase"
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [name, "-name", node, "-node", phase, "-phase", startedAt, "-startedAt"]
+            default: name
+        - $ref: "#/components/parameters/QueryLimit"
+        - $ref: "#/components/parameters/QueryOffset"
+      responses:
+        "200":
+          description: Pods
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/K8sPodList"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /k8s/clusters/{id}/sync:
+    parameters:
+      - $ref: "#/components/parameters/PathId"
+    post:
+      tags: [kubernetes]
+      operationId: syncK8sCluster
+      summary: Request an inventory sync (and exec collection when enabled) now
+      responses:
+        "202":
+          description: Sync requested
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /agents:
+    get:
+      tags: [agents]
+      operationId: listAgents
+      summary: List agents and scanners
+      description: "`q` matches hostname, address, id, OS and listen address."
+      parameters:
+        - $ref: "#/components/parameters/QueryQ"
+        - name: kind
+          in: query
+          schema:
+            $ref: "#/components/schemas/AgentKind"
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/AgentStatus"
+        - name: connMode
+          in: query
+          schema:
+            $ref: "#/components/schemas/ConnMode"
+        - name: tlsMode
+          in: query
+          schema:
+            $ref: "#/components/schemas/TlsMode"
+        - name: updateState
+          in: query
+          schema:
+            $ref: "#/components/schemas/UpdateState"
+        - name: registerKeyId
+          in: query
+          schema:
+            type: string
+        - name: version
+          in: query
+          schema:
+            type: string
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [hostname, "-hostname", status, "-status", version, "-version", connMode, "-connMode", tlsMode, "-tlsMode", privilege, "-privilege", address, "-address", enrolledAt, "-enrolledAt", lastSeen, "-lastSeen"]
+            default: hostname
+        - $ref: "#/components/parameters/QueryLimit"
+        - $ref: "#/components/parameters/QueryOffset"
+      responses:
+        "200":
+          description: Agents
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentList"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /agents/{id}:
+    parameters:
+      - $ref: "#/components/parameters/PathId"
+    get:
+      tags: [agents]
+      operationId: getAgent
+      summary: Get an agent or scanner
+      responses:
+        "200":
+          description: Agent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Agent"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /agents/{id}/approve:
+    parameters:
+      - $ref: "#/components/parameters/PathId"
+    post:
+      tags: [agents]
+      operationId: approveAgent
+      summary: Approve a pending enrollment
+      description: Returns `409` unless the agent is `pending_approval`.
+      responses:
+        "200":
+          description: Agent approved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Agent"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /agents/{id}/revoke:
+    parameters:
+      - $ref: "#/components/parameters/PathId"
+    post:
+      tags: [agents]
+      operationId: revokeAgent
+      summary: Revoke an agent (blocks its certificate and identity key)
+      description: Also rejects a pending enrollment. Returns `409` when already revoked.
+      responses:
+        "200":
+          description: Agent revoked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Agent"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /listen-targets:
+    get:
+      tags: [agents]
+      operationId: listListenTargets
+      summary: Addresses of listen-mode agents the server dials
+      description: "`q` matches address and bound agent hostname."
+      parameters:
+        - $ref: "#/components/parameters/QueryQ"
+        - name: state
+          in: query
+          schema:
+            $ref: "#/components/schemas/ListenTargetState"
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [address, "-address", state, "-state", createdAt, "-createdAt", lastConnectedAt, "-lastConnectedAt"]
+            default: address
+        - $ref: "#/components/parameters/QueryLimit"
+        - $ref: "#/components/parameters/QueryOffset"
+      responses:
+        "200":
+          description: Listen targets
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListenTargetList"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+    post:
+      tags: [agents]
+      operationId: createListenTarget
+      summary: Add an address for the server to dial
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ListenTargetCreate"
+      responses:
+        "201":
+          description: Listen target created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListenTarget"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /listen-targets/{id}:
+    parameters:
+      - $ref: "#/components/parameters/PathId"
+    patch:
+      tags: [agents]
+      operationId: updateListenTarget
+      summary: Change a listen target
+      description: |
+        Absent fields are left unchanged; `registerKeyId: null` removes the
+        key restriction. A changed address resets the state to `connecting`;
+        the bound agent is kept.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ListenTargetUpdate"
+      responses:
+        "200":
+          description: Listen target updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListenTarget"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+    delete:
+      tags: [agents]
+      operationId: deleteListenTarget
+      summary: Stop dialing an address
+      description: The bound agent is not revoked; it stays offline until a target with its address is added again.
+      responses:
+        "204":
+          description: Listen target deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /register-keys:
+    get:
+      tags: [enrollment]
+      operationId: listRegisterKeys
+      summary: List Register Keys
+      description: Never returns secrets or enrollment strings. `q` matches name and key id.
+      parameters:
+        - $ref: "#/components/parameters/QueryQ"
+        - name: target
+          in: query
+          schema:
+            $ref: "#/components/schemas/AgentKind"
+        - name: state
+          in: query
+          schema:
+            $ref: "#/components/schemas/RegisterKeyState"
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [name, "-name", target, "-target", state, "-state", expiresAt, "-expiresAt", usedCount, "-usedCount", approval, "-approval", createdAt, "-createdAt"]
+            default: "-createdAt"
+        - $ref: "#/components/parameters/QueryLimit"
+        - $ref: "#/components/parameters/QueryOffset"
+      responses:
+        "200":
+          description: Register Keys
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RegisterKeyList"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+    post:
+      tags: [enrollment]
+      operationId: createRegisterKey
+      summary: Create a Register Key
+      description: |
+        The response carries the enrollment string. It is returned only here
+        and cannot be retrieved again: the server keeps only the public key.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterKeyCreate"
+      responses:
+        "201":
+          description: Register Key created
+          headers:
+            Cache-Control:
+              description: Always `no-store`.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RegisterKeyCreated"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /register-keys/{id}:
+    parameters:
+      - $ref: "#/components/parameters/PathId"
+    get:
+      tags: [enrollment]
+      operationId: getRegisterKey
+      summary: Get a Register Key
+      description: Never returns secrets or the enrollment string.
+      responses:
+        "200":
+          description: Register Key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RegisterKey"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /register-keys/{id}/revoke:
+    parameters:
+      - $ref: "#/components/parameters/PathId"
+    post:
+      tags: [enrollment]
+      operationId: revokeRegisterKey
+      summary: Revoke a Register Key
+      description: Takes effect immediately. Agents already enrolled with the key are not affected. Returns `409` when already revoked.
+      responses:
+        "200":
+          description: Register Key revoked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RegisterKey"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /releases:
+    get:
+      tags: [updates]
+      operationId: listReleases
+      summary: List releases known to the server
+      parameters:
+        - $ref: "#/components/parameters/QueryQ"
+        - name: source
+          in: query
+          schema:
+            $ref: "#/components/schemas/ReleaseSource"
+        - name: verified
+          in: query
+          schema:
+            type: boolean
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [version, "-version", publishedAt, "-publishedAt", importedAt, "-importedAt"]
+            default: "-version"
+        - $ref: "#/components/parameters/QueryLimit"
+        - $ref: "#/components/parameters/QueryOffset"
+      responses:
+        "200":
+          description: Releases
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReleaseList"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+    post:
+      tags: [updates]
+      operationId: uploadRelease
+      summary: Upload a release bundle
+      description: |
+        The bundle (`bomcensus-<version>.tar`) is verified (manifest signature
+        and code signatures) before it is stored. The version is taken from the
+        signed manifest. A bundle that fails verification is rejected with
+        `400` and code `release_verification_failed`.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/ReleaseUpload"
+      responses:
+        "201":
+          description: Release stored
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Release"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /update-settings:
+    get:
+      tags: [updates]
+      operationId: getUpdateSettings
+      summary: Deployed version and update check interval
+      responses:
+        "200":
+          description: Update settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UpdateSettings"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+    put:
+      tags: [updates]
+      operationId: setUpdateSettings
+      summary: Change the deployed version and update check interval
+      description: "`targetVersion` must name a verified release. `null` stops distributing updates."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateSettings"
+      responses:
+        "200":
+          description: Update settings changed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UpdateSettings"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /scan-targets:
+    get:
+      tags: [scans]
+      operationId: listScanTargets
+      summary: List agentless scan targets
+      description: "`q` matches name and address."
+      parameters:
+        - $ref: "#/components/parameters/QueryQ"
+        - name: scannerId
+          in: query
+          schema:
+            type: string
+        - name: credentialId
+          in: query
+          schema:
+            type: string
+        - name: lastResult
+          in: query
+          schema:
+            $ref: "#/components/schemas/ScanResult"
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [name, "-name", address, "-address", lastRun, "-lastRun"]
+            default: name
+        - $ref: "#/components/parameters/QueryLimit"
+        - $ref: "#/components/parameters/QueryOffset"
+      responses:
+        "200":
+          description: Scan targets
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScanTargetList"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+    post:
+      tags: [scans]
+      operationId: createScanTarget
+      summary: Add a scan target
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ScanTargetCreate"
+      responses:
+        "201":
+          description: Scan target created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScanTarget"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /scan-targets/{id}:
+    parameters:
+      - $ref: "#/components/parameters/PathId"
+    patch:
+      tags: [scans]
+      operationId: updateScanTarget
+      summary: Change a scan target
+      description: |
+        Absent fields are left unchanged; `scannerId: null` assigns the
+        target to the embedded scanner. `resetHostKey: true` removes the
+        pinned host key so that the next connection pins the key it sees.
+        The address cannot be changed; add a new target for another host.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ScanTargetUpdate"
+      responses:
+        "200":
+          description: Scan target updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScanTarget"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+    delete:
+      tags: [scans]
+      operationId: deleteScanTarget
+      summary: Remove a scan target
+      description: The asset it produced is kept.
+      responses:
+        "204":
+          description: Scan target deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /scan-targets/{id}/run:
+    parameters:
+      - $ref: "#/components/parameters/PathId"
+    post:
+      tags: [scans]
+      operationId: runScanTarget
+      summary: Scan a target now
+      responses:
+        "202":
+          description: Scan requested
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /credentials:
+    get:
+      tags: [scans]
+      operationId: listCredentials
+      summary: List credentials
+      description: Secrets are write-only and never returned. `q` matches name and username.
+      parameters:
+        - $ref: "#/components/parameters/QueryQ"
+        - name: kind
+          in: query
+          schema:
+            $ref: "#/components/schemas/CredentialKind"
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [name, "-name", kind, "-kind", username, "-username", usedBy, "-usedBy", createdAt, "-createdAt"]
+            default: name
+        - $ref: "#/components/parameters/QueryLimit"
+        - $ref: "#/components/parameters/QueryOffset"
+      responses:
+        "200":
+          description: Credentials
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CredentialList"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+    post:
+      tags: [scans]
+      operationId: createCredential
+      summary: Store a credential
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CredentialCreate"
+      responses:
+        "201":
+          description: Credential stored
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Credential"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /credentials/{id}:
+    parameters:
+      - $ref: "#/components/parameters/PathId"
+    delete:
+      tags: [scans]
+      operationId: deleteCredential
+      summary: Delete a credential
+      description: Returns `409` while a scan target or cluster uses it.
+      responses:
+        "204":
+          description: Credential deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /credentials/{id}/secret:
+    parameters:
+      - $ref: "#/components/parameters/PathId"
+    put:
+      tags: [scans]
+      operationId: rotateCredentialSecret
+      summary: Replace the secret of a credential
+      description: |
+        The kind stays the same and takes the same fields as on creation;
+        `username` is kept when absent.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CredentialSecretUpdate"
+      responses:
+        "200":
+          description: Secret replaced
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Credential"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /settings/tls:
+    get:
+      tags: [settings]
+      operationId: getTlsSettings
+      summary: State of the Web/API and Agent TLS configurations
+      responses:
+        "200":
+          description: TLS state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TlsState"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /settings/tls/{endpoint}:
+    parameters:
+      - name: endpoint
+        in: path
+        required: true
+        schema:
+          $ref: "#/components/schemas/TlsEndpointName"
+    put:
+      tags: [settings]
+      operationId: updateTlsEndpoint
+      summary: Switch a TLS configuration between automatic and manual, or replace the manual certificate
+      description: |
+        `mode=auto`: the server issues and renews the certificate from its
+        internal CA; `certificateChain` and `privateKey` must be absent.
+        `mode=manual`: `certificateChain` and `privateKey` are required.
+
+        For `agent`, the supplied chain must contain a certificate whose SPKI
+        hash is the current trust anchor (or the prepared one, see
+        `POST /settings/tls/agent/anchor`); otherwise the request fails with
+        `409` and code `anchor_mismatch`, because enrolled agents would stop
+        trusting the server.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TlsEndpointUpdate"
+      responses:
+        "200":
+          description: TLS configuration changed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TlsState"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /settings/tls/agent/anchor:
+    post:
+      tags: [settings]
+      operationId: changeAgentTlsAnchor
+      summary: Two-step change of the Agent TLS trust anchor
+      description: |
+        `prepare` adds a new anchor to the trust bundle that agents
+        synchronize. In automatic mode the server creates a new internal CA; in
+        manual mode `certificate` (PEM) is the new anchor certificate.
+        `activate` switches the Agent TLS certificate to the prepared anchor.
+        While `pendingAnchor.unsyncedAgents` is not zero, `activate` fails with
+        `409` and code `agents_not_synced` unless `force` is set; those agents
+        lose their connection. `cancel` drops the prepared anchor.
+        Enrollment strings created before activation contain the old anchor
+        hash and stop working after it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgentAnchorChange"
+      responses:
+        "200":
+          description: TLS state after the step
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TlsState"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+components:
+  securitySchemes:
+    session:
+      type: apiKey
+      in: cookie
+      name: bomcensus_session
+
+  parameters:
+    QueryQ:
+      name: q
+      in: query
+      description: Free-text search, case-insensitive substring match.
+      schema:
+        type: string
+        maxLength: 256
+    QueryLimit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 1000
+        default: 200
+    QueryOffset:
+      name: offset
+      in: query
+      schema:
+        type: integer
+        minimum: 0
+        default: 0
+    PathId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+    PathDigest:
+      name: digest
+      in: path
+      required: true
+      description: Image digest, for example `sha256:0123…`.
+      schema:
+        type: string
+        pattern: "^sha256:[0-9a-f]{64}$"
+
+  responses:
+    BadRequest:
+      description: The request is malformed or a value is invalid.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Unauthorized:
+      description: No valid session, or wrong credentials on login.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    NotFound:
+      description: The resource does not exist.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Conflict:
+      description: The request conflicts with the current state.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    PayloadTooLarge:
+      description: The request body is too large.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    TooManyRequests:
+      description: Too many attempts. Retry later.
+      headers:
+        Retry-After:
+          description: Seconds to wait.
+          schema:
+            type: integer
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    UnexpectedError:
+      description: Unexpected error.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+  schemas:
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          description: Stable snake_case error identifier.
+        message:
+          type: string
+
+    # ── meta / auth / dashboard ─────────────────────────────────────────
+
+    Meta:
+      type: object
+      required: [version, features]
+      properties:
+        version:
+          type: string
+        features:
+          $ref: "#/components/schemas/Features"
+        agentAddress:
+          description: "`host:port` agents and scanners connect to (the first Agent TLS server name with the agent port). Absent when not configured."
+          type: string
+    Features:
+      type: object
+      required: [vulnerabilities, sbomExport]
+      properties:
+        vulnerabilities:
+          type: boolean
+        sbomExport:
+          type: boolean
+
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+          minLength: 1
+          maxLength: 256
+        password:
+          type: string
+          format: password
+          minLength: 1
+          maxLength: 1024
+    Principal:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+
+    Dashboard:
+      type: object
+      required: [assets, coverage, processes, agents]
+      properties:
+        assets:
+          $ref: "#/components/schemas/DashboardAssets"
+        coverage:
+          description: Number of assets per coverage value. Every value is present.
+          type: array
+          items:
+            $ref: "#/components/schemas/CoverageCount"
+        processes:
+          $ref: "#/components/schemas/DashboardProcesses"
+        agents:
+          $ref: "#/components/schemas/DashboardAgents"
+    DashboardAssets:
+      type: object
+      required: [total, hosts, workloads, limited]
+      properties:
+        total:
+          type: integer
+        hosts:
+          type: integer
+        workloads:
+          type: integer
+        limited:
+          description: Assets whose coverage is not `full`.
+          type: integer
+    CoverageCount:
+      type: object
+      required: [coverage, count]
+      properties:
+        coverage:
+          $ref: "#/components/schemas/Coverage"
+        count:
+          type: integer
+    DashboardProcesses:
+      type: object
+      required: [restartRequired, suspicious]
+      properties:
+        restartRequired:
+          type: integer
+        suspicious:
+          type: integer
+    DashboardAgents:
+      description: Counts over agents and scanners.
+      type: object
+      required: [online, offline, pendingApproval, revoked, notPinned, tlsIntercepted]
+      properties:
+        online:
+          type: integer
+        offline:
+          type: integer
+        pendingApproval:
+          type: integer
+        revoked:
+          type: integer
+        notPinned:
+          description: Non-revoked agents whose TLS mode is not `pinned`.
+          type: integer
+        tlsIntercepted:
+          description: Non-revoked agents that observed a server certificate other than the server's own.
+          type: integer
+
+    # ── assets ──────────────────────────────────────────────────────────
+
+    AssetKind:
+      type: string
+      enum: [host, workload]
+    CollectMethod:
+      type: string
+      enum: [agent, ssh, k8s_exec, k8s_inventory]
+    Coverage:
+      description: |
+        `full`: everything collected. `partial`: some items could not be read.
+        `process_only`: only the processes section (replicas of a workload).
+        `inventory_only`: only image reference and digest. `unsupported`: the
+        target cannot be collected (for example an image without a shell).
+        `failed`: the last collection failed.
+      type: string
+      enum: [full, partial, process_only, inventory_only, unsupported, failed]
+    PrivilegeLevel:
+      type: string
+      enum: [privileged, non_root]
+    SectionName:
+      type: string
+      enum: [host, packages, artifacts, processes, containers]
+    SectionCoverageLevel:
+      type: string
+      enum: [full, partial, none]
+    SectionCoverage:
+      type: object
+      required: [section, coverage]
+      properties:
+        section:
+          $ref: "#/components/schemas/SectionName"
+        coverage:
+          $ref: "#/components/schemas/SectionCoverageLevel"
+        reason:
+          type: string
+        collectedAt:
+          type: string
+          format: date-time
+    AssetOs:
+      type: object
+      required: [family, name, version, arch]
+      properties:
+        family:
+          description: "`linux`."
+          type: string
+        name:
+          type: string
+        version:
+          type: string
+        kernel:
+          type: string
+        arch:
+          type: string
+    ContainerRuntime:
+      type: string
+      enum: [kubernetes, docker, containerd]
+    AssetContainer:
+      description: |
+        A container of an asset. For a workload it is a container of the pod
+        template, for a host a container running on it. The name identifies
+        the container within the asset and survives image changes.
+      type: object
+      required: [name, imageRef, runtime, instances, coverage]
+      properties:
+        name:
+          type: string
+        imageRef:
+          type: string
+        imageDigest:
+          description: Absent while the runtime has not reported a digest.
+          type: string
+        runtime:
+          $ref: "#/components/schemas/ContainerRuntime"
+        instances:
+          description: Running instances. Pods for a workload; 1 (running) or 0 (stopped) on a host.
+          type: integer
+        coverage:
+          $ref: "#/components/schemas/Coverage"
+        coverageReason:
+          type: string
+        startedAt:
+          type: string
+          format: date-time
+    AssetSummary:
+      type: object
+      required: [id, name, kind, group, tags, method, coverage, containerCount, firstSeen, lastSeen]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        kind:
+          $ref: "#/components/schemas/AssetKind"
+        group:
+          description: Empty when the asset is in no group.
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        os:
+          $ref: "#/components/schemas/AssetOs"
+        address:
+          type: string
+        method:
+          $ref: "#/components/schemas/CollectMethod"
+        coverage:
+          $ref: "#/components/schemas/Coverage"
+        coverageReason:
+          type: string
+        privilege:
+          $ref: "#/components/schemas/PrivilegeLevel"
+        agentId:
+          type: string
+        scanTargetId:
+          type: string
+        clusterId:
+          type: string
+        clusterName:
+          type: string
+        namespace:
+          type: string
+        workloadKind:
+          type: string
+        containerCount:
+          type: integer
+        images:
+          description: Distinct image references of the current containers.
+          type: array
+          items:
+            type: string
+        collectRequestedAt:
+          description: Time of a requested collection that no report has answered yet.
+          type: string
+          format: date-time
+        firstSeen:
+          type: string
+          format: date-time
+        lastSeen:
+          type: string
+          format: date-time
+    Asset:
+      type: object
+      required: [id, name, kind, group, tags, method, coverage, sections, containers, firstSeen, lastSeen]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        kind:
+          $ref: "#/components/schemas/AssetKind"
+        group:
+          description: Empty when the asset is in no group.
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        os:
+          $ref: "#/components/schemas/AssetOs"
+        address:
+          type: string
+        method:
+          $ref: "#/components/schemas/CollectMethod"
+        coverage:
+          $ref: "#/components/schemas/Coverage"
+        coverageReason:
+          type: string
+        privilege:
+          $ref: "#/components/schemas/PrivilegeLevel"
+        sections:
+          description: Coverage of each section in the latest collection.
+          type: array
+          items:
+            $ref: "#/components/schemas/SectionCoverage"
+        agentId:
+          type: string
+        scanTargetId:
+          type: string
+        clusterId:
+          description: Workloads only.
+          type: string
+        clusterName:
+          description: Workloads only.
+          type: string
+        namespace:
+          description: Workloads only.
+          type: string
+        workloadKind:
+          description: Workloads only. Kind of the top-level controller (`Deployment`, `StatefulSet`, `DaemonSet`, `CronJob`, `Job`, `Pod`, …).
+          type: string
+        workloadId:
+          description: Workloads only.
+          type: string
+        replicas:
+          description: Workloads only. Desired replicas (or current pods for kinds without a replica count).
+          type: integer
+        containers:
+          type: array
+          items:
+            $ref: "#/components/schemas/AssetContainer"
+        collectRequestedAt:
+          description: Time of a requested collection that no report has answered yet.
+          type: string
+          format: date-time
+        firstSeen:
+          type: string
+          format: date-time
+        lastSeen:
+          type: string
+          format: date-time
+    CollectRequest:
+      type: object
+      required: [requestedAt]
+      properties:
+        requestedAt:
+          description: Time of the request; shown as `collectRequestedAt` on the asset until a newer report arrives.
+          type: string
+          format: date-time
+    AssetList:
+      type: object
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AssetSummary"
+        total:
+          type: integer
+    AssetGroup:
+      type: object
+      required: [name, assetCount]
+      properties:
+        name:
+          type: string
+        assetCount:
+          type: integer
+    AssetGroupList:
+      type: object
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AssetGroup"
+        total:
+          type: integer
+
+    # ── components ──────────────────────────────────────────────────────
+
+    ComponentType:
+      type: string
+      enum: [deb, rpm, apk, maven, golang, binary, middleware]
+    ComponentOrigin:
+      description: "`distro`: distribution package. `third_party`: package from a third-party repository. `upstream`: software that is not a package."
+      type: string
+      enum: [distro, third_party, upstream]
+    DetectMethod:
+      type: string
+      enum: [package_db, exec, static, manifest, buildinfo]
+    ComponentLayer:
+      description: "`image`: part of the container image (shared by digest). `runtime`: added or changed while the container runs."
+      type: string
+      enum: [image, runtime]
+    SoftwareComponent:
+      type: object
+      required: [id, type, name, version, purl, origin]
+      properties:
+        id:
+          type: string
+        type:
+          $ref: "#/components/schemas/ComponentType"
+        name:
+          type: string
+        version:
+          type: string
+        purl:
+          type: string
+        cpe:
+          type: string
+        sourceName:
+          type: string
+        sourceVersion:
+          type: string
+        distro:
+          type: string
+        arch:
+          type: string
+        vendor:
+          type: string
+        origin:
+          $ref: "#/components/schemas/ComponentOrigin"
+    ComponentSummary:
+      type: object
+      required: [id, type, name, version, purl, origin, assetCount]
+      properties:
+        id:
+          type: string
+        type:
+          $ref: "#/components/schemas/ComponentType"
+        name:
+          type: string
+        version:
+          type: string
+        purl:
+          type: string
+        cpe:
+          type: string
+        sourceName:
+          type: string
+        sourceVersion:
+          type: string
+        distro:
+          type: string
+        arch:
+          type: string
+        vendor:
+          type: string
+        origin:
+          $ref: "#/components/schemas/ComponentOrigin"
+        assetCount:
+          description: Assets on which the component is currently installed.
+          type: integer
+    ComponentList:
+      type: object
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ComponentSummary"
+        total:
+          type: integer
+    AssetComponentRow:
+      description: One installation of a component on an asset (and container).
+      type: object
+      required: [assetId, componentId, locations, inUse, method, firstSeen, component]
+      properties:
+        assetId:
+          type: string
+        componentId:
+          type: string
+        container:
+          description: Name of the container the component was found in. Absent for the host itself.
+          type: string
+        layer:
+          $ref: "#/components/schemas/ComponentLayer"
+        locations:
+          description: File paths (for nested archives `outer.jar!/inner.jar`).
+          type: array
+          items:
+            type: string
+        inUse:
+          description: A running process executes or has opened one of the files.
+          type: boolean
+        method:
+          $ref: "#/components/schemas/DetectMethod"
+        versionCommand:
+          description: The version command that was run (`method=exec`), shell-quoted.
+          type: string
+        versionRaw:
+          description: Raw output of the version command (stdout, then stderr), truncated to 64 KiB per stream.
+          type: string
+        versionExitCode:
+          type: integer
+        versionTruncated:
+          type: boolean
+        firstSeen:
+          type: string
+          format: date-time
+        removedAt:
+          type: string
+          format: date-time
+        component:
+          $ref: "#/components/schemas/SoftwareComponent"
+    AssetComponentList:
+      type: object
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AssetComponentRow"
+        total:
+          type: integer
+    ComponentAssetRow:
+      type: object
+      required: [assetId, componentId, locations, inUse, method, firstSeen, asset]
+      properties:
+        assetId:
+          type: string
+        componentId:
+          type: string
+        container:
+          type: string
+        layer:
+          $ref: "#/components/schemas/ComponentLayer"
+        locations:
+          type: array
+          items:
+            type: string
+        inUse:
+          type: boolean
+        method:
+          $ref: "#/components/schemas/DetectMethod"
+        versionCommand:
+          type: string
+        versionRaw:
+          type: string
+        versionExitCode:
+          type: integer
+        versionTruncated:
+          type: boolean
+        firstSeen:
+          type: string
+          format: date-time
+        removedAt:
+          type: string
+          format: date-time
+        asset:
+          $ref: "#/components/schemas/AssetSummary"
+    ComponentAssetList:
+      type: object
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ComponentAssetRow"
+        total:
+          type: integer
+
+    # ── processes ───────────────────────────────────────────────────────
+
+    ExeState:
+      description: "`replaced`: another file now exists at the path. `deleted`: nothing exists at the path. `memfd`: executed from an anonymous memory file."
+      type: string
+      enum: [normal, replaced, deleted, memfd]
+    ExeSource:
+      description: "`cmdline`: no privilege to read the executable; the path is guessed from argv[0]."
+      type: string
+      enum: [proc, cmdline]
+    ListenProto:
+      type: string
+      enum: [tcp, udp]
+    ListenPort:
+      type: object
+      required: [proto, address, port]
+      properties:
+        proto:
+          $ref: "#/components/schemas/ListenProto"
+        address:
+          type: string
+        port:
+          type: integer
+    MappedLib:
+      type: object
+      required: [path, state]
+      properties:
+        path:
+          type: string
+        state:
+          type: string
+          enum: [replaced, deleted]
+        sha256:
+          type: string
+    ProcessInfo:
+      type: object
+      required: [id, assetId, assetName, pid, user, exePath, exeSource, cmdline, startedAt, exeState, deletedLibs, listen]
+      properties:
+        id:
+          type: string
+        assetId:
+          type: string
+        assetName:
+          type: string
+        pid:
+          type: integer
+        ppid:
+          type: integer
+        user:
+          type: string
+        uid:
+          type: integer
+        exePath:
+          type: string
+        exeSource:
+          $ref: "#/components/schemas/ExeSource"
+        sha256:
+          type: string
+        cmdline:
+          description: Secrets masked. Empty when command line collection is off.
+          type: string
+        startedAt:
+          type: string
+          format: date-time
+        exeState:
+          $ref: "#/components/schemas/ExeState"
+        deletedLibs:
+          description: Executable mappings whose file was replaced or deleted.
+          type: array
+          items:
+            $ref: "#/components/schemas/MappedLib"
+        listen:
+          type: array
+          items:
+            $ref: "#/components/schemas/ListenPort"
+        container:
+          description: Name of the container the process runs in.
+          type: string
+        componentId:
+          description: Component that owns the executable, when known.
+          type: string
+    ProcessList:
+      type: object
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProcessInfo"
+        total:
+          type: integer
+    ListenPortRow:
+      type: object
+      required: [proto, address, port, assetId, assetName]
+      properties:
+        proto:
+          $ref: "#/components/schemas/ListenProto"
+        address:
+          type: string
+        port:
+          type: integer
+        assetId:
+          type: string
+        assetName:
+          type: string
+        container:
+          type: string
+        processId:
+          description: Absent when the owning process could not be determined.
+          type: string
+        pid:
+          type: integer
+        exePath:
+          type: string
+        user:
+          type: string
+        uid:
+          type: integer
+        componentId:
+          type: string
+        componentName:
+          type: string
+    ListenPortList:
+      type: object
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ListenPortRow"
+        total:
+          type: integer
+
+    # ── images ──────────────────────────────────────────────────────────
+
+    ImageUsage:
+      type: object
+      required: [assets, containers, instances]
+      properties:
+        assets:
+          type: integer
+        containers:
+          type: integer
+        instances:
+          type: integer
+    ContainerImage:
+      description: |
+        An image is not an asset. It aggregates the containers of all assets
+        by image digest. An image that no container uses any more stays in the
+        list with zero usage.
+      type: object
+      required: [digest, repoTags, firstSeen, usage, contentKnown, componentCount]
+      properties:
+        digest:
+          type: string
+        repoTags:
+          type: array
+          items:
+            type: string
+        os:
+          type: string
+        arch:
+          type: string
+        sizeBytes:
+          type: integer
+          format: int64
+        firstSeen:
+          type: string
+          format: date-time
+        lastSeen:
+          type: string
+          format: date-time
+        usage:
+          $ref: "#/components/schemas/ImageUsage"
+        contentKnown:
+          description: The content of the image (its `image` layer) has been collected from at least one container.
+          type: boolean
+        componentCount:
+          description: Components in the `image` layer.
+          type: integer
+    ContainerImageList:
+      type: object
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ContainerImage"
+        total:
+          type: integer
+    ImageUse:
+      type: object
+      required: [asset, container]
+      properties:
+        asset:
+          $ref: "#/components/schemas/AssetSummary"
+        container:
+          $ref: "#/components/schemas/AssetContainer"
+    ImageComponent:
+      type: object
+      required: [component, locations, method]
+      properties:
+        component:
+          $ref: "#/components/schemas/SoftwareComponent"
+        locations:
+          type: array
+          items:
+            type: string
+        method:
+          $ref: "#/components/schemas/DetectMethod"
+    ContainerImageDetail:
+      type: object
+      required: [digest, repoTags, firstSeen, usage, contentKnown, componentCount, uses, components]
+      properties:
+        digest:
+          type: string
+        repoTags:
+          type: array
+          items:
+            type: string
+        os:
+          type: string
+        arch:
+          type: string
+        sizeBytes:
+          type: integer
+          format: int64
+        firstSeen:
+          type: string
+          format: date-time
+        lastSeen:
+          type: string
+          format: date-time
+        usage:
+          $ref: "#/components/schemas/ImageUsage"
+        contentKnown:
+          type: boolean
+        componentCount:
+          type: integer
+        uses:
+          description: Containers (of hosts and workloads) that run this image.
+          type: array
+          items:
+            $ref: "#/components/schemas/ImageUse"
+        components:
+          description: Components in the `image` layer. Components added at runtime are not included.
+          type: array
+          items:
+            $ref: "#/components/schemas/ImageComponent"
+
+    # ── kubernetes ──────────────────────────────────────────────────────
+
+    K8sConnection:
+      description: "`kubeconfig`: the scanner uses a stored kubeconfig credential. `in_cluster`: a scanner deployed inside the cluster uses its ServiceAccount."
+      type: string
+      enum: [in_cluster, kubeconfig]
+    K8sFilter:
+      description: |
+        Glob patterns for namespaces; `key=value` (or `key` for presence)
+        selectors for labels and annotations. Evaluation order: namespace
+        include, namespace exclude, label/annotation include, label/annotation
+        exclude. Exclude always wins. Empty include lists match everything.
+      type: object
+      required: [nsInclude, nsExclude, labelInclude, labelExclude, annotationInclude, annotationExclude]
+      properties:
+        nsInclude:
+          type: array
+          items:
+            type: string
+        nsExclude:
+          type: array
+          items:
+            type: string
+        labelInclude:
+          type: array
+          items:
+            type: string
+        labelExclude:
+          type: array
+          items:
+            type: string
+        annotationInclude:
+          type: array
+          items:
+            type: string
+        annotationExclude:
+          type: array
+          items:
+            type: string
+    K8sSyncStatus:
+      type: string
+      enum: [never, ok, failed]
+    K8sCluster:
+      type: object
+      required: [id, name, connection, execEnabled, filter, syncStatus, workloadCount, excludedCount, createdAt]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        version:
+          description: Kubernetes server version from the last sync.
+          type: string
+        scannerId:
+          description: Scanner that talks to the cluster. Absent means the server's embedded scanner.
+          type: string
+        connection:
+          $ref: "#/components/schemas/K8sConnection"
+        credentialId:
+          description: Kubeconfig credential (`connection=kubeconfig`).
+          type: string
+        execEnabled:
+          description: Collect pod contents through `pods/exec`. Off means image inventory only.
+          type: boolean
+        filter:
+          $ref: "#/components/schemas/K8sFilter"
+        syncStatus:
+          $ref: "#/components/schemas/K8sSyncStatus"
+        syncMessage:
+          description: Error of the last failed sync.
+          type: string
+        lastSync:
+          type: string
+          format: date-time
+        workloadCount:
+          type: integer
+        excludedCount:
+          description: Workloads excluded by the filter.
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+    K8sClusterCreate:
+      description: |
+        `connection=kubeconfig` requires `credentialId` (a `kubeconfig`
+        credential); `scannerId` defaults to the embedded scanner.
+        `connection=in_cluster` requires `scannerId` (the scanner deployed in
+        the cluster) and no `credentialId`.
+      type: object
+      required: [name, connection]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        connection:
+          $ref: "#/components/schemas/K8sConnection"
+        credentialId:
+          type: string
+        scannerId:
+          type: string
+        execEnabled:
+          type: boolean
+          default: false
+        filter:
+          $ref: "#/components/schemas/K8sFilter"
+    K8sClusterUpdate:
+      description: "Absent fields are left unchanged; `null` clears `credentialId` or `scannerId`."
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        connection:
+          $ref: "#/components/schemas/K8sConnection"
+        credentialId:
+          description: "`null` (or an empty string) removes the credential, for example when switching to `in_cluster`."
+          type: string
+          nullable: true
+          x-go-type: nullable.Nullable[string]
+          x-go-type-skip-optional-pointer: true
+          x-go-type-import:
+            path: github.com/oapi-codegen/nullable
+        scannerId:
+          description: "`null` (or an empty string) assigns the cluster to the embedded scanner."
+          type: string
+          nullable: true
+          x-go-type: nullable.Nullable[string]
+          x-go-type-skip-optional-pointer: true
+          x-go-type-import:
+            path: github.com/oapi-codegen/nullable
+        execEnabled:
+          type: boolean
+        filter:
+          $ref: "#/components/schemas/K8sFilter"
+    K8sClusterList:
+      type: object
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/K8sCluster"
+        total:
+          type: integer
+    K8sWorkload:
+      description: A top-level controller (a Deployment, not its ReplicaSet). A pod without an owner is its own workload of kind `Pod`.
+      type: object
+      required: [id, clusterId, namespace, kind, name, replicas, excluded, coverages]
+      properties:
+        id:
+          type: string
+        clusterId:
+          type: string
+        namespace:
+          type: string
+        kind:
+          description: "`Deployment`, `StatefulSet`, `DaemonSet`, `CronJob`, `Job`, `Pod`, or the kind of another owning controller."
+          type: string
+        name:
+          type: string
+        replicas:
+          type: integer
+        assetId:
+          description: Absent for excluded workloads, which do not become assets.
+          type: string
+        excluded:
+          type: boolean
+        excludedBy:
+          description: The filter rule that excluded the workload.
+          type: string
+        coverages:
+          description: Distinct coverage values of the workload's pod containers.
+          type: array
+          items:
+            $ref: "#/components/schemas/Coverage"
+    K8sWorkloadList:
+      type: object
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/K8sWorkload"
+        total:
+          type: integer
+    K8sPodPhase:
+      type: string
+      enum: [Running, Pending, Succeeded, Failed, Unknown]
+    K8sPodContainer:
+      type: object
+      required: [name, imageRef, coverage]
+      properties:
+        name:
+          type: string
+        imageRef:
+          type: string
+        imageDigest:
+          type: string
+        coverage:
+          $ref: "#/components/schemas/Coverage"
+        coverageReason:
+          type: string
+    K8sPod:
+      type: object
+      required: [id, workloadId, namespace, name, node, phase, containers]
+      properties:
+        id:
+          type: string
+        workloadId:
+          type: string
+        namespace:
+          type: string
+        name:
+          type: string
+        node:
+          type: string
+        phase:
+          $ref: "#/components/schemas/K8sPodPhase"
+        startedAt:
+          type: string
+          format: date-time
+        containers:
+          type: array
+          items:
+            $ref: "#/components/schemas/K8sPodContainer"
+    K8sPodList:
+      type: object
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/K8sPod"
+        total:
+          type: integer
+
+    # ── agents ──────────────────────────────────────────────────────────
+
+    AgentKind:
+      type: string
+      enum: [agent, scanner]
+    AgentStatus:
+      type: string
+      enum: [online, offline, pending_approval, revoked]
+    ConnMode:
+      type: string
+      enum: [connect, listen]
+    TlsMode:
+      description: Server certificate verification mode of the agent.
+      type: string
+      enum: [pinned, system, none]
+    UpdateState:
+      type: string
+      enum: [up_to_date, pending, updating, rolled_back]
+    Agent:
+      type: object
+      required: [id, kind, hostname, version, os, arch, status, connMode, tlsMode, privilege, execHelper, registerKeyId, address, trustBundleSynced, updateState, enrolledAt, lastSeen]
+      properties:
+        id:
+          type: string
+        kind:
+          $ref: "#/components/schemas/AgentKind"
+        hostname:
+          type: string
+        assetId:
+          description: The host asset of an agent. Absent for scanners and pending agents.
+          type: string
+        version:
+          type: string
+        os:
+          type: string
+        arch:
+          type: string
+        status:
+          $ref: "#/components/schemas/AgentStatus"
+        connMode:
+          $ref: "#/components/schemas/ConnMode"
+        listenAddress:
+          description: Address the server dials (`connMode=listen`).
+          type: string
+        listenTargetId:
+          type: string
+        tlsMode:
+          $ref: "#/components/schemas/TlsMode"
+        tlsInterceptedBy:
+          description: Issuer of the server certificate the agent observed, when it is not the server's own certificate (TLS terminated in transit).
+          type: string
+        privilege:
+          $ref: "#/components/schemas/PrivilegeLevel"
+        execHelper:
+          type: boolean
+        registerKeyId:
+          type: string
+        address:
+          description: Peer address of the last connection.
+          type: string
+        certExpiresAt:
+          description: Absent until a certificate is issued.
+          type: string
+          format: date-time
+        trustBundleSynced:
+          description: The agent holds the current trust bundle.
+          type: boolean
+        updateState:
+          $ref: "#/components/schemas/UpdateState"
+        updateMessage:
+          description: Detail of the last update attempt, for example why it was rolled back.
+          type: string
+        enrolledAt:
+          type: string
+          format: date-time
+        lastSeen:
+          type: string
+          format: date-time
+    AgentList:
+      type: object
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Agent"
+        total:
+          type: integer
+
+    ListenTargetState:
+      type: string
+      enum: [connecting, connected, disconnected, failed]
+    ListenTarget:
+      type: object
+      required: [id, address, state, createdAt]
+      properties:
+        id:
+          type: string
+        address:
+          description: "`host:port` the server dials."
+          type: string
+        registerKeyId:
+          description: When set, only this Register Key may enroll an agent over this target.
+          type: string
+        agentId:
+          description: Agent bound to the address after enrollment.
+          type: string
+        state:
+          $ref: "#/components/schemas/ListenTargetState"
+        lastError:
+          type: string
+        lastConnectedAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+    ListenTargetCreate:
+      type: object
+      required: [address]
+      properties:
+        address:
+          type: string
+          minLength: 1
+          maxLength: 512
+        registerKeyId:
+          type: string
+    ListenTargetUpdate:
+      type: object
+      properties:
+        address:
+          type: string
+          minLength: 1
+          maxLength: 512
+        registerKeyId:
+          type: string
+          nullable: true
+          x-go-type: nullable.Nullable[string]
+          x-go-type-skip-optional-pointer: true
+          x-go-type-import:
+            path: github.com/oapi-codegen/nullable
+    ListenTargetList:
+      type: object
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ListenTarget"
+        total:
+          type: integer
+
+    # ── enrollment ──────────────────────────────────────────────────────
+
+    RegisterKeyApproval:
+      type: string
+      enum: [auto, manual]
+    RegisterKeyState:
+      type: string
+      enum: [valid, expired, revoked, exhausted]
+    RegisterKey:
+      type: object
+      required: [id, name, target, allowedCidrs, maxUses, usedCount, approval, allowRelaxedTls, defaultGroup, defaultTags, state, createdAt]
+      properties:
+        id:
+          description: The key id (11 characters, unpadded base64url). Not secret.
+          type: string
+        name:
+          type: string
+        target:
+          $ref: "#/components/schemas/AgentKind"
+        expiresAt:
+          type: string
+          format: date-time
+        allowedCidrs:
+          description: Empty means any source address.
+          type: array
+          items:
+            type: string
+        maxUses:
+          description: 0 means unlimited.
+          type: integer
+        usedCount:
+          type: integer
+        approval:
+          $ref: "#/components/schemas/RegisterKeyApproval"
+        allowRelaxedTls:
+          type: boolean
+        defaultGroup:
+          type: string
+        defaultTags:
+          type: array
+          items:
+            type: string
+        state:
+          $ref: "#/components/schemas/RegisterKeyState"
+        createdAt:
+          type: string
+          format: date-time
+        revokedAt:
+          type: string
+          format: date-time
+    RegisterKeyCreate:
+      type: object
+      required: [name, target, approval]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        target:
+          $ref: "#/components/schemas/AgentKind"
+        expiresAt:
+          type: string
+          format: date-time
+        allowedCidrs:
+          type: array
+          items:
+            type: string
+        maxUses:
+          type: integer
+          minimum: 0
+          default: 0
+        approval:
+          $ref: "#/components/schemas/RegisterKeyApproval"
+        allowRelaxedTls:
+          type: boolean
+          default: false
+        defaultGroup:
+          type: string
+        defaultTags:
+          type: array
+          items:
+            type: string
+    RegisterKeyCreated:
+      type: object
+      required: [key, enrollment]
+      properties:
+        key:
+          $ref: "#/components/schemas/RegisterKey"
+        enrollment:
+          description: "`bc1.<ca-hash>.<key-id>.<secret>`. Shown once; the server does not keep the secret."
+          type: string
+          pattern: "^bc1\\.[A-Za-z0-9_-]{43}\\.[A-Za-z0-9_-]{11}\\.[A-Za-z0-9_-]{43}$"
+    RegisterKeyList:
+      type: object
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/RegisterKey"
+        total:
+          type: integer
+
+    # ── updates ─────────────────────────────────────────────────────────
+
+    ReleaseSource:
+      type: string
+      enum: [online, upload]
+    Release:
+      type: object
+      required: [version, publishedAt, importedAt, source, verified, notes, platforms]
+      properties:
+        version:
+          type: string
+        publishedAt:
+          description: Issue time from the signed manifest.
+          type: string
+          format: date-time
+        importedAt:
+          type: string
+          format: date-time
+        source:
+          $ref: "#/components/schemas/ReleaseSource"
+        verified:
+          description: Manifest signature and code signatures verified.
+          type: boolean
+        notes:
+          type: string
+        platforms:
+          description: "`<os>-<arch>` entries in the bundle, for example `linux-amd64`."
+          type: array
+          items:
+            type: string
+    ReleaseList:
+      type: object
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Release"
+        total:
+          type: integer
+    ReleaseUpload:
+      type: object
+      required: [bundle]
+      properties:
+        bundle:
+          description: Release bundle `bomcensus-<version>.tar`.
+          type: string
+          format: binary
+    UpdateSettings:
+      description: The deployed version is one for the whole server. Agents ask every `checkIntervalMinutes` and update when their version differs; they never downgrade.
+      type: object
+      required: [targetVersion, checkIntervalMinutes]
+      properties:
+        targetVersion:
+          type: string
+          nullable: true
+        checkIntervalMinutes:
+          type: integer
+          minimum: 1
+          maximum: 10080
+
+    # ── scans ───────────────────────────────────────────────────────────
+
+    ScanProtocol:
+      type: string
+      enum: [ssh]
+    ScanResult:
+      type: string
+      enum: [ok, partial, failed]
+    ScanRun:
+      type: object
+      required: [at, result, durationSec]
+      properties:
+        at:
+          type: string
+          format: date-time
+        result:
+          $ref: "#/components/schemas/ScanResult"
+        message:
+          type: string
+        durationSec:
+          type: integer
+    ScanTarget:
+      type: object
+      required: [id, name, protocol, address, port, credentialId, sudo, hostKeyPinned, intervalMinutes, createdAt]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        protocol:
+          $ref: "#/components/schemas/ScanProtocol"
+        address:
+          type: string
+        port:
+          type: integer
+        credentialId:
+          type: string
+        scannerId:
+          description: Absent means the server's embedded scanner.
+          type: string
+        sudo:
+          type: boolean
+        hostKeyPinned:
+          description: A host key is pinned (given at creation, or recorded on first connection).
+          type: boolean
+        hostKeyFingerprint:
+          description: "Pinned host key, `SHA256:<base64>`."
+          type: string
+        intervalMinutes:
+          description: Minutes between scheduled scans. 0 means on demand only.
+          type: integer
+          minimum: 0
+        assetId:
+          type: string
+        lastRun:
+          $ref: "#/components/schemas/ScanRun"
+        createdAt:
+          type: string
+          format: date-time
+    ScanTargetCreate:
+      description: |
+        Without `hostKey` the first host key seen is pinned. The server stores
+        host keys, not fingerprints, so `hostKeyFingerprint` is rejected with
+        `400`; give the key itself in `hostKey`.
+      type: object
+      required: [name, address, credentialId]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        protocol:
+          $ref: "#/components/schemas/ScanProtocol"
+        address:
+          type: string
+          minLength: 1
+          maxLength: 512
+        port:
+          type: integer
+          minimum: 1
+          maximum: 65535
+          default: 22
+        credentialId:
+          type: string
+        scannerId:
+          type: string
+        sudo:
+          type: boolean
+          default: false
+        hostKeyFingerprint:
+          type: string
+        hostKey:
+          description: "Host public key to pin, in `known_hosts` / `authorized_keys` form: `<type> <base64>` (for example `ssh-ed25519 AAAA…`)."
+          type: string
+          maxLength: 16384
+        intervalMinutes:
+          description: Minutes between scheduled scans. 0 means on demand only.
+          type: integer
+          minimum: 0
+          default: 0
+    ScanTargetUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        port:
+          type: integer
+          minimum: 1
+          maximum: 65535
+        credentialId:
+          type: string
+        scannerId:
+          type: string
+          nullable: true
+          x-go-type: nullable.Nullable[string]
+          x-go-type-skip-optional-pointer: true
+          x-go-type-import:
+            path: github.com/oapi-codegen/nullable
+        sudo:
+          type: boolean
+        intervalMinutes:
+          type: integer
+          minimum: 0
+        resetHostKey:
+          type: boolean
+          default: false
+    ScanTargetList:
+      type: object
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ScanTarget"
+        total:
+          type: integer
+
+    CredentialKind:
+      type: string
+      enum: [ssh_key, ssh_password, kubeconfig]
+    Credential:
+      type: object
+      required: [id, name, kind, usedBy, createdAt]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        kind:
+          $ref: "#/components/schemas/CredentialKind"
+        username:
+          description: SSH kinds only.
+          type: string
+        publicKeyFingerprint:
+          description: "`ssh_key` only. `SHA256:<base64>` of the public key."
+          type: string
+        usedBy:
+          description: Scan targets and clusters that use the credential.
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+    CredentialCreate:
+      description: |
+        Secrets are encrypted at rest and never returned.
+        `ssh_key`: `username`, `privateKey` (OpenSSH or PEM), optional
+        `passphrase`. `ssh_password`: `username`, `password`.
+        `kubeconfig`: `kubeconfig` (YAML).
+      type: object
+      required: [name, kind]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        kind:
+          $ref: "#/components/schemas/CredentialKind"
+        username:
+          type: string
+        privateKey:
+          type: string
+          writeOnly: true
+        passphrase:
+          type: string
+          format: password
+          writeOnly: true
+        password:
+          type: string
+          format: password
+          writeOnly: true
+        kubeconfig:
+          type: string
+          writeOnly: true
+    CredentialSecretUpdate:
+      description: Fields as in `CredentialCreate` for the credential's kind.
+      type: object
+      properties:
+        username:
+          type: string
+        privateKey:
+          type: string
+          writeOnly: true
+        passphrase:
+          type: string
+          format: password
+          writeOnly: true
+        password:
+          type: string
+          format: password
+          writeOnly: true
+        kubeconfig:
+          type: string
+          writeOnly: true
+    CredentialList:
+      type: object
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Credential"
+        total:
+          type: integer
+
+    # ── settings ────────────────────────────────────────────────────────
+
+    TlsEndpointName:
+      type: string
+      enum: [web, agent]
+    TlsCertMode:
+      description: |
+        `auto`: issued and renewed by an internal CA. `manual`: chain and key
+        supplied by the administrator. `off` (reported for `web` only, never
+        accepted in an update): the server does not terminate Web/API TLS
+        because `BOMCENSUS_WEB_TLS=off`; subject, issuer and names are empty
+        and `expiresAt` is absent.
+      type: string
+      enum: [auto, manual, "off"]
+    TlsEndpoint:
+      type: object
+      required: [mode, subject, issuer, names]
+      properties:
+        mode:
+          $ref: "#/components/schemas/TlsCertMode"
+        subject:
+          type: string
+        issuer:
+          type: string
+        names:
+          description: Subject alternative names.
+          type: array
+          items:
+            type: string
+        expiresAt:
+          type: string
+          format: date-time
+        clientSubject:
+          description: "`agent` only: subject of the client certificate the server presents to listen-mode agents, when it is not the server certificate."
+          type: string
+        clientExpiresAt:
+          description: "`agent` only: expiry of that client certificate."
+          type: string
+          format: date-time
+    PendingAnchor:
+      type: object
+      required: [spkiHash, subject, expiresAt, preparedAt, unsyncedAgents]
+      properties:
+        spkiHash:
+          description: Unpadded base64url SHA-256 of the new anchor's SPKI.
+          type: string
+        subject:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+        preparedAt:
+          type: string
+          format: date-time
+        unsyncedAgents:
+          description: Non-revoked agents that have not picked up the bundle containing this anchor.
+          type: integer
+    TlsState:
+      type: object
+      required: [web, agent, anchorSpkiHash, agentCaExpiresAt, unsyncedAgents]
+      properties:
+        web:
+          $ref: "#/components/schemas/TlsEndpoint"
+        agent:
+          $ref: "#/components/schemas/TlsEndpoint"
+        anchorSpkiHash:
+          description: Unpadded base64url SHA-256 of the Agent TLS trust anchor's SPKI (the `ca-hash` of enrollment strings).
+          type: string
+        agentCaExpiresAt:
+          description: Expiry of the Agent CA that issues agent certificates.
+          type: string
+          format: date-time
+        unsyncedAgents:
+          description: Non-revoked agents that do not hold the current trust bundle.
+          type: integer
+        pendingAnchor:
+          $ref: "#/components/schemas/PendingAnchor"
+    TlsEndpointUpdate:
+      type: object
+      required: [mode]
+      properties:
+        mode:
+          $ref: "#/components/schemas/TlsCertMode"
+        certificateChain:
+          description: PEM certificates, leaf first. Required for `manual`.
+          type: string
+        privateKey:
+          description: PEM private key of the leaf. Required for `manual`.
+          type: string
+          writeOnly: true
+        clientCertificateChain:
+          description: |
+            `agent` with `manual` only: PEM certificates, leaf first, of the
+            client-authentication certificate the server presents to
+            listen-mode agents. It must chain to the same trust anchor as
+            `certificateChain`. When absent, the `certificateChain` leaf is
+            used and must allow both server and client authentication.
+          type: string
+        clientPrivateKey:
+          description: PEM private key of the `clientCertificateChain` leaf.
+          type: string
+          writeOnly: true
+    AgentAnchorChange:
+      type: object
+      required: [action]
+      properties:
+        action:
+          type: string
+          enum: [prepare, activate, cancel]
+        certificate:
+          description: "`prepare` in manual mode: PEM certificate of the new anchor."
+          type: string
+        force:
+          description: "`activate` even though some agents have not synchronized."
+          type: boolean
+          default: false

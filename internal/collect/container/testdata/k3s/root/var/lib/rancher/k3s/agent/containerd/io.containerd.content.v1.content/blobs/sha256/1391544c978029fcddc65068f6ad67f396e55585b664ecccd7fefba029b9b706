@@ -1,0 +1,61 @@
+{
+   "schemaVersion": 2,
+   "mediaType": "application/vnd.docker.distribution.manifest.list.v2+json",
+   "manifests": [
+      {
+         "mediaType": "application/vnd.docker.distribution.manifest.v2+json",
+         "size": 3233,
+         "digest": "sha256:f0f40f86da53ab64fd07a0a4fd337d7707db446a7c94dd5565c2cad93eb55876",
+         "platform": {
+            "architecture": "amd64",
+            "os": "linux"
+         }
+      },
+      {
+         "mediaType": "application/vnd.docker.distribution.manifest.v2+json",
+         "size": 3233,
+         "digest": "sha256:5f804cb95f944ccce632d8851db361343f82ee7144ca11da3539c81e2ec059d3",
+         "platform": {
+            "architecture": "arm",
+            "os": "linux",
+            "variant": "v7"
+         }
+      },
+      {
+         "mediaType": "application/vnd.docker.distribution.manifest.v2+json",
+         "size": 3233,
+         "digest": "sha256:f23708142ce31de03565029732bdae87a10bd0ca5edad61f554be511df819a98",
+         "platform": {
+            "architecture": "arm64",
+            "os": "linux"
+         }
+      },
+      {
+         "mediaType": "application/vnd.docker.distribution.manifest.v2+json",
+         "size": 3233,
+         "digest": "sha256:b07ffb955d27ab064653cdcf0602ccbcfbe1057037731e08612fadf52b1e622d",
+         "platform": {
+            "architecture": "ppc64le",
+            "os": "linux"
+         }
+      },
+      {
+         "mediaType": "application/vnd.docker.distribution.manifest.v2+json",
+         "size": 949,
+         "digest": "sha256:ed139a8e2b9701e6c8d7a4fa4ac2ccb5017ee9051590431cd53915ecd0536b14",
+         "platform": {
+            "architecture": "riscv64",
+            "os": "linux"
+         }
+      },
+      {
+         "mediaType": "application/vnd.docker.distribution.manifest.v2+json",
+         "size": 3233,
+         "digest": "sha256:d052b691394364c1a32f945e59d7158eafab428ff9b7e56355cb60e43015b3af",
+         "platform": {
+            "architecture": "s390x",
+            "os": "linux"
+         }
+      }
+   ]
+}

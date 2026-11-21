@@ -1,7 +1,13 @@
+<!--
+  Copyright (C) 2026 JC-Lab
+  SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-bomcensus-Commercial
+  Additional terms apply. See LICENSING.md.
+-->
+
 <script setup lang="ts">
 import type { Tone } from '~/utils/labels'
 
-// 숫자 하나와 라벨. to 를 주면 링크가 된다.
+// A number with a label. Becomes a link when `to` is given.
 const props = withDefaults(
   defineProps<{ label: string; value: string | number; hint?: string; tone?: Tone; to?: string }>(),
   { tone: 'neutral' },

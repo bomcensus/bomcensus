@@ -1,0 +1,143 @@
+# Copyright (C) 2026 JC-Lab
+# SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-bomcensus-Commercial
+# Additional terms apply. See LICENSING.md.
+
+# One scanner per cluster. It reads the cluster through the Kubernetes API
+# with its ServiceAccount and, when exec collection is allowed, pipes the
+# probe into running containers with pods/exec. Only this pod needs egress
+# to the bomcensus server.
+
+image:
+  repository: bomcensus/scanner
+  # Defaults to the chart's appVersion.
+  tag: ""
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+server:
+  # Agent listener of the bomcensus server, https://HOST:PORT (required,
+  # except when installed by the bomcensus-manager chart).
+  url: ""
+  # Name the server certificate must carry. Default: the host of url.
+  name: ""
+  # Verification of the server certificate: pinned (against the trust
+  # anchor in the enrollment string), system or none.
+  tlsVerify: pinned
+
+# Set by the bomcensus-manager chart when it installs this chart as a
+# dependency: the server URL and the enrollment Secret then default to the
+# objects of that release.
+bundled: false
+
+enrollment:
+  # Enrollment string (bc1.…) of a Register Key of kind scanner. The chart
+  # stores it in a Secret. Prefer existingSecret so that the string does
+  # not end up in the Helm release.
+  token: ""
+  existingSecret:
+    # Secret in the release namespace holding the enrollment string.
+    name: ""
+    key: token
+
+# Log level: debug, info, warn or error.
+logLevel: info
+# Scan jobs run at the same time, and jobs waiting for a worker.
+workers: 4
+backlog: 64
+# Additional arguments of "bomcensus-scanner run".
+extraArgs: []
+# Additional environment variables of the scanner containers.
+extraEnv: []
+
+persistence:
+  # The state directory holds the scanner identity (key, certificate,
+  # trust bundle). With persistence disabled it lives in an emptyDir: every
+  # new pod enrolls again, which uses up Register Key uses and leaves the
+  # previous scanner behind in the console.
+  enabled: true
+  size: 64Mi
+  # Empty uses the cluster's default StorageClass.
+  storageClass: ""
+  accessModes:
+    - ReadWriteOnce
+  annotations: {}
+
+serviceAccount:
+  create: true
+  # Default: the full name of the release.
+  name: ""
+  annotations: {}
+
+rbac:
+  # Create the ClusterRole and binding for reading namespaces, nodes, pods
+  # and workload controllers.
+  create: true
+  # Allow pods/exec, needed for collecting the contents of running
+  # containers. Without it only the image inventory is collected.
+  exec: false
+  # When set, pods/exec is granted only in these namespaces (one Role and
+  # RoleBinding each); reading stays cluster-wide.
+  namespaces: []
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  fsGroup: 65532
+  fsGroupChangePolicy: OnRootMismatch
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  privileged: false
+  capabilities:
+    drop:
+      - ALL
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    memory: 512Mi
+
+podAnnotations: {}
+podLabels: {}
+priorityClassName: ""
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+networkPolicy:
+  # Restrict the scanner's traffic: no ingress, egress only to DNS, the
+  # server's agent port and the Kubernetes API server.
+  enabled: false
+  server:
+    port: 8443
+    # Peers of the server. With bundled=true and nothing set here, the
+    # server pods of the same release are selected.
+    podSelector: {}
+    namespaceSelector: {}
+    cidrs: []
+  apiServer:
+    # Addresses of the API server endpoints (kubectl get endpoints
+    # kubernetes -n default). Policies see the endpoint address after the
+    # Service translation, so the Service IP of "kubernetes" is not enough.
+    cidrs: []
+    ports:
+      - 443
+      - 6443
+  dns:
+    enabled: true
+    # Pods of the cluster DNS service.
+    namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: kube-system
+    podSelector:
+      matchLabels:
+        k8s-app: kube-dns

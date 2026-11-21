@@ -1,3 +1,7 @@
+// Copyright (C) 2026 JC-Lab
+// SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-bomcensus-Commercial
+// Additional terms apply. See LICENSING.md.
+
 import type {
   AgentStatus,
   AssetKind,
@@ -10,24 +14,15 @@ import type {
   Coverage,
   DetectMethod,
   ExeState,
-  FindingStatus,
-  FixState,
-  MatchBasis,
+  K8sPodPhase,
   PrivilegeLevel,
+  SectionCoverageLevel,
   SectionName,
-  Severity,
   TlsMode,
   UpdateState,
 } from '~/types'
 
 export type Tone = 'ok' | 'warn' | 'danger' | 'info' | 'neutral'
-
-export const severityLabel: Record<Severity, string> = {
-  critical: '심각',
-  high: '높음',
-  medium: '중간',
-  low: '낮음',
-}
 
 export const assetKindLabel: Record<AssetKind, string> = {
   host: '호스트',
@@ -48,7 +43,6 @@ export const runtimeLabel: Record<ContainerRuntime, string> = {
 export const methodLabel: Record<CollectMethod, string> = {
   agent: 'Agent',
   ssh: 'SSH',
-  winrm: 'WinRM',
   k8s_exec: 'K8s exec',
   k8s_inventory: 'K8s 인벤토리',
 }
@@ -91,7 +85,6 @@ export const componentTypeLabel: Record<ComponentType, string> = {
   maven: 'Maven',
   golang: 'Go 모듈',
   binary: '바이너리',
-  windows: 'Windows',
   middleware: '미들웨어',
 }
 
@@ -107,33 +100,6 @@ export const detectMethodLabel: Record<DetectMethod, string> = {
   static: '정적 추출',
   manifest: '매니페스트',
   buildinfo: 'Go buildinfo',
-}
-
-export const fixStateLabel: Record<FixState, string> = {
-  fixed_available: '수정 버전 있음',
-  not_fixed: '수정 없음',
-  wont_fix: '수정 안 함',
-}
-
-export const matchBasisLabel: Record<MatchBasis, string> = {
-  distro_advisory: '배포판 권고',
-  upstream_range: '업스트림 버전 범위',
-  msrc: 'MSRC',
-  curated: '자체 권고 DB',
-}
-
-export const findingStatusLabel: Record<FindingStatus, string> = {
-  open: '미해결',
-  restart_required: '재시작 필요',
-  accepted: '예외 처리',
-  resolved: '해결',
-}
-
-export const findingStatusTone: Record<FindingStatus, Tone> = {
-  open: 'danger',
-  restart_required: 'warn',
-  accepted: 'neutral',
-  resolved: 'ok',
 }
 
 export const exeStateLabel: Record<ExeState, string> = {
@@ -193,4 +159,53 @@ export const updateStateTone: Record<UpdateState, Tone> = {
   pending: 'neutral',
   updating: 'info',
   rolled_back: 'danger',
+}
+
+export const podPhaseLabel: Record<K8sPodPhase, string> = {
+  Running: '실행 중',
+  Pending: '대기',
+  Succeeded: '완료',
+  Failed: '실패',
+  Unknown: '알 수 없음',
+}
+
+export const podPhaseTone: Record<K8sPodPhase, Tone> = {
+  Running: 'ok',
+  Pending: 'warn',
+  Succeeded: 'neutral',
+  Failed: 'danger',
+  Unknown: 'neutral',
+}
+
+export const sectionCoverageLabel: Record<SectionCoverageLevel, string> = {
+  full: '전체',
+  partial: '부분',
+  none: '수집 안 함',
+}
+
+export const sectionCoverageTone: Record<SectionCoverageLevel, Tone> = {
+  full: 'ok',
+  partial: 'warn',
+  none: 'danger',
+}
+
+/** Korean labels for the reason codes of scan results (internal/scanner/runner). */
+export const scanReasonLabel: Record<string, string> = {
+  partial_sections: '일부 섹션만 수집',
+  host_key_changed: 'host key 변경됨',
+  connect_failed: '연결 실패',
+  auth_failed: '인증 실패',
+  sudo_fallback: 'sudo 사용 불가',
+  timeout: '시간 초과',
+}
+
+/**
+ * Splits a "<code>: <detail>" scan message. `label` is set only for a known
+ * code; unknown messages are returned untouched in `detail`.
+ */
+export function parseScanMessage(message: string): { label?: string; detail: string } {
+  const m = /^([a-z][a-z0-9_]*)(?::\s*(.*))?$/s.exec(message.trim())
+  const label = m ? scanReasonLabel[m[1]!] : undefined
+  if (!m || !label) return { detail: message }
+  return { label, detail: m[2] ?? '' }
 }

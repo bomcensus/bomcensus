@@ -1,5 +1,11 @@
+<!--
+  Copyright (C) 2026 JC-Lab
+  SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-bomcensus-Commercial
+  Additional terms apply. See LICENSING.md.
+-->
+
 <script setup lang="ts">
-// 탭 줄. v-model 은 선택된 탭의 key. queryKey 를 주면 URL 쿼리와 동기화한다.
+// Tab row. v-model is the key of the selected tab. When queryKey is given, it is synced with the URL query.
 const props = defineProps<{ tabs: { key: string; label: string; count?: number }[]; queryKey?: string }>()
 const model = defineModel<string>({ required: true })
 

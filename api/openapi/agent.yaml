@@ -1,0 +1,1411 @@
+# Copyright (C) 2026 JC-Lab
+# SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-bomcensus-Commercial
+# Additional terms apply. See LICENSING.md.
+
+openapi: 3.0.3
+info:
+  title: bomcensus agent API
+  version: 1.0.0
+  description: |
+    Protocol between the server and agents or scanners.
+
+    The listener is TLS on the agent port (default `:8443`); the client
+    certificate is verified when one is presented. In listen mode (ALPN
+    `bomcensus-reverse/1`) the server dials the agent, serves HTTP/2 on that
+    connection and the agent is the HTTP/2 client. Handlers and signatures
+    are the same in both directions.
+
+    Except for `POST /enroll/start`, `POST /enroll/finish` and
+    `GET /server-chain`, every request is signed with the agent's identity
+    key using HTTP Message Signatures (RFC 9421). Every response is signed by
+    the server and bound to the request nonce, except the self-authenticating
+    downloads (`GET /update/bundle/{version}`, `GET /probe/{os}/{arch}`) and
+    `GET /server-chain`. The signature envelope (`Signature`, `Signature-Input`,
+    `Content-Digest`, `Bomcensus-Agent-Id`, `Bomcensus-Nonce`,
+    `Bomcensus-Counter`) is added and verified by middleware, so it is not
+    part of the operation parameters; see the `messageSignature` security
+    scheme and the header components. The covered components and byte
+    formats are defined in `docs/PROTOCOL.md`.
+
+    Every signed request whose method is not `GET` or `HEAD` (including
+    `POST /poll`) carries `Bomcensus-Counter`; a value at or below the last
+    accepted one is rejected with `409` and code `counter_replayed`.
+    `POST /poll` returns the last accepted counter so an agent that lost its
+    counter can resume.
+
+    Binary values in JSON (`format: byte`) are standard base64 with padding.
+    Errors are returned as `{code, message}`.
+  license:
+    name: AGPL-3.0-only OR LicenseRef-bomcensus-Commercial
+servers:
+  - url: /agent/v1
+security:
+  - messageSignature: []
+tags:
+  - name: enrollment
+    description: Enrollment, certificates and trust
+  - name: control
+    description: Long poll for configuration and directives
+  - name: upload
+    description: Reports, inventories and job results
+  - name: update
+    description: Release and probe distribution
+
+paths:
+  /enroll/start:
+    post:
+      tags: [enrollment]
+      operationId: enrollStart
+      summary: Enrollment steps 2 to 3
+      description: |
+        The agent sends the Register Key id, its nonce, a CSR for its identity
+        key and host facts. The server answers with its nonce and certificate
+        chain. `Bomcensus-Enroll-Signature` is
+        `Sign(serverKey, "bomcensus enroll v1 server" ‖ H(request body) ‖ H(response body))`
+        made with the key of the Agent TLS certificate; the agent verifies the
+        chain against the pinned `ca-hash` and then the signature. Because the
+        signature covers the exact body bytes, both bodies are plain JSON
+        objects. Failures are not distinguished to the caller (`403`,
+        `enrollment_refused`); details go to the server log.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EnrollStartRequest"
+      responses:
+        "200":
+          description: Enrollment session started
+          headers:
+            Bomcensus-Enroll-Signature:
+              $ref: "#/components/headers/EnrollSignature"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EnrollSession"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /enroll/finish:
+    post:
+      tags: [enrollment]
+      operationId: enrollFinish
+      summary: Enrollment steps 4 to 5
+      description: |
+        `signature` is
+        `Sign(registerKey, "bomcensus enroll v1 agent" ‖ H(start request body) ‖ H(start response body))`.
+        The server verifies it and the key policy and returns the agent id
+        and, unless the key requires manual approval, the certificate, the
+        Agent CA and the trust bundle. `Bomcensus-Enroll-Signature` is
+        `Sign(serverKey, "bomcensus enroll v1 result" ‖ H(start request body) ‖ H(start response body) ‖ H(response body))`.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EnrollFinishRequest"
+      responses:
+        "200":
+          description: Enrolled or pending approval
+          headers:
+            Bomcensus-Enroll-Signature:
+              $ref: "#/components/headers/EnrollSignature"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EnrollResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /enroll/result:
+    get:
+      tags: [enrollment]
+      operationId: getEnrollResult
+      summary: Result of a pending enrollment
+      description: Signed with the identity key from the CSR. Returns the certificate once an administrator approved the agent.
+      responses:
+        "200":
+          description: Enrollment state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EnrollResult"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /cert/renew:
+    post:
+      tags: [enrollment]
+      operationId: renewCert
+      summary: Renew the agent certificate
+      description: The certificate is reissued for the current identity key. `csr`, when given, must be a request for that key; a CSR for another key is rejected with `400`. Identity key rotation is not supported.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CertRenewRequest"
+      responses:
+        "200":
+          description: New certificate
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RenewedCert"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /server-chain:
+    get:
+      tags: [enrollment]
+      operationId: getServerChain
+      summary: Certificate chain of the server's response signing key
+      description: |
+        Unauthenticated, and the response is not signed. The agent verifies
+        the chain against its trust anchors and caches it by key id (the SPKI
+        hash in the signature's `keyid`).
+      security: []
+      responses:
+        "200":
+          description: Server chain
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServerChain"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /trust-bundle:
+    get:
+      tags: [enrollment]
+      operationId: getTrustBundle
+      summary: Current Agent TLS anchors and Agent CA
+      responses:
+        "200":
+          description: Trust bundle
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrustBundle"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /poll:
+    post:
+      tags: [control]
+      operationId: poll
+      summary: Report status and wait for directives
+      description: |
+        Long poll. The server answers as soon as it has directives, or after
+        at most 30 seconds with an empty `directives` list. A directive is
+        delivered again until its id is listed in `acked_directives` of a
+        later poll.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PollRequest"
+      responses:
+        "200":
+          description: Configuration and directives
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PollResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /reports:
+    post:
+      tags: [upload]
+      operationId: uploadReport
+      summary: Upload a collection report
+      description: |
+        The body is a `report.Report` encoded by `report.Encode` (JSON,
+        zstd-compressed). Agents may only send subject `self`; scanners send
+        `scan_target` and `k8s_container` subjects, and `job_id` when the
+        report belongs to a scan job.
+      parameters:
+        - name: job_id
+          in: query
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      responses:
+        "202":
+          description: Report stored for ingestion
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReportAccepted"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /k8s/inventory:
+    post:
+      tags: [upload]
+      operationId: uploadK8sInventory
+      summary: "Scanner: inventory of one cluster"
+      description: A complete snapshot of the cluster after the filter was evaluated. Workloads and pods missing from it are marked gone.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/K8sInventory"
+      responses:
+        "204":
+          description: Inventory stored
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /scan-jobs/{id}/result:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: "`job_id` of the directive."
+        schema:
+          type: string
+    post:
+      tags: [upload]
+      operationId: submitScanJobResult
+      summary: "Scanner: outcome of a scan job"
+      description: Sent after the reports of the job were uploaded.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ScanJobResult"
+      responses:
+        "204":
+          description: Result stored
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /update/check:
+    get:
+      tags: [update]
+      operationId: checkUpdate
+      summary: Deployed version and its manifest for the caller's platform
+      parameters:
+        - name: os
+          in: query
+          required: true
+          schema:
+            $ref: "#/components/schemas/TargetOs"
+        - name: arch
+          in: query
+          required: true
+          schema:
+            $ref: "#/components/schemas/TargetArch"
+      responses:
+        "200":
+          description: Update information
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UpdateCheck"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /update/bundle/{version}:
+    parameters:
+      - name: version
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      tags: [update]
+      operationId: downloadUpdateBundle
+      summary: Download a release bundle
+      description: |
+        The bundle `bomcensus-<version>.tar`, containing only the files of the
+        requested platform. The response is not message-signed: its integrity
+        rests on the manifest and code signatures, which the updater verifies.
+      parameters:
+        - name: os
+          in: query
+          required: true
+          schema:
+            $ref: "#/components/schemas/TargetOs"
+        - name: arch
+          in: query
+          required: true
+          schema:
+            $ref: "#/components/schemas/TargetArch"
+      responses:
+        "200":
+          description: Release bundle
+          content:
+            application/x-tar:
+              schema:
+                type: string
+                format: binary
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /probe/{os}/{arch}:
+    parameters:
+      - name: os
+        in: path
+        required: true
+        schema:
+          $ref: "#/components/schemas/TargetOs"
+      - name: arch
+        in: path
+        required: true
+        schema:
+          $ref: "#/components/schemas/TargetArch"
+    get:
+      tags: [update]
+      operationId: downloadProbe
+      summary: "Scanner: signed probe binary of the deployed version"
+      description: The response is not message-signed. The scanner verifies the code signature of these bytes before every transfer to a target.
+      responses:
+        "200":
+          description: Probe executable
+          headers:
+            Bomcensus-Probe-Version:
+              description: Version of the probe.
+              required: true
+              schema:
+                type: string
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+components:
+  securitySchemes:
+    messageSignature:
+      type: apiKey
+      in: header
+      name: Signature
+      description: |
+        RFC 9421 HTTP Message Signature made with the agent's identity key
+        (Ed25519). The request also carries `Signature-Input`,
+        `Content-Digest` (always, also for an empty body),
+        `Bomcensus-Agent-Id`, `Bomcensus-Nonce` and, on every method other
+        than `GET` and `HEAD`, `Bomcensus-Counter`. The response carries
+        `Signature`, `Signature-Input`, `Content-Digest` and
+        `Bomcensus-Request-Nonce`, made with the key of a certificate that
+        chains to the pinned anchor and covering the request nonce. If a TLS client certificate is present it must belong to the
+        same identity.
+
+  parameters:
+    SignatureInputHeader:
+      name: Signature-Input
+      in: header
+      required: true
+      description: RFC 9421 signature parameters.
+      schema:
+        type: string
+    SignatureHeader:
+      name: Signature
+      in: header
+      required: true
+      description: RFC 9421 signature.
+      schema:
+        type: string
+    ContentDigestHeader:
+      name: Content-Digest
+      in: header
+      description: RFC 9530 digest of the body (`sha-256`). Always present, also for an empty body.
+      schema:
+        type: string
+    AgentIdHeader:
+      name: Bomcensus-Agent-Id
+      in: header
+      required: true
+      description: Agent id assigned at enrollment.
+      schema:
+        type: string
+    NonceHeader:
+      name: Bomcensus-Nonce
+      in: header
+      required: true
+      description: Random per-request nonce, unpadded base64url. The response signature covers it.
+      schema:
+        type: string
+    CounterHeader:
+      name: Bomcensus-Counter
+      in: header
+      description: Per-agent monotonic counter (decimal), on every method other than `GET` and `HEAD`, absent on those.
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+
+  headers:
+    EnrollSignature:
+      description: "Server enrollment signature, `<scheme>.<base64url>` (unpadded base64url; `scheme` is `ed25519`, `ecdsa-sha256` or `rsa-pss-sha256`). Signed bytes are defined in `docs/PROTOCOL.md`."
+      required: true
+      schema:
+        type: string
+    ResponseSignature:
+      description: RFC 9421 response signature.
+      schema:
+        type: string
+    ResponseSignatureInput:
+      description: RFC 9421 response signature parameters.
+      schema:
+        type: string
+    ResponseContentDigest:
+      description: RFC 9530 digest of the response body.
+      schema:
+        type: string
+
+  responses:
+    BadRequest:
+      description: The request is malformed or a value is invalid.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Unauthorized:
+      description: Missing or invalid message signature, or unknown identity.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Forbidden:
+      description: Revoked identity, refused enrollment, or an operation the caller may not perform.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    NotFound:
+      description: The resource does not exist.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Conflict:
+      description: Counter replayed, or the request conflicts with the current state.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    PayloadTooLarge:
+      description: The request body is too large.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    TooManyRequests:
+      description: Rate limited. Retry later.
+      headers:
+        Retry-After:
+          description: Seconds to wait.
+          schema:
+            type: integer
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    UnexpectedError:
+      description: Unexpected error.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+  schemas:
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          description: Stable snake_case error identifier.
+        message:
+          type: string
+
+    # ── shared ──────────────────────────────────────────────────────────
+
+    AgentKind:
+      type: string
+      enum: [agent, scanner]
+    ConnectMode:
+      type: string
+      enum: [connect, listen]
+    TlsMode:
+      type: string
+      enum: [pinned, system, none]
+    TargetOs:
+      type: string
+      enum: [linux]
+    TargetArch:
+      type: string
+      enum: [amd64, arm64]
+    SectionName:
+      type: string
+      enum: [host, packages, artifacts, processes, containers]
+    Coverage:
+      type: string
+      enum: [full, partial, process_only, inventory_only, unsupported, failed]
+    SealedSecret:
+      description: Opaque HPKE ciphertext sealed to the scanner's encryption public key. Suite and encapsulation are defined in `docs/PROTOCOL.md`.
+      type: string
+      format: byte
+    OsRelease:
+      description: Mirrors `report.OS`.
+      type: object
+      required: [family]
+      properties:
+        family:
+          type: string
+        id:
+          type: string
+        id_like:
+          type: string
+        name:
+          type: string
+        version:
+          type: string
+        version_id:
+          type: string
+        codename:
+          type: string
+        pretty_name:
+          type: string
+    HostFacts:
+      type: object
+      required: [hostname, os, arch]
+      properties:
+        hostname:
+          type: string
+        machine_id:
+          type: string
+        os:
+          $ref: "#/components/schemas/OsRelease"
+        kernel:
+          type: string
+        arch:
+          type: string
+    Privilege:
+      description: Mirrors `report.Privilege`.
+      type: object
+      required: [level, uid]
+      properties:
+        level:
+          type: string
+          enum: [privileged, non_root]
+        uid:
+          type: integer
+        capabilities:
+          type: array
+          items:
+            type: string
+        exec_helper:
+          type: boolean
+    Policy:
+      description: Mirrors `report.Policy`.
+      type: object
+      required: [exec_version, collect_cmdline, scan_containers]
+      properties:
+        exec_version:
+          type: boolean
+        exclude_paths:
+          type: array
+          items:
+            type: string
+        collect_cmdline:
+          type: boolean
+        scan_containers:
+          type: boolean
+        max_runtime_seconds:
+          type: integer
+          minimum: 0
+        memory_limit_mb:
+          type: integer
+          minimum: 0
+    ServerChain:
+      type: object
+      required: [chain_pem]
+      properties:
+        chain_pem:
+          description: PEM certificates, leaf (the signing key) first.
+          type: array
+          items:
+            type: string
+    TrustBundle:
+      type: object
+      required: [serial, anchors, agent_cas, issued_at]
+      properties:
+        serial:
+          description: Increases with every change.
+          type: integer
+          format: int64
+        anchors:
+          description: DER certificates of the Agent TLS trust anchors (current and prepared).
+          type: array
+          items:
+            type: string
+            format: byte
+        agent_cas:
+          description: DER certificates of the Agent CA.
+          type: array
+          items:
+            type: string
+            format: byte
+        issued_at:
+          type: string
+          format: date-time
+
+    # ── enrollment ──────────────────────────────────────────────────────
+
+    EnrollStartRequest:
+      type: object
+      required: [key_id, agent_nonce, csr, kind, version, host, connect_mode, tls_mode]
+      properties:
+        key_id:
+          description: Register Key id from the enrollment string.
+          type: string
+          pattern: "^[A-Za-z0-9_-]{11}$"
+        agent_nonce:
+          description: 32 random bytes.
+          type: string
+          format: byte
+        csr:
+          description: DER PKCS#10 request for the Ed25519 identity key.
+          type: string
+          format: byte
+        kind:
+          $ref: "#/components/schemas/AgentKind"
+        version:
+          type: string
+        host:
+          $ref: "#/components/schemas/HostFacts"
+        connect_mode:
+          $ref: "#/components/schemas/ConnectMode"
+        listen_address:
+          description: Listen mode only. Address the agent listens on.
+          type: string
+        tls_mode:
+          $ref: "#/components/schemas/TlsMode"
+        hpke_public_key:
+          description: Scanners only. Encryption public key that directive secrets are sealed to.
+          type: string
+          format: byte
+    EnrollSession:
+      type: object
+      required: [session_id, server_nonce, server_chain]
+      properties:
+        session_id:
+          type: string
+        server_nonce:
+          description: 32 random bytes.
+          type: string
+          format: byte
+        server_chain:
+          description: DER certificates of the Agent TLS chain, leaf first.
+          type: array
+          items:
+            type: string
+            format: byte
+    EnrollFinishRequest:
+      type: object
+      required: [session_id, signature]
+      properties:
+        session_id:
+          type: string
+        signature:
+          description: Ed25519 signature with the Register Key over the hashes of the start request and response bodies.
+          type: string
+          format: byte
+    EnrollStatus:
+      type: string
+      enum: [approved, pending, rejected]
+    EnrollResult:
+      description: "`certificate`, `agent_ca` and `trust_bundle` are present when `status` is `approved`."
+      type: object
+      required: [status, agent_id]
+      properties:
+        status:
+          $ref: "#/components/schemas/EnrollStatus"
+        agent_id:
+          type: string
+        certificate:
+          description: DER agent certificate.
+          type: string
+          format: byte
+        agent_ca:
+          description: DER Agent CA certificate that issued `certificate`.
+          type: string
+          format: byte
+        trust_bundle:
+          $ref: "#/components/schemas/TrustBundle"
+        retry_after_seconds:
+          description: Pending only. Suggested interval for `GET /enroll/result`.
+          type: integer
+    CertRenewRequest:
+      type: object
+      properties:
+        csr:
+          description: DER PKCS#10 request for the current identity key.
+          type: string
+          format: byte
+    RenewedCert:
+      type: object
+      required: [certificate, agent_ca, not_after]
+      properties:
+        certificate:
+          type: string
+          format: byte
+        agent_ca:
+          type: string
+          format: byte
+        not_after:
+          type: string
+          format: date-time
+
+    # ── poll ────────────────────────────────────────────────────────────
+
+    UpdateState:
+      type: string
+      enum: [up_to_date, pending, updating, rolled_back]
+    UpdateStatus:
+      type: object
+      required: [state]
+      properties:
+        state:
+          $ref: "#/components/schemas/UpdateState"
+        message:
+          type: string
+        previous_version:
+          type: string
+    ObservedCert:
+      description: The server certificate the agent saw in the TLS handshake.
+      type: object
+      required: [sha256, subject, issuer]
+      properties:
+        sha256:
+          description: Hex SHA-256 of the leaf certificate DER.
+          type: string
+          pattern: "^[0-9a-f]{64}$"
+        subject:
+          type: string
+        issuer:
+          type: string
+    PollRequest:
+      type: object
+      required: [version, os, arch, connect_mode, tls_mode, privilege, section_digests, trust_bundle_serial, update]
+      properties:
+        version:
+          type: string
+        os:
+          $ref: "#/components/schemas/TargetOs"
+        arch:
+          $ref: "#/components/schemas/TargetArch"
+        connect_mode:
+          $ref: "#/components/schemas/ConnectMode"
+        tls_mode:
+          $ref: "#/components/schemas/TlsMode"
+        privilege:
+          $ref: "#/components/schemas/Privilege"
+        section_digests:
+          description: Section name to the digest of the last uploaded section.
+          type: object
+          additionalProperties:
+            type: string
+        trust_bundle_serial:
+          type: integer
+          format: int64
+        cert_not_after:
+          type: string
+          format: date-time
+        observed_server_cert:
+          $ref: "#/components/schemas/ObservedCert"
+        update:
+          $ref: "#/components/schemas/UpdateStatus"
+        acked_directives:
+          description: Ids of directives received in earlier poll responses.
+          type: array
+          items:
+            type: string
+    SectionIntervals:
+      description: Collection interval per section in seconds. 0 disables the section.
+      type: object
+      required: [host, packages, artifacts, processes, containers]
+      properties:
+        host:
+          type: integer
+          minimum: 0
+        packages:
+          type: integer
+          minimum: 0
+        artifacts:
+          type: integer
+          minimum: 0
+        processes:
+          type: integer
+          minimum: 0
+        containers:
+          type: integer
+          minimum: 0
+    AgentConfig:
+      type: object
+      required: [section_intervals, policy, update_check_interval_minutes, trust_bundle_serial]
+      properties:
+        section_intervals:
+          $ref: "#/components/schemas/SectionIntervals"
+        policy:
+          $ref: "#/components/schemas/Policy"
+        update_check_interval_minutes:
+          type: integer
+          minimum: 1
+        trust_bundle_serial:
+          description: Serial of the current trust bundle.
+          type: integer
+          format: int64
+    PollResult:
+      type: object
+      required: [config, directives, last_counter, server_time]
+      properties:
+        config:
+          $ref: "#/components/schemas/AgentConfig"
+        directives:
+          type: array
+          items:
+            $ref: "#/components/schemas/Directive"
+        last_counter:
+          description: Last accepted `Bomcensus-Counter` value of this agent.
+          type: integer
+          format: int64
+        server_time:
+          type: string
+          format: date-time
+
+    # ── directives ──────────────────────────────────────────────────────
+
+    Directive:
+      oneOf:
+        - $ref: "#/components/schemas/CollectDirective"
+        - $ref: "#/components/schemas/ScanSshDirective"
+        - $ref: "#/components/schemas/K8sSyncDirective"
+        - $ref: "#/components/schemas/K8sExecDirective"
+        - $ref: "#/components/schemas/RenewCertDirective"
+        - $ref: "#/components/schemas/SyncTrustBundleDirective"
+      discriminator:
+        propertyName: type
+        mapping:
+          collect: "#/components/schemas/CollectDirective"
+          scan_ssh: "#/components/schemas/ScanSshDirective"
+          k8s_sync: "#/components/schemas/K8sSyncDirective"
+          k8s_exec: "#/components/schemas/K8sExecDirective"
+          renew_cert: "#/components/schemas/RenewCertDirective"
+          sync_trust_bundle: "#/components/schemas/SyncTrustBundleDirective"
+    CollectDirective:
+      description: Collect the given sections of the own host now.
+      type: object
+      required: [type, id, sections]
+      properties:
+        type:
+          type: string
+          enum: [collect]
+        id:
+          type: string
+        sections:
+          description: Empty means all.
+          type: array
+          items:
+            $ref: "#/components/schemas/SectionName"
+        full:
+          description: Ignore known digests and send every section in full.
+          type: boolean
+    ScanSshDirective:
+      description: "Scanner: collect a host over SSH. `credential` is a sealed `SSHCredentialSecret`."
+      type: object
+      required: [type, id, job_id, scan_target_id, address, port, username, sudo, credential, policy]
+      properties:
+        type:
+          type: string
+          enum: [scan_ssh]
+        id:
+          type: string
+        job_id:
+          type: string
+        scan_target_id:
+          type: string
+        address:
+          type: string
+        port:
+          type: integer
+        username:
+          type: string
+        sudo:
+          type: boolean
+        host_key_fingerprint:
+          description: "Pinned host key (`SHA256:<base64>`). Absent: accept the first key and report it in the job result."
+          type: string
+        host_key:
+          description: "Pinned host key in SSH wire format, present together with `host_key_fingerprint`. The scanner enforces it before it sends credentials; a fingerprint without the key is refused. See `docs/PROTOCOL.md`."
+          type: string
+          format: byte
+        credential:
+          $ref: "#/components/schemas/SealedSecret"
+        policy:
+          $ref: "#/components/schemas/Policy"
+        sections:
+          description: Empty means all.
+          type: array
+          items:
+            $ref: "#/components/schemas/SectionName"
+    K8sFilter:
+      description: Same semantics as the cluster filter in the admin API.
+      type: object
+      required: [namespace_include, namespace_exclude, label_include, label_exclude, annotation_include, annotation_exclude]
+      properties:
+        namespace_include:
+          type: array
+          items:
+            type: string
+        namespace_exclude:
+          type: array
+          items:
+            type: string
+        label_include:
+          type: array
+          items:
+            type: string
+        label_exclude:
+          type: array
+          items:
+            type: string
+        annotation_include:
+          type: array
+          items:
+            type: string
+        annotation_exclude:
+          type: array
+          items:
+            type: string
+    K8sConnection:
+      type: string
+      enum: [in_cluster, kubeconfig]
+    K8sSyncDirective:
+      description: "Scanner: read the inventory of a cluster and send it to `POST /k8s/inventory`. `kubeconfig` (sealed kubeconfig YAML) is present when `connection=kubeconfig`."
+      type: object
+      required: [type, id, job_id, cluster_id, connection, filter, exec_enabled]
+      properties:
+        type:
+          type: string
+          enum: [k8s_sync]
+        id:
+          type: string
+        job_id:
+          type: string
+        cluster_id:
+          type: string
+        connection:
+          $ref: "#/components/schemas/K8sConnection"
+        kubeconfig:
+          $ref: "#/components/schemas/SealedSecret"
+        filter:
+          $ref: "#/components/schemas/K8sFilter"
+        exec_enabled:
+          type: boolean
+    K8sExecTarget:
+      type: object
+      required: [namespace, pod, container, sections]
+      properties:
+        namespace:
+          type: string
+        pod:
+          type: string
+        container:
+          type: string
+        node:
+          description: Node the pod runs on, from the inventory. Bounds concurrent exec sessions per node.
+          type: string
+        image_ref:
+          type: string
+        image_digest:
+          type: string
+        sections:
+          description: Sections to collect. Replicas whose image content is already known get only `processes`.
+          type: array
+          items:
+            $ref: "#/components/schemas/SectionName"
+    K8sExecDirective:
+      description: "Scanner: collect containers through `pods/exec`. One report per container with subject `k8s_container`. `kubeconfig` (sealed kubeconfig YAML) is present when `connection=kubeconfig`."
+      type: object
+      required: [type, id, job_id, cluster_id, connection, policy, targets]
+      properties:
+        type:
+          type: string
+          enum: [k8s_exec]
+        id:
+          type: string
+        job_id:
+          type: string
+        cluster_id:
+          type: string
+        connection:
+          $ref: "#/components/schemas/K8sConnection"
+        kubeconfig:
+          $ref: "#/components/schemas/SealedSecret"
+        policy:
+          $ref: "#/components/schemas/Policy"
+        targets:
+          type: array
+          items:
+            $ref: "#/components/schemas/K8sExecTarget"
+    RenewCertDirective:
+      description: Renew the certificate with `POST /cert/renew`.
+      type: object
+      required: [type, id, new_key]
+      properties:
+        type:
+          type: string
+          enum: [renew_cert]
+        id:
+          type: string
+        new_key:
+          description: Generate a new identity key and send a CSR. Always false; identity key rotation is not supported.
+          type: boolean
+    SyncTrustBundleDirective:
+      description: Fetch `GET /trust-bundle`.
+      type: object
+      required: [type, id, serial]
+      properties:
+        type:
+          type: string
+          enum: [sync_trust_bundle]
+        id:
+          type: string
+        serial:
+          type: integer
+          format: int64
+    SSHCredentialSecret:
+      description: Plaintext JSON inside a sealed `scan_ssh` credential.
+      type: object
+      required: [kind]
+      properties:
+        kind:
+          type: string
+          enum: [ssh_key, ssh_password]
+        private_key:
+          description: OpenSSH or PEM private key (`ssh_key`).
+          type: string
+        passphrase:
+          type: string
+        password:
+          description: "`ssh_password`."
+          type: string
+
+    # ── uploads ─────────────────────────────────────────────────────────
+
+    ReportAccepted:
+      type: object
+      required: [report_id]
+      properties:
+        report_id:
+          type: string
+    K8sNamespace:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        labels:
+          type: object
+          additionalProperties:
+            type: string
+        annotations:
+          type: object
+          additionalProperties:
+            type: string
+    K8sInventoryWorkload:
+      description: A top-level controller, resolved through owner references (a Deployment, not its ReplicaSet). A pod without an owner is a workload of kind `Pod`.
+      type: object
+      required: [namespace, kind, name, replicas]
+      properties:
+        uid:
+          type: string
+        namespace:
+          type: string
+        kind:
+          type: string
+        name:
+          type: string
+        replicas:
+          description: Desired replicas, or the number of pods for kinds without one.
+          type: integer
+        labels:
+          type: object
+          additionalProperties:
+            type: string
+        annotations:
+          type: object
+          additionalProperties:
+            type: string
+        excluded_by:
+          description: Filter rule that excluded the workload. Excluded workloads are reported without pods.
+          type: string
+    K8sPodPhase:
+      type: string
+      enum: [Running, Pending, Succeeded, Failed, Unknown]
+    K8sInventoryContainer:
+      type: object
+      required: [name, image_ref]
+      properties:
+        name:
+          type: string
+        image_ref:
+          description: "`spec.containers[].image`."
+          type: string
+        image_digest:
+          description: Digest from `status.containerStatuses[].imageID`, when the runtime reported one.
+          type: string
+        ready:
+          type: boolean
+        started_at:
+          type: string
+          format: date-time
+    K8sInventoryPod:
+      type: object
+      required: [namespace, name, workload_kind, workload_name, node, phase, containers]
+      properties:
+        uid:
+          type: string
+        namespace:
+          type: string
+        name:
+          type: string
+        workload_kind:
+          description: Kind of the top-level controller (matches a workload in the same inventory).
+          type: string
+        workload_name:
+          type: string
+        node:
+          type: string
+        phase:
+          $ref: "#/components/schemas/K8sPodPhase"
+        started_at:
+          type: string
+          format: date-time
+        containers:
+          description: Regular containers. Init and ephemeral containers are not included.
+          type: array
+          items:
+            $ref: "#/components/schemas/K8sInventoryContainer"
+    K8sInventory:
+      type: object
+      required: [cluster_id, collected_at, server_version, namespaces, workloads, pods]
+      properties:
+        cluster_id:
+          type: string
+        job_id:
+          type: string
+        collected_at:
+          type: string
+          format: date-time
+        server_version:
+          description: Kubernetes server version (`gitVersion`).
+          type: string
+        namespaces:
+          type: array
+          items:
+            $ref: "#/components/schemas/K8sNamespace"
+        workloads:
+          type: array
+          items:
+            $ref: "#/components/schemas/K8sInventoryWorkload"
+        pods:
+          type: array
+          items:
+            $ref: "#/components/schemas/K8sInventoryPod"
+    ScanJobStatus:
+      type: string
+      enum: [ok, partial, failed]
+    ExecTargetResult:
+      type: object
+      required: [namespace, pod, container, status, coverage]
+      properties:
+        namespace:
+          type: string
+        pod:
+          type: string
+        container:
+          type: string
+        status:
+          $ref: "#/components/schemas/ScanJobStatus"
+        coverage:
+          $ref: "#/components/schemas/Coverage"
+        reason:
+          type: string
+        report_id:
+          type: string
+    ScanJobResult:
+      type: object
+      required: [status, started_at, finished_at]
+      properties:
+        status:
+          $ref: "#/components/schemas/ScanJobStatus"
+        message:
+          type: string
+        started_at:
+          type: string
+          format: date-time
+        finished_at:
+          type: string
+          format: date-time
+        report_ids:
+          description: Reports uploaded for the job.
+          type: array
+          items:
+            type: string
+        host_key_fingerprint:
+          description: "`scan_ssh`: host key seen (`SHA256:<base64>`)."
+          type: string
+        host_key:
+          description: "`scan_ssh`: host key seen, SSH wire format. The server pins it on the first successful scan of a target without a pinned key."
+          type: string
+          format: byte
+        targets:
+          description: "`k8s_exec`: outcome per container."
+          type: array
+          items:
+            $ref: "#/components/schemas/ExecTargetResult"
+
+    # ── update ──────────────────────────────────────────────────────────
+
+    ReleaseFile:
+      type: object
+      required: [name, sha256, size]
+      properties:
+        name:
+          description: Path inside the bundle, for example `linux-amd64/bomcensus-agent`.
+          type: string
+        sha256:
+          type: string
+          pattern: "^[0-9a-f]{64}$"
+        size:
+          type: integer
+          format: int64
+    UpdateCheck:
+      description: "`manifest`, `manifest_signature`, `files` and `bundle_size` are present when `target_version` is set."
+      type: object
+      required: [target_version, check_interval_minutes]
+      properties:
+        target_version:
+          description: Deployed version. `null` when no version is deployed.
+          type: string
+          nullable: true
+        check_interval_minutes:
+          type: integer
+        manifest:
+          description: "`manifest.json` of the release, byte for byte."
+          type: string
+          format: byte
+        manifest_signature:
+          description: "`manifest.sig` of the release."
+          type: string
+          format: byte
+        files:
+          description: Files of the caller's platform.
+          type: array
+          items:
+            $ref: "#/components/schemas/ReleaseFile"
+        bundle_size:
+          type: integer
+          format: int64

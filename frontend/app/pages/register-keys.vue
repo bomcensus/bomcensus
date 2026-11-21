@@ -1,30 +1,31 @@
+<!--
+  Copyright (C) 2026 JC-Lab
+  SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-bomcensus-Commercial
+  Additional terms apply. See LICENSING.md.
+-->
+
 <script setup lang="ts">
 import { Plus } from '@lucide/vue'
-import type { RegisterKey } from '~/types'
+import type { RegisterKey, RegisterKeyState } from '~/types'
 import type { TableColumn } from '~/types/table'
-import { MOCK_NOW, assetGroups, registerKeys as mockKeys, tlsState } from '~/mock'
+import type { Tone } from '~/utils/labels'
+import { createRegisterKey, fetchAll, listAssetGroups, listRegisterKeys, revokeRegisterKey, toApiError } from '~/api'
 
 useHead({ title: 'Register Key · bomcensus' })
 
-// 생성·폐기는 이 페이지의 복사본에만 반영된다
-const keys = ref<RegisterKey[]>(mockKeys.map((k) => ({ ...k })))
+const { data: keys, pending, error, refresh } = useLoad('register-keys', () => fetchAll((page) => listRegisterKeys(page)), () => [])
+const { data: groups } = useLoad('asset-groups', () => fetchAll((page) => listAssetGroups(page)), () => [])
 
-type KeyState = 'valid' | 'expired' | 'revoked' | 'exhausted'
-
-function stateOf(k: RegisterKey): KeyState {
-  if (k.revokedAt) return 'revoked'
-  if (k.expiresAt && new Date(k.expiresAt).getTime() <= new Date(MOCK_NOW).getTime()) return 'expired'
-  if (k.maxUses > 0 && k.usedCount >= k.maxUses) return 'exhausted'
-  return 'valid'
-}
-const stateLabel: Record<KeyState, string> = { valid: '유효', expired: '만료', revoked: '폐기', exhausted: '소진' }
-const stateTone: Record<KeyState, Tone> = { valid: 'ok', expired: 'neutral', revoked: 'neutral', exhausted: 'warn' }
+const stateLabel: Record<RegisterKeyState, string> = { valid: '유효', expired: '만료', revoked: '폐기', exhausted: '소진' }
+const stateTone: Record<RegisterKeyState, Tone> = { valid: 'ok', expired: 'neutral', revoked: 'neutral', exhausted: 'warn' }
+// Valid keys first
+const stateRank: Record<RegisterKeyState, number> = { valid: 0, exhausted: 1, expired: 2, revoked: 3 }
 
 const columns: TableColumn<RegisterKey>[] = [
   { key: 'name', label: '이름', sortValue: (k) => k.name },
   { key: 'keyId', label: 'key-id', hideBelow: 'md' },
   { key: 'target', label: '대상', sortValue: (k) => k.target, hideBelow: 'sm' },
-  { key: 'state', label: '상태', sortValue: (k) => stateOf(k) },
+  { key: 'state', label: '상태', sortValue: (k) => stateRank[k.state] },
   { key: 'expires', label: '만료', sortValue: (k) => k.expiresAt ?? '9999', hideBelow: 'sm' },
   { key: 'cidrs', label: '허용 IP', hideBelow: 'lg' },
   { key: 'uses', label: '사용', sortValue: (k) => k.usedCount, hideBelow: 'md' },
@@ -37,7 +38,7 @@ const columns: TableColumn<RegisterKey>[] = [
 const targetLabel = { agent: 'Agent', scanner: 'Scanner' } as const
 const approvalLabel = { auto: '자동', manual: '수동 승인' } as const
 
-// ── 폐기 ─────────────────────────────────────────────
+// ── Revoke ─────────────────────────────────────────────
 const revokeTarget = ref<RegisterKey>()
 const revokeOpen = computed({
   get: () => !!revokeTarget.value,
@@ -45,13 +46,32 @@ const revokeOpen = computed({
     if (!v) revokeTarget.value = undefined
   },
 })
-function revoke() {
-  const t = revokeTarget.value
-  if (t) t.revokedAt = MOCK_NOW
-  revokeTarget.value = undefined
+const revokeBusy = ref(false)
+const revokeError = ref('')
+
+function askRevoke(k: RegisterKey) {
+  revokeError.value = ''
+  revokeTarget.value = k
 }
 
-// ── 생성 ─────────────────────────────────────────────
+async function revoke() {
+  const t = revokeTarget.value
+  if (!t || revokeBusy.value) return
+  revokeBusy.value = true
+  revokeError.value = ''
+  try {
+    await revokeRegisterKey(t.id)
+    revokeTarget.value = undefined
+    await refresh()
+  } catch (e) {
+    const err = toApiError(e)
+    revokeError.value = err.status === 409 ? '이미 폐기된 키입니다' : err.message
+  } finally {
+    revokeBusy.value = false
+  }
+}
+
+// ── Create ─────────────────────────────────────────────
 const createOpen = ref(false)
 const form = reactive({
   name: '',
@@ -65,31 +85,23 @@ const form = reactive({
   tags: '',
 })
 const errors = reactive({ name: '', cidrs: '', maxUses: '' })
-const groupOptions = computed(() => assetGroups())
+const createBusy = ref(false)
+const createError = ref('')
 
 const cidrRe = /^(\d{1,3}(\.\d{1,3}){3}\/\d{1,2}|[0-9a-fA-F:]+\/\d{1,3})$/
 
-function resetForm() {
+function openCreate() {
   Object.assign(form, { name: '', target: 'agent', expiresAt: '', cidrs: '', maxUses: 1, approval: 'manual', allowRelaxedTls: false, group: '', tags: '' })
   Object.assign(errors, { name: '', cidrs: '', maxUses: '' })
-}
-function openCreate() {
-  resetForm()
+  createError.value = ''
   createOpen.value = true
-}
-
-// 난수 바이트를 패딩 없는 base64url 로 인코딩한다
-function randomBase64Url(bytes: number): string {
-  const buf = crypto.getRandomValues(new Uint8Array(bytes))
-  let bin = ''
-  for (const b of buf) bin += String.fromCharCode(b)
-  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
 }
 
 const enrollment = ref('')
 const resultOpen = ref(false)
 
-function create() {
+async function create() {
+  if (createBusy.value) return
   const cidrs = form.cidrs.split('\n').map((s) => s.trim()).filter(Boolean)
   errors.name = form.name.trim() ? '' : '이름을 입력합니다'
   const bad = cidrs.find((c) => !cidrRe.test(c))
@@ -97,34 +109,40 @@ function create() {
   errors.maxUses = Number.isInteger(form.maxUses) && form.maxUses >= 0 ? '' : '0 이상의 정수를 입력합니다'
   if (errors.name || errors.cidrs || errors.maxUses) return
 
-  const keyId = randomBase64Url(8)
-  const secret = randomBase64Url(32)
-  keys.value.unshift({
-    id: keyId,
-    name: form.name.trim(),
-    target: form.target,
-    expiresAt: form.expiresAt ? new Date(form.expiresAt).toISOString() : undefined,
-    allowedCidrs: cidrs,
-    maxUses: form.maxUses,
-    usedCount: 0,
-    approval: form.approval,
-    allowRelaxedTls: form.allowRelaxedTls,
-    defaultGroup: form.group.trim(),
-    defaultTags: form.tags.split(',').map((s) => s.trim()).filter(Boolean),
-    createdAt: MOCK_NOW,
-  })
-  enrollment.value = `bc1.${tlsState.anchorSpkiHash}.${keyId}.${secret}`
-  createOpen.value = false
-  resultOpen.value = true
+  createBusy.value = true
+  createError.value = ''
+  try {
+    const created = await createRegisterKey({
+      name: form.name.trim(),
+      target: form.target,
+      expiresAt: form.expiresAt ? new Date(form.expiresAt).toISOString() : undefined,
+      allowedCidrs: cidrs,
+      maxUses: form.maxUses,
+      approval: form.approval,
+      allowRelaxedTls: form.allowRelaxedTls,
+      defaultGroup: form.group.trim() || undefined,
+      defaultTags: form.tags.split(',').map((s) => s.trim()).filter(Boolean),
+    })
+    enrollment.value = created.enrollment
+    createOpen.value = false
+    resultOpen.value = true
+    await refresh()
+  } catch (e) {
+    createError.value = toApiError(e).message
+  } finally {
+    createBusy.value = false
+  }
 }
 
-// 닫으면 문자열을 메모리에서도 지운다
+// On close, also clear the string from memory
 watch(resultOpen, (open) => {
   if (!open) enrollment.value = ''
 })
 
+const meta = useMeta()
+// agentAddress is host:port; without it the example keeps a placeholder.
 const installExample = computed(
-  () => `bomcensus-agent enroll --server https://<서버 주소>:8443 ${enrollment.value}`,
+  () => `bomcensus-agent enroll --server https://${meta.value?.agentAddress ?? '<서버 주소>:8443'} ${enrollment.value}`,
 )
 </script>
 
@@ -137,11 +155,14 @@ const installExample = computed(
     </PageHeader>
 
     <Panel flush>
+      <LoadError v-if="error" :error="error" @retry="refresh" />
       <DataTable
+        v-else
         :columns="columns"
         :rows="keys"
         :row-key="(k) => k.id"
         :initial-sort="{ key: 'state', dir: 'asc' }"
+        :loading="pending"
       >
         <template #cell-name="{ row }">
           <span class="whitespace-nowrap font-medium">{{ row.name }}</span>
@@ -150,7 +171,7 @@ const installExample = computed(
         <template #cell-keyId="{ row }"><span class="mono whitespace-nowrap text-xs">{{ row.id }}</span></template>
         <template #cell-target="{ row }">{{ targetLabel[row.target] }}</template>
         <template #cell-state="{ row }">
-          <StatusBadge dot :tone="stateTone[stateOf(row)]" :label="stateLabel[stateOf(row)]" />
+          <StatusBadge dot :tone="stateTone[row.state]" :label="stateLabel[row.state]" />
         </template>
         <template #cell-expires="{ row }">
           <template v-if="row.expiresAt">
@@ -172,7 +193,7 @@ const installExample = computed(
         <template #cell-relaxed="{ row }">{{ row.allowRelaxedTls ? '허용' : '허용 안 함' }}</template>
         <template #cell-group="{ row }">{{ row.defaultGroup || '—' }}</template>
         <template #cell-actions="{ row }">
-          <AppButton v-if="stateOf(row) !== 'revoked'" size="sm" variant="danger" @click="revokeTarget = row">폐기</AppButton>
+          <AppButton v-if="row.state !== 'revoked'" size="sm" variant="danger" @click="askRevoke(row)">폐기</AppButton>
         </template>
       </DataTable>
     </Panel>
@@ -205,7 +226,7 @@ const installExample = computed(
         </FormField>
         <FormField label="기본 그룹">
           <input v-model="form.group" list="key-groups" class="input w-full" />
-          <datalist id="key-groups"><option v-for="g in groupOptions" :key="g" :value="g" /></datalist>
+          <datalist id="key-groups"><option v-for="g in groups" :key="g.name" :value="g.name" /></datalist>
         </FormField>
         <FormField label="태그" hint="쉼표로 구분합니다">
           <input v-model="form.tags" class="input w-full" />
@@ -216,10 +237,11 @@ const installExample = computed(
         <p v-if="form.allowRelaxedTls" class="note note-warn md:col-span-2">
           완화 모드에서는 전송 중 보고 내용이 읽힐 수 있습니다. 인증과 무결성은 메시지 서명으로 유지됩니다.
         </p>
+        <p v-if="createError" class="note note-danger md:col-span-2" role="alert">{{ createError }}</p>
       </form>
       <template #footer>
         <AppButton @click="createOpen = false">취소</AppButton>
-        <AppButton type="submit" variant="primary" @click="create">생성</AppButton>
+        <AppButton type="submit" form="key-form" variant="primary" :disabled="createBusy">생성</AppButton>
       </template>
     </AppModal>
 
@@ -238,9 +260,10 @@ const installExample = computed(
       <p class="text-sm">
         <strong>{{ revokeTarget?.name }}</strong> 키를 폐기합니다. 이후 이 키로는 등록할 수 없습니다. 이미 등록된 에이전트는 영향을 받지 않습니다.
       </p>
+      <p v-if="revokeError" class="note note-danger mt-3" role="alert">{{ revokeError }}</p>
       <template #footer>
         <AppButton @click="revokeOpen = false">취소</AppButton>
-        <AppButton variant="danger" @click="revoke">폐기</AppButton>
+        <AppButton variant="danger" :disabled="revokeBusy" @click="revoke">폐기</AppButton>
       </template>
     </AppModal>
   </div>

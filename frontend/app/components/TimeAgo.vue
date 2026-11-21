@@ -1,5 +1,11 @@
+<!--
+  Copyright (C) 2026 JC-Lab
+  SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-bomcensus-Commercial
+  Additional terms apply. See LICENSING.md.
+-->
+
 <script setup lang="ts">
-// 상대 시간을 보여 주고 정확한 시각은 title로 둔다.
+// Shows relative time, with the exact time in the title.
 defineProps<{ at?: string }>()
 </script>
 

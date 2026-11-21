@@ -1,0 +1,85 @@
+{{- /*
+  Copyright (C) 2026 JC-Lab
+  SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-bomcensus-Commercial
+  Additional terms apply. See LICENSING.md.
+*/ -}}
+
+{{- if .Values.rbac.create }}
+{{- $fullname := include "bomcensus-scanner.fullname" . }}
+{{- $sa := include "bomcensus-scanner.serviceAccountName" . }}
+{{- /* Cluster-scoped names carry the namespace: release names repeat across namespaces. */}}
+{{- $clusterName := printf "%s-%s" .Release.Namespace $fullname | trunc 63 | trimSuffix "-" }}
+# Read access for the inventory: namespaces, nodes (architecture for the
+# probe), pods and the controllers that own them. No watch is needed.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ $clusterName }}
+  labels:
+    {{- include "bomcensus-scanner.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["namespaces", "nodes", "pods"]
+    verbs: ["get", "list"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets", "statefulsets", "daemonsets"]
+    verbs: ["get", "list"]
+  - apiGroups: ["batch"]
+    resources: ["jobs", "cronjobs"]
+    verbs: ["get", "list"]
+  {{- if and .Values.rbac.exec (empty .Values.rbac.namespaces) }}
+  # Collection inside running containers. get is needed besides create for
+  # WebSocket exec on Kubernetes before 1.35.
+  - apiGroups: [""]
+    resources: ["pods/exec"]
+    verbs: ["create", "get"]
+  {{- end }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ $clusterName }}
+  labels:
+    {{- include "bomcensus-scanner.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ $clusterName }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ $sa }}
+    namespace: {{ .Release.Namespace }}
+{{- if and .Values.rbac.exec .Values.rbac.namespaces }}
+{{- range .Values.rbac.namespaces }}
+---
+# pods/exec only in the namespaces listed in rbac.namespaces.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ $fullname }}-exec
+  namespace: {{ . }}
+  labels:
+    {{- include "bomcensus-scanner.labels" $ | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["pods/exec"]
+    verbs: ["create", "get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ $fullname }}-exec
+  namespace: {{ . }}
+  labels:
+    {{- include "bomcensus-scanner.labels" $ | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ $fullname }}-exec
+subjects:
+  - kind: ServiceAccount
+    name: {{ $sa }}
+    namespace: {{ $.Release.Namespace }}
+{{- end }}
+{{- end }}
+{{- end }}

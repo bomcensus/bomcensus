@@ -1,0 +1,12 @@
+# Copyright (C) 2026 JC-Lab
+# SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-bomcensus-Commercial
+# Additional terms apply. See LICENSING.md.
+
+# oapi-codegen configuration for admin.yaml. Run `make generate`.
+package: adminapi
+output: internal/gen/adminapi/adminapi.gen.go
+generate:
+  models: true
+  chi-server: true
+  strict-server: true
+  client: true

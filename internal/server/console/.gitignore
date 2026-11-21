@@ -1,0 +1,4 @@
+# Built console files copied in by `make console`; only the placeholder is
+# committed.
+/dist/*
+!/dist/placeholder/

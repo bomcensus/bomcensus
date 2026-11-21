@@ -1,0 +1,6 @@
+dependencies:
+- name: bomcensus-scanner
+  repository: file://../bomcensus-scanner
+  version: 0.1.0
+digest: sha256:4290dc1abf2a83e31d0c64fde3001b937b369d77c9df086b382dc8dcb28a8d33
+generated: "2026-11-21T14:11:49.708238075+09:00"

@@ -1,0 +1,19 @@
+# Copyright (C) 2026 JC-Lab
+# SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-bomcensus-Commercial
+# Additional terms apply. See LICENSING.md.
+
+apiVersion: v2
+name: bomcensus-scanner
+description: bomcensus remote scanner that collects the Kubernetes cluster it runs in through the Kubernetes API
+type: application
+version: 0.1.0
+# Placeholder; the release pipeline sets the real version.
+appVersion: "0.0.0-dev"
+kubeVersion: ">=1.27.0-0"
+home: https://github.com/bomcensus/bomcensus
+sources:
+  - https://github.com/bomcensus/bomcensus
+keywords:
+  - sbom
+  - inventory
+  - scanner

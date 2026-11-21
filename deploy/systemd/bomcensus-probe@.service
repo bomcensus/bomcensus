@@ -1,0 +1,98 @@
+# Copyright (C) 2026 JC-Lab
+# SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-bomcensus-Commercial
+# Additional terms apply. See LICENSING.md.
+
+# bomcensus probe: one instance per connection (socket activation).
+#
+# The probe reads the request from stdin until EOF and writes the encoded
+# report to stdout; both are the connection. It runs as bomcensus-probe with
+# exactly CAP_DAC_READ_SEARCH (read any file) and CAP_SYS_PTRACE (read
+# /proc/<pid>/{exe,maps,fd,root} of other users' processes). These two are
+# equivalent to root for reading, so everything that could turn them into
+# write access or code execution is closed: nothing is writable, no network,
+# no ptrace-class calls (the probe also installs its own stricter seccomp
+# filter at start; this unit's filter is the outer layer and must be a
+# superset of what the probe and its version-command children need).
+#
+# Deliberate omissions (the probe must see the real host):
+#   PrivateTmp      - it scans the host /tmp.
+#   ProtectHome=yes - it scans home directories (read-only is used instead).
+#   ProtectProc / ProcSubset - it must see every process.
+#   PrivateNetwork  - it reads the host's interfaces and addresses, and
+#                     network namespaces through /proc/<pid>/net; a private
+#                     network namespace would replace the host view with an
+#                     empty one. The network is closed with
+#                     RestrictAddressFamilies (only AF_UNIX and AF_NETLINK
+#                     for reading) and IPAddressDeny instead.
+#   PrivateDevices  - not needed to hide anything; DevicePolicy=closed limits
+#                     device access instead.
+#   MemoryDenyWriteExecute - inherited by version-command children such as
+#                     "java -version", whose JIT needs writable+executable
+#                     memory.
+#   RestrictNamespaces=yes is kept: the probe reads namespaces through /proc
+#                     and does not create them.
+
+[Unit]
+Description=bomcensus probe (%i)
+Documentation=https://github.com/bomcensus/bomcensus
+CollectMode=inactive-or-failed
+
+[Service]
+Type=simple
+User=bomcensus-probe
+Group=bomcensus-probe
+StandardInput=socket
+StandardOutput=socket
+StandardError=journal
+ExecStart=/opt/bomcensus/current/bomcensus-probe collect
+# A full first run on a large host takes minutes; later runs use the hash
+# cache. The run is killed after RuntimeMaxSec.
+RuntimeMaxSec=20min
+TimeoutStopSec=10s
+
+# Privileges: exactly two capabilities, no way to gain more.
+CapabilityBoundingSet=CAP_DAC_READ_SEARCH CAP_SYS_PTRACE
+AmbientCapabilities=CAP_DAC_READ_SEARCH CAP_SYS_PTRACE
+NoNewPrivileges=yes
+
+# Everything read-only. No ReadWritePaths, so nothing is writable.
+ProtectSystem=strict
+ProtectHome=read-only
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RemoveIPC=yes
+SystemCallArchitectures=native
+DevicePolicy=closed
+
+# Network: Unix sockets (the connection itself) and netlink (read only).
+RestrictAddressFamilies=AF_UNIX AF_NETLINK
+IPAddressDeny=any
+
+# System calls. @system-service covers execve, clone, prctl, setrlimit,
+# waitid, kill and the setuid family used when running version commands.
+# @sandbox is needed for the probe's own seccomp filter (seccomp(2); without
+# it installing the filter fails with EPERM). memfd_create (containerd
+# meta.db copy, re-exec from a sealed memfd) and capset (dropping capabilities
+# in children) are added explicitly.
+# ptrace-class calls are not removed here: the probe's own filter does that.
+SystemCallFilter=@system-service @sandbox memfd_create capset
+SystemCallErrorNumber=EPERM
+
+# Resource limits: the probe is a background job on a production host.
+MemoryMax=1G
+MemorySwapMax=0
+TasksMax=256
+CPUWeight=20
+CPUQuota=50%
+IOWeight=20
+Nice=10
+IOSchedulingClass=idle
+LimitCORE=0

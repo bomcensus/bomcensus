@@ -4,6 +4,16 @@
 
 bomcensus collects the software installed and running on servers, containers, and Kubernetes, manages it as SBOMs, and matches it against vulnerability advisories.
 
+## Status
+
+Implemented: Linux agents (connect and listen mode), agentless collection over SSH, Kubernetes inventory and exec collection, automatic agent updates, and the web console. Not implemented yet: vulnerability matching, SBOM export and Windows support.
+
+## Getting started
+
+- [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md): building and running the server, agents and scanners with Docker Compose, Helm or systemd.
+- [docs/SECURITY.md](docs/SECURITY.md): security design, privileges and known limitations.
+- [docs/PROTOCOL.md](docs/PROTOCOL.md): signatures and sealed secrets on the agent protocol.
+
 ## License
 
 bomcensus is dual-licensed under the [AGPL-3.0-only](LICENSE) and a commercial license from JC-Lab. See [LICENSING.md](LICENSING.md).

@@ -1,0 +1,41 @@
+{
+ "v1": {
+  "snapshots": {
+   "default/3/plain": {
+    "id": {
+     "$hex": "19"
+    }
+   },
+   "k8s.io/3/1ed696fc57766b68f2060b6fc191208fb6083dbbec57d96369931a6795fdd6ad": {
+    "id": {
+     "$hex": "02"
+    }
+   },
+   "k8s.io/32/2a76ed4f1e98d1ab3b852d34ea92fdc192199425becf352f40131877d2f545fb": {
+    "id": {
+     "$hex": "11"
+    }
+   },
+   "k8s.io/33/de26a0aaedb269684c6d86cd8e9d79c47c87418531269bd5949a9c5d79327be3": {
+    "id": {
+     "$hex": "12"
+    }
+   },
+   "k8s.io/36/409e30b3c16a8b2fa979860a02041d9c5c92708e422cc8df037dd475bf03d09c": {
+    "id": {
+     "$hex": "14"
+    }
+   },
+   "k8s.io/37/fe2474114374eecc215190cd261abe3dd97f19b7b9605406458b5244dae73641": {
+    "id": {
+     "$hex": "15"
+    }
+   },
+   "k8s.io/40/c09d940cd58f26b761b3472cb93afbf074dcc86721d5f432176fc45454d626cf": {
+    "id": {
+     "$hex": "17"
+    }
+   }
+  }
+ }
+}

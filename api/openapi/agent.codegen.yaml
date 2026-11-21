@@ -1,0 +1,16 @@
+# Copyright (C) 2026 JC-Lab
+# SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-bomcensus-Commercial
+# Additional terms apply. See LICENSING.md.
+
+# oapi-codegen configuration for agent.yaml. Run `make generate`.
+package: agentapi
+output: internal/gen/agentapi/agentapi.gen.go
+generate:
+  models: true
+  chi-server: true
+  strict-server: true
+  client: true
+output-options:
+  # Keep schemas and header components that no operation references
+  # (sealed secret plaintext, signature headers).
+  skip-prune: true

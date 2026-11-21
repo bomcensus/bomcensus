@@ -1,0 +1,71 @@
+# Copyright (C) 2026 JC-Lab
+# SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-bomcensus-Commercial
+# Additional terms apply. See LICENSING.md.
+
+# bomcensus host agent (resident, unprivileged).
+#
+# The agent does not collect: it asks the probe over /run/bomcensus/probe.sock
+# and downloads releases into the update spool. It cannot write to
+# /opt/bomcensus, so a compromised agent cannot replace the probe binary.
+#
+# Spool: /var/lib/bomcensus/update-spool is owned by bomcensus:bomcensus-update,
+# mode 2770 (setgid). UMask=0027 makes the agent's files group-readable for
+# the updater, which reads and deletes them.
+
+[Unit]
+Description=bomcensus host agent
+Documentation=https://github.com/bomcensus/bomcensus
+Requires=bomcensus-boot-check.service
+After=bomcensus-boot-check.service network-online.target
+Wants=network-online.target
+# Restart forever; the delay below provides the backoff.
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=bomcensus
+Group=bomcensus
+UMask=0027
+Environment=BOMCENSUS_UPDATER=systemd
+ExecStart=/opt/bomcensus/current/bomcensus-agent run
+Restart=always
+RestartSec=5s
+# Backoff: 5 s growing to 5 min (systemd 254 and later; older versions ignore it).
+RestartSteps=6
+RestartMaxDelaySec=5min
+
+# Paths. StateDirectory= creates /var/lib/bomcensus/agent for the service
+# user. The spool is created by install.sh (it needs a different group).
+StateDirectory=bomcensus/agent
+StateDirectoryMode=0700
+ReadWritePaths=/var/lib/bomcensus/update-spool
+
+# Sandbox. The agent needs the network and the probe socket; nothing else.
+CapabilityBoundingSet=
+AmbientCapabilities=
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+ProcSubset=pid
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+RemoveIPC=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged
+
+[Install]
+WantedBy=multi-user.target

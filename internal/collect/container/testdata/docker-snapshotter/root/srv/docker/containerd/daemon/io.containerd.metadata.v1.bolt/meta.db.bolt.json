@@ -1,0 +1,108 @@
+{
+ "v1": {
+  "moby": {
+   "containers": {
+    "6423a4ec5ace4b555d7b405e61a7173dacf1614c747bec5561752cf5981c083f": {
+     "image": "docker.io/library/alpine:3.20",
+     "labels": {
+      "com.docker/engine.bundle.path": "/var/run/docker/containerd/6423a4ec5ace4b555d7b405e61a7173dacf1614c747bec5561752cf5981c083f"
+     },
+     "sandboxid": "",
+     "snapshotKey": "",
+     "snapshotter": ""
+    },
+    "8473ee65f0f5607623fccf9f78b755df98e3522383da1258806039e21ff0fc56": {
+     "image": "docker.io/library/busybox:1.36",
+     "labels": {
+      "com.docker/engine.bundle.path": "/var/run/docker/containerd/8473ee65f0f5607623fccf9f78b755df98e3522383da1258806039e21ff0fc56"
+     },
+     "sandboxid": "",
+     "snapshotKey": "",
+     "snapshotter": ""
+    }
+   },
+   "images": {
+    "docker.io/library/alpine:3.20": {
+     "target": {
+      "digest": "sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc",
+      "mediatype": "application/vnd.oci.image.index.v1+json",
+      "size": {
+       "$hex": "949001"
+      }
+     }
+    },
+    "docker.io/library/busybox:1.36": {
+     "target": {
+      "digest": "sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662",
+      "mediatype": "application/vnd.oci.image.index.v1+json",
+      "size": {
+       "$hex": "fe9401"
+      }
+     }
+    },
+    "docker.io/local/alpine:mine": {
+     "target": {
+      "digest": "sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc",
+      "mediatype": "application/vnd.oci.image.index.v1+json",
+      "size": {
+       "$hex": "949001"
+      }
+     }
+    }
+   },
+   "snapshots": {
+    "overlayfs": {
+     "6423a4ec5ace4b555d7b405e61a7173dacf1614c747bec5561752cf5981c083f": {
+      "name": "moby/7/6423a4ec5ace4b555d7b405e61a7173dacf1614c747bec5561752cf5981c083f",
+      "parent": "6423a4ec5ace4b555d7b405e61a7173dacf1614c747bec5561752cf5981c083f-init"
+     },
+     "6423a4ec5ace4b555d7b405e61a7173dacf1614c747bec5561752cf5981c083f-init": {
+      "name": "moby/6/6423a4ec5ace4b555d7b405e61a7173dacf1614c747bec5561752cf5981c083f-init",
+      "parent": "sha256:08bc4e534116aa76b16015484b82eac51f9a593416feae9296c8a2d4bb7aa4a2"
+     },
+     "8473ee65f0f5607623fccf9f78b755df98e3522383da1258806039e21ff0fc56": {
+      "name": "moby/10/8473ee65f0f5607623fccf9f78b755df98e3522383da1258806039e21ff0fc56",
+      "parent": "8473ee65f0f5607623fccf9f78b755df98e3522383da1258806039e21ff0fc56-init"
+     },
+     "8473ee65f0f5607623fccf9f78b755df98e3522383da1258806039e21ff0fc56-init": {
+      "name": "moby/9/8473ee65f0f5607623fccf9f78b755df98e3522383da1258806039e21ff0fc56-init",
+      "parent": "sha256:97e4ece8f8a4d01b66df2c55c1f1e8a2860597b54dffbbc0df2f9942062cb34d"
+     },
+     "fa28a60d54562728e6da4e3282dcbc6da71c44dddb910d36c942aa61e6d2e5f4": {
+      "name": "moby/13/fa28a60d54562728e6da4e3282dcbc6da71c44dddb910d36c942aa61e6d2e5f4",
+      "parent": "fa28a60d54562728e6da4e3282dcbc6da71c44dddb910d36c942aa61e6d2e5f4-init"
+     },
+     "fa28a60d54562728e6da4e3282dcbc6da71c44dddb910d36c942aa61e6d2e5f4-init": {
+      "name": "moby/12/fa28a60d54562728e6da4e3282dcbc6da71c44dddb910d36c942aa61e6d2e5f4-init",
+      "parent": "sha256:08bc4e534116aa76b16015484b82eac51f9a593416feae9296c8a2d4bb7aa4a2"
+     },
+     "sha256:08bc4e534116aa76b16015484b82eac51f9a593416feae9296c8a2d4bb7aa4a2": {
+      "labels": {
+       "containerd.io/snapshot.ref": "sha256:08bc4e534116aa76b16015484b82eac51f9a593416feae9296c8a2d4bb7aa4a2",
+       "containerd.io/snapshot/cri.image-layers": "sha256:25f1d6b1951ac8eb3740558fe94cb83d377bdadf95fd9f98b50d2e1b96130471",
+       "containerd.io/snapshot/cri.image-ref": "docker.io/library/alpine:3.20",
+       "containerd.io/snapshot/cri.layer-digest": "sha256:25f1d6b1951ac8eb3740558fe94cb83d377bdadf95fd9f98b50d2e1b96130471",
+       "containerd.io/snapshot/cri.manifest-digest": "sha256:c64c687cbea9300178b30c95835354e34c4e4febc4badfe27102879de0483b5e",
+       "containerd.io/snapshot/diff-id": "sha256:08bc4e534116aa76b16015484b82eac51f9a593416feae9296c8a2d4bb7aa4a2"
+      },
+      "name": "moby/2/sha256:08bc4e534116aa76b16015484b82eac51f9a593416feae9296c8a2d4bb7aa4a2"
+     },
+     "sha256:97e4ece8f8a4d01b66df2c55c1f1e8a2860597b54dffbbc0df2f9942062cb34d": {
+      "labels": {
+       "containerd.io/snapshot.ref": "sha256:97e4ece8f8a4d01b66df2c55c1f1e8a2860597b54dffbbc0df2f9942062cb34d",
+       "containerd.io/snapshot/cri.image-layers": "sha256:034d6572bf287fa79604fee9be062f0683809ae3a3685bc7b0e17bd1c48c50e8",
+       "containerd.io/snapshot/cri.image-ref": "docker.io/library/busybox:1.36",
+       "containerd.io/snapshot/cri.layer-digest": "sha256:034d6572bf287fa79604fee9be062f0683809ae3a3685bc7b0e17bd1c48c50e8",
+       "containerd.io/snapshot/cri.manifest-digest": "sha256:b7f3d86d6e84fc17718c48bcde1450807faa2d56704205c697b4bd5df7b9e29f",
+       "containerd.io/snapshot/diff-id": "sha256:97e4ece8f8a4d01b66df2c55c1f1e8a2860597b54dffbbc0df2f9942062cb34d"
+      },
+      "name": "moby/4/sha256:97e4ece8f8a4d01b66df2c55c1f1e8a2860597b54dffbbc0df2f9942062cb34d"
+     }
+    }
+   }
+  },
+  "version": {
+   "$hex": "08"
+  }
+ }
+}

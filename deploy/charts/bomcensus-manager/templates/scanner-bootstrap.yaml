@@ -1,0 +1,126 @@
+{{- /*
+  Copyright (C) 2026 JC-Lab
+  SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-bomcensus-Commercial
+  Additional terms apply. See LICENSING.md.
+*/ -}}
+
+{{- if include "bomcensus-manager.scannerBootstrap" . }}
+{{- $fullname := include "bomcensus-manager.fullname" . }}
+{{- $name := printf "%s-scanner-bootstrap" $fullname }}
+{{- $secret := include "bomcensus-manager.scannerSecret" . }}
+{{- $b := .Values.scannerBootstrap }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "bomcensus-manager.labels" . | nindent 4 }}
+    app.kubernetes.io/component: scanner-bootstrap
+automountServiceAccountToken: false
+---
+# Only the enrollment Secret. create cannot be limited to a name by RBAC
+# (the name is not part of a create request), so it covers Secrets of the
+# namespace; get and update are limited to the one Secret.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "bomcensus-manager.labels" . | nindent 4 }}
+    app.kubernetes.io/component: scanner-bootstrap
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["create"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    resourceNames: [{{ $secret | quote }}]
+    verbs: ["get", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "bomcensus-manager.labels" . | nindent 4 }}
+    app.kubernetes.io/component: scanner-bootstrap
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ $name }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ $name }}
+    namespace: {{ .Release.Namespace }}
+---
+# Creates the scanner's Register Key once the server has bootstrapped its
+# PKI and writes the enrollment string into the Secret {{ $secret }}; the
+# scanner pod starts when the Secret exists. Running it again keeps a
+# string that can still enroll.
+#
+# This is a plain Job, not a Helm hook: post-install hooks run only after
+# "helm install --wait" has seen every resource ready, and the scanner
+# cannot become ready before this Job has run. The name carries the release
+# revision because a Job's pod template cannot be changed; Helm removes the
+# Job of the previous revision on upgrade.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ printf "%s-%d" $name .Release.Revision | trunc 63 | trimSuffix "-" }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "bomcensus-manager.labels" . | nindent 4 }}
+    app.kubernetes.io/component: scanner-bootstrap
+spec:
+  backoffLimit: {{ $b.backoffLimit }}
+  template:
+    metadata:
+      labels:
+        {{- include "bomcensus-manager.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: scanner-bootstrap
+    spec:
+      restartPolicy: Never
+      serviceAccountName: {{ $name }}
+      automountServiceAccountToken: true
+      enableServiceLinks: false
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: bootstrap
+          image: {{ include "bomcensus-manager.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - bootstrap-scanner
+            - --secret-namespace={{ .Release.Namespace }}
+            - --secret-name={{ $secret }}
+            - --key-name={{ $b.keyName }}
+            - --max-uses={{ $b.maxUses }}
+            - --timeout={{ $b.timeout }}
+          env:
+            {{- include "bomcensus-manager.commonEnv" . | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          resources:
+            {{- toYaml $b.resources | nindent 12 }}
+          volumeMounts:
+            - name: master-key
+              mountPath: /etc/bomcensus/master-key
+              readOnly: true
+      volumes:
+        {{- include "bomcensus-manager.masterKeyVolume" . | nindent 8 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

@@ -1,0 +1,137 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "bomcensus-scanner values",
+  "type": "object",
+  "definitions": {
+    "stringList": {"type": "array", "items": {"type": "string"}},
+    "stringMap": {"type": "object", "additionalProperties": {"type": "string"}},
+    "labelSelector": {
+      "type": "object",
+      "properties": {
+        "matchLabels": {"$ref": "#/definitions/stringMap"},
+        "matchExpressions": {"type": "array"}
+      },
+      "additionalProperties": false
+    }
+  },
+  "properties": {
+    "global": {"type": "object"},
+    "enabled": {"type": "boolean"},
+    "image": {
+      "type": "object",
+      "properties": {
+        "repository": {"type": "string", "minLength": 1},
+        "tag": {"type": "string"},
+        "pullPolicy": {"type": "string", "enum": ["Always", "IfNotPresent", "Never"]}
+      },
+      "required": ["repository"],
+      "additionalProperties": false
+    },
+    "imagePullSecrets": {"type": "array"},
+    "nameOverride": {"type": "string"},
+    "fullnameOverride": {"type": "string"},
+    "server": {
+      "type": "object",
+      "properties": {
+        "url": {"type": "string", "pattern": "^(|https://.+)$"},
+        "name": {"type": "string"},
+        "tlsVerify": {"type": "string", "enum": ["pinned", "system", "none"]}
+      },
+      "additionalProperties": false
+    },
+    "bundled": {"type": "boolean"},
+    "enrollment": {
+      "type": "object",
+      "properties": {
+        "token": {"type": "string", "pattern": "^(|\\s*bc1\\..+)$"},
+        "existingSecret": {
+          "type": "object",
+          "properties": {
+            "name": {"type": "string"},
+            "key": {"type": "string"}
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "logLevel": {"type": "string", "enum": ["debug", "info", "warn", "error"]},
+    "workers": {"type": "integer", "minimum": 1},
+    "backlog": {"type": "integer", "minimum": 0},
+    "extraArgs": {"$ref": "#/definitions/stringList"},
+    "extraEnv": {"type": "array"},
+    "persistence": {
+      "type": "object",
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "size": {"type": "string"},
+        "storageClass": {"type": "string"},
+        "accessModes": {"$ref": "#/definitions/stringList"},
+        "annotations": {"$ref": "#/definitions/stringMap"}
+      },
+      "additionalProperties": false
+    },
+    "serviceAccount": {
+      "type": "object",
+      "properties": {
+        "create": {"type": "boolean"},
+        "name": {"type": "string"},
+        "annotations": {"$ref": "#/definitions/stringMap"}
+      },
+      "additionalProperties": false
+    },
+    "rbac": {
+      "type": "object",
+      "properties": {
+        "create": {"type": "boolean"},
+        "exec": {"type": "boolean"},
+        "namespaces": {"$ref": "#/definitions/stringList"}
+      },
+      "additionalProperties": false
+    },
+    "podSecurityContext": {"type": "object"},
+    "securityContext": {"type": "object"},
+    "resources": {"type": "object"},
+    "podAnnotations": {"$ref": "#/definitions/stringMap"},
+    "podLabels": {"$ref": "#/definitions/stringMap"},
+    "priorityClassName": {"type": "string"},
+    "nodeSelector": {"$ref": "#/definitions/stringMap"},
+    "tolerations": {"type": "array"},
+    "affinity": {"type": "object"},
+    "networkPolicy": {
+      "type": "object",
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "server": {
+          "type": "object",
+          "properties": {
+            "port": {"type": "integer", "minimum": 1, "maximum": 65535},
+            "podSelector": {"$ref": "#/definitions/labelSelector"},
+            "namespaceSelector": {"$ref": "#/definitions/labelSelector"},
+            "cidrs": {"$ref": "#/definitions/stringList"}
+          },
+          "additionalProperties": false
+        },
+        "apiServer": {
+          "type": "object",
+          "properties": {
+            "cidrs": {"$ref": "#/definitions/stringList"},
+            "ports": {"type": "array", "items": {"type": "integer", "minimum": 1, "maximum": 65535}}
+          },
+          "additionalProperties": false
+        },
+        "dns": {
+          "type": "object",
+          "properties": {
+            "enabled": {"type": "boolean"},
+            "namespaceSelector": {"$ref": "#/definitions/labelSelector"},
+            "podSelector": {"$ref": "#/definitions/labelSelector"}
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

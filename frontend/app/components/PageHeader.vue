@@ -1,5 +1,11 @@
+<!--
+  Copyright (C) 2026 JC-Lab
+  SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-bomcensus-Commercial
+  Additional terms apply. See LICENSING.md.
+-->
+
 <script setup lang="ts">
-// 페이지 상단. 기본 슬롯은 제목 아래(탭 등), actions 슬롯은 오른쪽 버튼.
+// Page top. The default slot goes below the title (tabs etc.); the actions slot holds the buttons on the right.
 defineProps<{ title: string; subtitle?: string; back?: { to: string; label: string } }>()
 </script>
 

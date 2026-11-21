@@ -1,0 +1,35 @@
+{{- /*
+  Copyright (C) 2026 JC-Lab
+  SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-bomcensus-Commercial
+  Additional terms apply. See LICENSING.md.
+*/ -}}
+
+bomcensus scanner {{ include "bomcensus-scanner.fullname" . }} is installed in namespace {{ .Release.Namespace }}.
+
+Server:     {{ include "bomcensus-scanner.serverURL" . }}
+Enrollment: Secret {{ include "bomcensus-scanner.tokenSecretName" . }}, key {{ include "bomcensus-scanner.tokenSecretKey" . }}
+{{- if and .Values.bundled (not .Values.enrollment.token) (not .Values.enrollment.existingSecret.name) }}
+            (written by the bootstrap Job of the bomcensus-manager release; the
+            pod waits until it exists)
+{{- end }}
+
+Check the enrollment:
+
+  kubectl -n {{ .Release.Namespace }} logs {{ include "bomcensus-scanner.fullname" . }}-0 -c enroll
+  kubectl -n {{ .Release.Namespace }} logs {{ include "bomcensus-scanner.fullname" . }}-0 -c scanner
+
+The scanner then appears under Agents in the console. To collect this
+cluster, register it in the console (Kubernetes > add cluster) with this
+scanner and the in-cluster connection.
+{{- if not .Values.rbac.exec }}
+
+Exec collection is not allowed (rbac.exec=false): only the image inventory
+is collected. Set rbac.exec=true (optionally with rbac.namespaces) to
+collect packages and files inside running containers.
+{{- end }}
+{{- if not .Values.persistence.enabled }}
+
+WARNING: persistence is disabled. The scanner identity lives in an emptyDir
+and is lost with the pod; every new pod enrolls again and needs a Register
+Key with uses left.
+{{- end }}

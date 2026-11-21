@@ -1,0 +1,26 @@
+{{- /*
+  Copyright (C) 2026 JC-Lab
+  SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-bomcensus-Commercial
+  Additional terms apply. See LICENSING.md.
+*/ -}}
+
+{{- if .Values.podDisruptionBudget.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "bomcensus-manager.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "bomcensus-manager.labels" . | nindent 4 }}
+    app.kubernetes.io/component: server
+spec:
+  {{- if not (kindIs "invalid" .Values.podDisruptionBudget.maxUnavailable) }}
+  maxUnavailable: {{ .Values.podDisruptionBudget.maxUnavailable }}
+  {{- else }}
+  minAvailable: {{ .Values.podDisruptionBudget.minAvailable }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "bomcensus-manager.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: server
+{{- end }}

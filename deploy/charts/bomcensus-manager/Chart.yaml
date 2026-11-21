@@ -1,0 +1,24 @@
+# Copyright (C) 2026 JC-Lab
+# SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-bomcensus-Commercial
+# Additional terms apply. See LICENSING.md.
+
+apiVersion: v2
+name: bomcensus-manager
+description: bomcensus server (console, administrative API and agent gateway), optionally with a CloudNativePG database and an in-cluster scanner
+type: application
+version: 0.1.0
+# Placeholder; the release pipeline sets the real version.
+appVersion: "0.0.0-dev"
+kubeVersion: ">=1.27.0-0"
+home: https://github.com/bomcensus/bomcensus
+sources:
+  - https://github.com/bomcensus/bomcensus
+keywords:
+  - sbom
+  - inventory
+dependencies:
+  - name: bomcensus-scanner
+    alias: scanner
+    version: 0.1.0
+    repository: file://../bomcensus-scanner
+    condition: scanner.enabled

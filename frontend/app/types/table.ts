@@ -1,13 +1,17 @@
+// Copyright (C) 2026 JC-Lab
+// SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-bomcensus-Commercial
+// Additional terms apply. See LICENSING.md.
+
 export interface TableColumn<T> {
   key: string
   label: string
   align?: 'left' | 'right' | 'center'
-  /** CSS 너비 (예: '120px', '18%') */
+  /** CSS width (e.g. '120px', '18%') */
   width?: string
-  /** 지정하면 헤더를 눌러 정렬할 수 있다 */
+  /** When set, clicking the header sorts by this column */
   sortValue?: (row: T) => string | number | undefined
-  /** 셀을 고정폭 글꼴로 표시 */
+  /** Show the cell in a monospaced font */
   mono?: boolean
-  /** 이 폭 미만에서는 열을 숨긴다 */
+  /** Hide the column below this width */
   hideBelow?: 'sm' | 'md' | 'lg'
 }

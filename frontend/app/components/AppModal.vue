@@ -1,7 +1,13 @@
+<!--
+  Copyright (C) 2026 JC-Lab
+  SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-bomcensus-Commercial
+  Additional terms apply. See LICENSING.md.
+-->
+
 <script setup lang="ts">
 import { X } from '@lucide/vue'
 
-// <dialog> 기반 모달. v-model:open 으로 연다. footer 슬롯에 버튼을 둔다.
+// Modal based on <dialog>. Opened with v-model:open. Put buttons in the footer slot.
 const open = defineModel<boolean>('open', { required: true })
 defineProps<{ title: string; wide?: boolean }>()
 

@@ -1,0 +1,253 @@
+# Copyright (C) 2026 JC-Lab
+# SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-bomcensus-Commercial
+# Additional terms apply. See LICENSING.md.
+
+image:
+  repository: bomcensus/server
+  # Defaults to the chart's appVersion.
+  tag: ""
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+# Objects are named after the release (<release>-web, <release>-agent, …).
+# With an override, set scanner.server.url when scanner.enabled is true.
+fullnameOverride: ""
+
+# All state is in PostgreSQL, so replicas can be added. Every replica gets
+# the same configuration, including BOMCENSUS_AGENT_SERVER_NAMES.
+replicaCount: 1
+
+# Log level (debug, info, warn, error) and format (text, json).
+logLevel: info
+logFormat: json
+
+# Run the scanner inside the server process (SSH targets and clusters
+# registered with a kubeconfig).
+embeddedScanner: true
+
+# Kubernetes cluster domain, used for the DNS names in the Agent TLS
+# certificate.
+clusterDomain: cluster.local
+
+web:
+  # TLS of the console listener: auto (internal CA) or manual (certificate
+  # uploaded in the console). Always "off" when ingress.enabled is true;
+  # the ingress terminates TLS then.
+  tls: auto
+  # Additional names in the automatic Web/API certificate (the Service DNS
+  # names are always included).
+  extraServerNames: []
+  service:
+    type: ClusterIP
+    port: 8080
+    nodePort: null
+    annotations: {}
+
+agent:
+  # Additional names in the Agent TLS certificate, for example the DNS name
+  # or address agents outside the cluster use. The agent Service DNS names
+  # are always included. Agents verify the name, so every address they
+  # connect to must be listed.
+  extraServerNames: []
+  # The agent port is exposed by a Service only, never by an Ingress:
+  # agents authenticate with client certificates (mTLS), so TLS must
+  # terminate in the server. Anything in front of it may only pass TCP
+  # (a LoadBalancer or NodePort Service, or an L4 proxy).
+  service:
+    # ClusterIP, NodePort or LoadBalancer.
+    type: ClusterIP
+    port: 8443
+    nodePort: null
+    annotations: {}
+    loadBalancerIP: ""
+    loadBalancerSourceRanges: []
+    # Local keeps the client address, which Register Keys with allowed
+    # source ranges check. Empty leaves the Kubernetes default (Cluster).
+    externalTrafficPolicy: ""
+
+ingress:
+  # Ingress for the console port. When enabled, the server speaks plain
+  # HTTP (BOMCENSUS_WEB_TLS=off) and trusts X-Forwarded-* headers
+  # (BOMCENSUS_TRUST_PROXY=true); only the ingress controller must be able
+  # to reach the web port then.
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: bomcensus.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+  #  - secretName: bomcensus-tls
+  #    hosts:
+  #      - bomcensus.example.com
+
+# The master key (32 random bytes, base64) encrypts the CA keys and the
+# stored credentials. LOSING IT LOSES THE PKI AND ALL CREDENTIALS: every
+# agent would have to enroll again. Back it up.
+masterKey:
+  # Use this value (not recommended: it ends up in the Helm release).
+  value: ""
+  # Or an existing Secret.
+  existingSecret:
+    name: ""
+    key: master-key
+  # Without value or existingSecret the chart generates a key on the first
+  # install and keeps it on upgrades. The Secret carries
+  # helm.sh/resource-policy: keep, so "helm uninstall" leaves it in place.
+
+# The single console user. The server only accepts an argon2id hash:
+#   echo -n 'password' | docker run --rm -i bomcensus/server hash-password
+#   kubectl run -i --rm hash --image=bomcensus/server --restart=Never -- hash-password
+admin:
+  user: admin
+  passwordHash: ""
+  # Or an existing Secret holding the hash (and optionally the user name).
+  existingSecret:
+    name: ""
+    passwordHashKey: password-hash
+    # When set, the user name is read from this key instead of admin.user.
+    userKey: ""
+
+# Database: exactly one of database.url, database.existingSecret.name,
+# cnpg.cluster.create or cnpg.database.create.
+database:
+  # PostgreSQL URL, postgres://user:password@host:5432/bomcensus. Stored in
+  # a Secret of the release.
+  url: ""
+  existingSecret:
+    name: ""
+    key: url
+
+cnpg:
+  # A CloudNativePG Cluster for this release. The server uses the
+  # application user and its generated Secret (<cluster>-app, key uri).
+  cluster:
+    create: false
+    # Default: <fullname>-pg.
+    name: ""
+    instances: 1
+    # PostgreSQL image; empty uses the operator's default.
+    imageName: ""
+    database: bomcensus
+    owner: bomcensus
+    storage:
+      size: 8Gi
+      # Empty uses the cluster's default StorageClass.
+      storageClass: ""
+    resources: {}
+    # postgresql.parameters of the Cluster.
+    parameters: {}
+    affinity: {}
+  # A database in an existing CloudNativePG Cluster: a Database resource,
+  # its owner role and a password Secret, all created in the namespace of
+  # that Cluster.
+  database:
+    create: false
+    # Name of the existing Cluster (required).
+    cluster: ""
+    # Namespace of the Cluster. Default: the release namespace.
+    namespace: ""
+    # Database name. Default: bomcensus_<release name>.
+    name: ""
+    # Owner role. Default: the database name.
+    owner: ""
+    # Create the owner role as a DatabaseRole (CloudNativePG 1.30 or later).
+    # With false, add the role to the Cluster yourself
+    # (spec.managed.roles, see the chart README); the chart still creates
+    # the password Secret the role refers to.
+    createRole: true
+    # retain or delete: what happens to the database and the role in
+    # PostgreSQL when the release is removed.
+    reclaimPolicy: retain
+    # Host and port of the primary. Default: <cluster>-rw.<namespace>.svc:5432.
+    host: ""
+    port: 5432
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+  # The server does not use the Kubernetes API.
+  automountToken: false
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  fsGroup: 65532
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  privileged: false
+  capabilities:
+    drop:
+      - ALL
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    memory: 1Gi
+
+probes:
+  startup:
+    periodSeconds: 5
+    failureThreshold: 60
+  liveness:
+    periodSeconds: 20
+    timeoutSeconds: 5
+    failureThreshold: 3
+  readiness:
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1
+  maxUnavailable: null
+
+podAnnotations: {}
+podLabels: {}
+priorityClassName: ""
+nodeSelector: {}
+tolerations: []
+affinity: {}
+topologySpreadConstraints: []
+extraEnv: []
+extraVolumes: []
+extraVolumeMounts: []
+
+# In-cluster scanner (the bomcensus-scanner chart). Its server URL points to
+# the agent Service of this release. Without scanner.enrollment.token or
+# scanner.enrollment.existingSecret.name, a Job of this chart
+# ("bomcensus-server bootstrap-scanner") creates a Register Key and writes
+# the enrollment string into the Secret <release>-scanner-enrollment.
+# All values of the bomcensus-scanner chart can be set here.
+scanner:
+  enabled: false
+  bundled: true
+
+scannerBootstrap:
+  # Name and maximum uses of the Register Key created for the scanner.
+  # One use is enough while the scanner keeps its state (persistence);
+  # raise it when scanner.persistence.enabled is false.
+  keyName: in-cluster scanner
+  maxUses: 1
+  # How long the Job waits for the database and for the server to create
+  # the PKI.
+  timeout: 15m
+  backoffLimit: 4
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      memory: 128Mi

@@ -1,0 +1,164 @@
+{{- /*
+  Copyright (C) 2026 JC-Lab
+  SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-bomcensus-Commercial
+  Additional terms apply. See LICENSING.md.
+*/ -}}
+
+{{- $fullname := include "bomcensus-manager.fullname" . }}
+{{- $webTLS := include "bomcensus-manager.webTLS" . }}
+{{- if and .Values.scanner.enabled .Values.fullnameOverride (ne $fullname .Release.Name) (not (dig "server" "url" "" .Values.scanner)) }}
+{{- fail "with fullnameOverride, set scanner.server.url to the agent Service of this release" }}
+{{- end }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fullname }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "bomcensus-manager.labels" . | nindent 4 }}
+    app.kubernetes.io/component: server
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "bomcensus-manager.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: server
+  template:
+    metadata:
+      labels:
+        {{- include "bomcensus-manager.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: server
+        app.kubernetes.io/part-of: bomcensus
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      annotations:
+        checksum/config: {{ printf "%s|%s|%s" (include "bomcensus-manager.agentServerNames" .) (include "bomcensus-manager.webServerNames" .) $webTLS | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "bomcensus-manager.serviceAccountName" . }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automountToken }}
+      enableServiceLinks: false
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.priorityClassName }}
+      priorityClassName: {{ . }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: server
+          image: {{ include "bomcensus-manager.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: ["serve"]
+          env:
+            {{- include "bomcensus-manager.commonEnv" . | nindent 12 }}
+            {{- if or .Values.admin.user .Values.admin.existingSecret.name }}
+            - name: BOMCENSUS_ADMIN_USER
+              {{- if and .Values.admin.existingSecret.name .Values.admin.existingSecret.userKey }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "bomcensus-manager.adminSecret" . }}
+                  key: {{ .Values.admin.existingSecret.userKey }}
+              {{- else }}
+              value: {{ required "admin.user is required" .Values.admin.user | quote }}
+              {{- end }}
+            - name: BOMCENSUS_ADMIN_PASSWORD_HASH
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "bomcensus-manager.adminSecret" . }}
+                  key: {{ if .Values.admin.existingSecret.name }}{{ default "password-hash" .Values.admin.existingSecret.passwordHashKey }}{{ else }}password-hash{{ end }}
+            {{- end }}
+            - name: BOMCENSUS_WEB_LISTEN
+              value: ":8080"
+            - name: BOMCENSUS_WEB_TLS
+              value: {{ $webTLS | quote }}
+            {{- if ne $webTLS "off" }}
+            - name: BOMCENSUS_WEB_SERVER_NAMES
+              value: {{ include "bomcensus-manager.webServerNames" . | quote }}
+            {{- end }}
+            - name: BOMCENSUS_TRUST_PROXY
+              value: {{ .Values.ingress.enabled | quote }}
+            - name: BOMCENSUS_AGENT_LISTEN
+              value: ":8443"
+            # Identical on every replica: the Agent TLS certificate is
+            # shared through the database.
+            - name: BOMCENSUS_AGENT_SERVER_NAMES
+              value: {{ include "bomcensus-manager.agentServerNames" . | quote }}
+            - name: BOMCENSUS_EMBEDDED_SCANNER
+              value: {{ .Values.embeddedScanner | quote }}
+            {{- with .Values.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          ports:
+            - name: web
+              containerPort: 8080
+              protocol: TCP
+            - name: agent
+              containerPort: 8443
+              protocol: TCP
+          {{- $scheme := ternary "HTTP" "HTTPS" (eq $webTLS "off") }}
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: web
+              scheme: {{ $scheme }}
+            periodSeconds: {{ .Values.probes.startup.periodSeconds }}
+            failureThreshold: {{ .Values.probes.startup.failureThreshold }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: web
+              scheme: {{ $scheme }}
+            periodSeconds: {{ .Values.probes.liveness.periodSeconds }}
+            timeoutSeconds: {{ .Values.probes.liveness.timeoutSeconds }}
+            failureThreshold: {{ .Values.probes.liveness.failureThreshold }}
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: web
+              scheme: {{ $scheme }}
+            periodSeconds: {{ .Values.probes.readiness.periodSeconds }}
+            timeoutSeconds: {{ .Values.probes.readiness.timeoutSeconds }}
+            failureThreshold: {{ .Values.probes.readiness.failureThreshold }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: master-key
+              mountPath: /etc/bomcensus/master-key
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+            {{- with .Values.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+      volumes:
+        {{- include "bomcensus-manager.masterKeyVolume" . | nindent 8 }}
+        - name: tmp
+          emptyDir:
+            sizeLimit: 512Mi
+        {{- with .Values.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

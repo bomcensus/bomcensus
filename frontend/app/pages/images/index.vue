@@ -1,20 +1,25 @@
+<!--
+  Copyright (C) 2026 JC-Lab
+  SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-bomcensus-Commercial
+  Additional terms apply. See LICENSING.md.
+-->
+
 <script setup lang="ts">
 import type { ContainerImage } from '~/types'
 import type { TableColumn } from '~/types/table'
-import { imageContentKnown, imageUsage, images, severityCountsOfImage, totalOf } from '~/mock'
+import { fetchAll, listImages } from '~/api'
 
 useHead({ title: '이미지 · bomcensus' })
+
+const { data: images, pending, error, refresh } = useLoad('images', () => fetchAll((page) => listImages(page)), () => [])
 
 const q = ref('')
 const inUseOnly = ref(false)
 
-const usage = (i: ContainerImage) => imageUsage(i.digest)
-const counts = (i: ContainerImage) => severityCountsOfImage(i.digest)
-
 const rows = computed(() => {
   const needle = q.value.trim().toLowerCase()
-  return images.filter((i) => {
-    if (inUseOnly.value && usage(i).containers === 0) return false
+  return images.value.filter((i) => {
+    if (inUseOnly.value && i.usage.containers === 0) return false
     if (!needle) return true
     return [i.digest, ...i.repoTags].some((v) => v.toLowerCase().includes(needle))
   })
@@ -26,8 +31,7 @@ const columns: TableColumn<ContainerImage>[] = [
   { key: 'os', label: 'OS', sortValue: (i) => i.os ?? '', hideBelow: 'lg' },
   { key: 'arch', label: '아키텍처', sortValue: (i) => i.arch, hideBelow: 'lg' },
   { key: 'size', label: '크기', align: 'right', sortValue: (i) => i.sizeBytes, hideBelow: 'md' },
-  { key: 'usage', label: '사용 대상', sortValue: (i) => usage(i).instances },
-  { key: 'vulns', label: '취약점', sortValue: (i) => -(counts(i).critical * 1e6 + counts(i).high * 1e3 + totalOf(counts(i))) },
+  { key: 'usage', label: '사용 대상', sortValue: (i) => i.usage.instances },
   { key: 'firstSeen', label: '최초 발견', align: 'right', sortValue: (i) => i.firstSeen, hideBelow: 'md' },
 ]
 </script>
@@ -44,13 +48,15 @@ const columns: TableColumn<ContainerImage>[] = [
     </FilterBar>
 
     <Panel flush>
+      <LoadError v-if="error" :error="error" @retry="refresh" />
       <DataTable
+        v-else
         :columns="columns"
         :rows="rows"
         :row-key="(i) => i.digest"
         :row-to="(i) => `/images/${encodeURIComponent(i.digest)}`"
         :page-size="25"
-        :initial-sort="{ key: 'vulns', dir: 'asc' }"
+        :loading="pending"
       >
         <template #cell-tag="{ row }">
           <NuxtLink :to="`/images/${encodeURIComponent(row.digest)}`" class="mono font-medium hover:underline">
@@ -60,17 +66,13 @@ const columns: TableColumn<ContainerImage>[] = [
         </template>
         <template #cell-digest="{ row }"><span class="mono whitespace-nowrap">{{ shortHash(row.digest) }}</span></template>
         <template #cell-os="{ row }">{{ row.os ?? '—' }}</template>
-        <template #cell-arch="{ row }"><span class="mono whitespace-nowrap">{{ row.arch }}</span></template>
+        <template #cell-arch="{ row }"><span class="mono whitespace-nowrap">{{ row.arch ?? '—' }}</span></template>
         <template #cell-size="{ row }"><span class="mono whitespace-nowrap">{{ formatBytes(row.sizeBytes) }}</span></template>
         <template #cell-usage="{ row }">
-          <span v-if="usage(row).containers" class="whitespace-nowrap text-ink-2">
-            자산 {{ usage(row).assets }} · 인스턴스 {{ usage(row).instances }}
+          <span v-if="row.usage.containers" class="whitespace-nowrap text-ink-2">
+            자산 {{ row.usage.assets }} · 인스턴스 {{ row.usage.instances }}
           </span>
           <span v-else class="text-ink-3">미사용</span>
-        </template>
-        <template #cell-vulns="{ row }">
-          <SeverityCounts v-if="imageContentKnown(row.digest)" :counts="counts(row)" />
-          <span v-else class="whitespace-nowrap text-xs text-ink-3">확인 불가</span>
         </template>
         <template #cell-firstSeen="{ row }"><TimeAgo :at="row.firstSeen" class="whitespace-nowrap text-ink-2" /></template>
       </DataTable>

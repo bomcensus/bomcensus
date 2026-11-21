@@ -1,0 +1,246 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "bomcensus-manager values",
+  "type": "object",
+  "definitions": {
+    "stringList": {"type": "array", "items": {"type": "string"}},
+    "stringMap": {"type": "object", "additionalProperties": {"type": "string"}},
+    "nodePort": {"type": ["integer", "null"], "minimum": 30000, "maximum": 32767},
+    "secretRef": {
+      "type": "object",
+      "properties": {
+        "name": {"type": "string"},
+        "key": {"type": "string"}
+      },
+      "additionalProperties": false
+    }
+  },
+  "properties": {
+    "global": {"type": "object"},
+    "image": {
+      "type": "object",
+      "properties": {
+        "repository": {"type": "string", "minLength": 1},
+        "tag": {"type": "string"},
+        "pullPolicy": {"type": "string", "enum": ["Always", "IfNotPresent", "Never"]}
+      },
+      "required": ["repository"],
+      "additionalProperties": false
+    },
+    "imagePullSecrets": {"type": "array"},
+    "nameOverride": {"type": "string"},
+    "fullnameOverride": {"type": "string", "maxLength": 42},
+    "replicaCount": {"type": "integer", "minimum": 0},
+    "logLevel": {"type": "string", "enum": ["debug", "info", "warn", "error"]},
+    "logFormat": {"type": "string", "enum": ["text", "json"]},
+    "embeddedScanner": {"type": "boolean"},
+    "clusterDomain": {"type": "string", "minLength": 1},
+    "web": {
+      "type": "object",
+      "properties": {
+        "tls": {"type": "string", "enum": ["auto", "manual"]},
+        "extraServerNames": {"$ref": "#/definitions/stringList"},
+        "service": {
+          "type": "object",
+          "properties": {
+            "type": {"type": "string", "enum": ["ClusterIP", "NodePort", "LoadBalancer"]},
+            "port": {"type": "integer", "minimum": 1, "maximum": 65535},
+            "nodePort": {"$ref": "#/definitions/nodePort"},
+            "annotations": {"$ref": "#/definitions/stringMap"}
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "agent": {
+      "type": "object",
+      "properties": {
+        "extraServerNames": {"$ref": "#/definitions/stringList"},
+        "service": {
+          "type": "object",
+          "properties": {
+            "type": {"type": "string", "enum": ["ClusterIP", "NodePort", "LoadBalancer"]},
+            "port": {"type": "integer", "minimum": 1, "maximum": 65535},
+            "nodePort": {"$ref": "#/definitions/nodePort"},
+            "annotations": {"$ref": "#/definitions/stringMap"},
+            "loadBalancerIP": {"type": "string"},
+            "loadBalancerSourceRanges": {"$ref": "#/definitions/stringList"},
+            "externalTrafficPolicy": {"type": "string", "enum": ["", "Cluster", "Local"]}
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "ingress": {
+      "type": "object",
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "className": {"type": "string"},
+        "annotations": {"$ref": "#/definitions/stringMap"},
+        "hosts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "host": {"type": "string"},
+              "paths": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "path": {"type": "string"},
+                    "pathType": {"type": "string", "enum": ["Prefix", "Exact", "ImplementationSpecific"]}
+                  },
+                  "required": ["path"]
+                }
+              }
+            },
+            "required": ["host", "paths"]
+          }
+        },
+        "tls": {"type": "array"}
+      },
+      "additionalProperties": false
+    },
+    "masterKey": {
+      "type": "object",
+      "properties": {
+        "value": {"type": "string"},
+        "existingSecret": {"$ref": "#/definitions/secretRef"}
+      },
+      "additionalProperties": false
+    },
+    "admin": {
+      "type": "object",
+      "properties": {
+        "user": {"type": "string"},
+        "passwordHash": {"type": "string", "pattern": "^(|\\$argon2id\\$.+)$"},
+        "existingSecret": {
+          "type": "object",
+          "properties": {
+            "name": {"type": "string"},
+            "passwordHashKey": {"type": "string"},
+            "userKey": {"type": "string"}
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "database": {
+      "type": "object",
+      "properties": {
+        "url": {"type": "string", "pattern": "^(|postgres(ql)?://.+)$"},
+        "existingSecret": {"$ref": "#/definitions/secretRef"}
+      },
+      "additionalProperties": false
+    },
+    "cnpg": {
+      "type": "object",
+      "properties": {
+        "cluster": {
+          "type": "object",
+          "properties": {
+            "create": {"type": "boolean"},
+            "name": {"type": "string"},
+            "instances": {"type": "integer", "minimum": 1},
+            "imageName": {"type": "string"},
+            "database": {"type": "string", "minLength": 1},
+            "owner": {"type": "string", "minLength": 1},
+            "storage": {
+              "type": "object",
+              "properties": {
+                "size": {"type": "string", "minLength": 1},
+                "storageClass": {"type": "string"}
+              },
+              "additionalProperties": false
+            },
+            "resources": {"type": "object"},
+            "parameters": {"type": "object"},
+            "affinity": {"type": "object"}
+          },
+          "additionalProperties": false
+        },
+        "database": {
+          "type": "object",
+          "properties": {
+            "create": {"type": "boolean"},
+            "cluster": {"type": "string"},
+            "namespace": {"type": "string"},
+            "name": {"type": "string", "pattern": "^(|[a-z_][a-z0-9_]*)$", "maxLength": 63},
+            "owner": {"type": "string", "pattern": "^(|[a-z_][a-z0-9_]*)$", "maxLength": 63},
+            "createRole": {"type": "boolean"},
+            "reclaimPolicy": {"type": "string", "enum": ["retain", "delete"]},
+            "host": {"type": "string"},
+            "port": {"type": "integer", "minimum": 1, "maximum": 65535}
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "serviceAccount": {
+      "type": "object",
+      "properties": {
+        "create": {"type": "boolean"},
+        "name": {"type": "string"},
+        "annotations": {"$ref": "#/definitions/stringMap"},
+        "automountToken": {"type": "boolean"}
+      },
+      "additionalProperties": false
+    },
+    "podSecurityContext": {"type": "object"},
+    "securityContext": {"type": "object"},
+    "resources": {"type": "object"},
+    "probes": {
+      "type": "object",
+      "properties": {
+        "startup": {"type": "object"},
+        "liveness": {"type": "object"},
+        "readiness": {"type": "object"}
+      },
+      "additionalProperties": false
+    },
+    "podDisruptionBudget": {
+      "type": "object",
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "minAvailable": {"type": ["integer", "string", "null"]},
+        "maxUnavailable": {"type": ["integer", "string", "null"]}
+      },
+      "additionalProperties": false
+    },
+    "podAnnotations": {"$ref": "#/definitions/stringMap"},
+    "podLabels": {"$ref": "#/definitions/stringMap"},
+    "priorityClassName": {"type": "string"},
+    "nodeSelector": {"$ref": "#/definitions/stringMap"},
+    "tolerations": {"type": "array"},
+    "affinity": {"type": "object"},
+    "topologySpreadConstraints": {"type": "array"},
+    "extraEnv": {"type": "array"},
+    "extraVolumes": {"type": "array"},
+    "extraVolumeMounts": {"type": "array"},
+    "scanner": {
+      "type": "object",
+      "description": "Values of the bomcensus-scanner chart",
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "bundled": {"type": "boolean"}
+      }
+    },
+    "scannerBootstrap": {
+      "type": "object",
+      "properties": {
+        "keyName": {"type": "string", "minLength": 1, "maxLength": 200},
+        "maxUses": {"type": "integer", "minimum": 0},
+        "timeout": {"type": "string", "pattern": "^([0-9]+(\\.[0-9]+)?(ns|us|ms|s|m|h))+$"},
+        "backoffLimit": {"type": "integer", "minimum": 0},
+        "resources": {"type": "object"}
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

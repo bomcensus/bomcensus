@@ -1,0 +1,79 @@
+{{- /*
+  Copyright (C) 2026 JC-Lab
+  SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-bomcensus-Commercial
+  Additional terms apply. See LICENSING.md.
+*/ -}}
+
+{{- if .Values.networkPolicy.enabled }}
+{{- $np := .Values.networkPolicy }}
+{{- $server := $np.server }}
+{{- $serverPods := $server.podSelector }}
+{{- if and .Values.bundled (empty $serverPods) (empty $server.namespaceSelector) (empty $server.cidrs) }}
+{{- $serverPods = dict "matchLabels" (dict "app.kubernetes.io/instance" .Release.Name "app.kubernetes.io/component" "server") }}
+{{- end }}
+{{- if and (empty $serverPods) (empty $server.namespaceSelector) (empty $server.cidrs) }}
+{{- fail "networkPolicy.server: set podSelector, namespaceSelector or cidrs for the bomcensus server" }}
+{{- end }}
+{{- if empty $np.apiServer.cidrs }}
+{{- fail "networkPolicy.apiServer.cidrs is required: the endpoint addresses of the API server (kubectl get endpoints kubernetes -n default)" }}
+{{- end }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "bomcensus-scanner.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "bomcensus-scanner.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "bomcensus-scanner.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+    - Egress
+  # The scanner accepts no connections.
+  ingress: []
+  egress:
+    # bomcensus server, agent port.
+    - to:
+        {{- if or $serverPods $server.namespaceSelector }}
+        - {{- with $serverPods }}
+          podSelector:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $server.namespaceSelector }}
+          namespaceSelector:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+        {{- end }}
+        {{- range $server.cidrs }}
+        - ipBlock:
+            cidr: {{ . }}
+        {{- end }}
+      ports:
+        - protocol: TCP
+          port: {{ $server.port }}
+    # Kubernetes API server (inventory and exec).
+    - to:
+        {{- range $np.apiServer.cidrs }}
+        - ipBlock:
+            cidr: {{ . }}
+        {{- end }}
+      ports:
+        {{- range $np.apiServer.ports }}
+        - protocol: TCP
+          port: {{ . }}
+        {{- end }}
+    {{- if $np.dns.enabled }}
+    - to:
+        - namespaceSelector:
+            {{- toYaml $np.dns.namespaceSelector | nindent 12 }}
+          podSelector:
+            {{- toYaml $np.dns.podSelector | nindent 12 }}
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    {{- end }}
+{{- end }}

@@ -1,0 +1,52 @@
+# Copyright (C) 2026 JC-Lab
+# SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-bomcensus-Commercial
+# Additional terms apply. See LICENSING.md.
+
+# bomcensus updater: verifies and installs the releases in the spool.
+#
+# It re-verifies everything itself (manifest signature, hashes, code
+# signatures), has no network, and is the only unit that may write to the
+# install directory.
+
+[Unit]
+Description=bomcensus updater
+Documentation=https://github.com/bomcensus/bomcensus
+
+[Service]
+Type=oneshot
+User=bomcensus-update
+Group=bomcensus-update
+UMask=0022
+ExecStart=/opt/bomcensus/current/bomcensus-updater apply --spool /var/lib/bomcensus/update-spool --install /opt/bomcensus
+TimeoutStartSec=5min
+
+# Writable: the install directory and the spool, nothing else.
+ReadWritePaths=/opt/bomcensus /var/lib/bomcensus/update-spool
+
+CapabilityBoundingSet=
+AmbientCapabilities=
+NoNewPrivileges=yes
+PrivateNetwork=yes
+IPAddressDeny=any
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+ProcSubset=pid
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+RestrictAddressFamilies=AF_UNIX
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+RemoveIPC=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged
