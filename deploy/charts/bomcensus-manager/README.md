@@ -8,7 +8,7 @@ Objects are named after the release: `<release>` (Deployment), `<release>-web`, 
 
 ```sh
 # argon2id hash of the console password (the chart cannot compute it)
-printf '%s\n' 'the password' | docker run --rm -i bomcensus/server:VERSION hash-password > hash.txt
+printf '%s\n' 'the password' | docker run --rm -i ghcr.io/bomcensus/bomcensus/server:VERSION hash-password > hash.txt
 
 cat > values.local.yaml <<EOF
 admin:
@@ -20,9 +20,10 @@ scanner:
   enabled: true
 EOF
 
-helm dependency build deploy/charts/bomcensus-manager
-helm install bomcensus deploy/charts/bomcensus-manager -n bomcensus --create-namespace \
-  -f values.local.yaml --wait --timeout 15m
+helm install bomcensus oci://ghcr.io/bomcensus/bomcensus/charts/bomcensus-manager --version VERSION \
+  -n bomcensus --create-namespace -f values.local.yaml --wait --timeout 15m
+# From a checkout instead: helm dependency build deploy/charts/bomcensus-manager, then
+# pass deploy/charts/bomcensus-manager as the chart (default images: local bomcensus/server).
 ```
 
 Pass the hash in a values file. With `--set` the commas in `m=65536,t=3,p=4` split the value; escape them (`\,`) if `--set-string` must be used.
@@ -97,7 +98,7 @@ After installation register the cluster in the console (Kubernetes) with the sca
 
 | Key | Default | Description |
 |---|---|---|
-| `image.repository` | `bomcensus/server` | |
+| `image.repository` | `bomcensus/server` | Published charts: `ghcr.io/bomcensus/bomcensus/server` |
 | `image.tag` | `""` (appVersion) | |
 | `image.pullPolicy` | `IfNotPresent` | |
 | `imagePullSecrets` | `[]` | |

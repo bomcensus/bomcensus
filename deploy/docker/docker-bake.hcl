@@ -31,6 +31,26 @@ variable "RELEASE_KEYS_ID" {
   default = ""
 }
 
+# Directory with signed release files (scripts/release.sh OUTDIR/docker).
+# When set, the images take these files instead of building them.
+variable "DIST" {
+  default = ""
+}
+
+# Also tag the images as latest.
+variable "LATEST" {
+  default = false
+}
+
+variable "SOURCE_URL" {
+  default = "https://github.com/bomcensus/bomcensus"
+}
+
+function "tags" {
+  params = [name]
+  result = concat(["${REPO}/${name}:${VERSION}"], LATEST ? ["${REPO}/${name}:latest"] : [])
+}
+
 group "default" {
   targets = ["server", "scanner", "agent"]
 }
@@ -41,24 +61,26 @@ target "_common" {
   args = {
     VERSION         = VERSION
     RELEASE_KEYS_ID = RELEASE_KEYS_ID
+    SOURCE_URL      = SOURCE_URL
   }
-  secret = RELEASE_KEYS != "" ? ["id=release_keys,src=${RELEASE_KEYS}"] : []
+  contexts = DIST != "" ? { dist = DIST } : {}
+  secret   = RELEASE_KEYS != "" ? ["id=release_keys,src=${RELEASE_KEYS}"] : []
 }
 
 target "server" {
   inherits = ["_common"]
   target   = "server"
-  tags     = ["${REPO}/server:${VERSION}"]
+  tags     = tags("server")
 }
 
 target "scanner" {
   inherits = ["_common"]
   target   = "scanner"
-  tags     = ["${REPO}/scanner:${VERSION}"]
+  tags     = tags("scanner")
 }
 
 target "agent" {
   inherits = ["_common"]
   target   = "agent"
-  tags     = ["${REPO}/agent:${VERSION}"]
+  tags     = tags("agent")
 }

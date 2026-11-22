@@ -10,6 +10,10 @@
 # $(DIST)/bomcensus-$(VERSION).tar, which is then verified by a host build of
 # bomcensus-release carrying the same trust. The server binary is written to
 # $(DIST). Paths are relative to the repository root.
+#
+# release builds a signed release with scripts/release.sh into
+# $(DIST)/release. Keys and signing configuration come from the
+# environment; see docs/RELEASING.md.
 
 RELEASE_ARCHES  ?= amd64 arm64
 RELEASE_DEVKEYS ?= .devstate/devkeys
@@ -17,7 +21,10 @@ RELEASE_STAGE   ?= build/release
 DIST            ?= dist
 RELEASE_BUNDLED := bomcensus-agent bomcensus-probe bomcensus-updater bomcensus-scanner
 
-.PHONY: release-dev
+.PHONY: release-dev release
+
+release:
+	scripts/release.sh $(VERSION) $(abspath $(DIST))/release
 
 release-dev:
 	@set -eu; \

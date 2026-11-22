@@ -25,6 +25,12 @@
 # discarded with it. Images built that way only trust bundles from the same
 # build, so build all targets with the same builder in one go
 # (deploy/docker/docker-bake.hcl, `make docker-build`).
+#
+# Release builds sign outside the image build (scripts/release.sh) and pass
+# the signed files as the build context "dist", which replaces the stage of
+# that name, so the console and Go stages do not run:
+#
+#   docker buildx build --build-context dist=dist/release/docker ...
 
 ARG GO_VERSION=1.26.3
 ARG NODE_VERSION=26
@@ -89,10 +95,15 @@ RUN --mount=type=cache,id=bomcensus-gomod,target=/go/pkg/mod \
     cp dist/bomcensus-server-linux-amd64 dist/bomcensus-server-linux-arm64 /out/; \
     cp -R build/release/bundle /out/bundle
 
+# The files the images take: bomcensus-server-linux-<arch>,
+# release/bomcensus-<version>.tar and bundle/linux-<arch>/<command>.
+FROM scratch AS dist
+COPY --from=build /out/ /
+
 # release-dev skips commands that are missing from the tree; the scanner
 # target fails here instead of later with an unclear COPY error.
 FROM --platform=$BUILDPLATFORM debian:${DEBIAN_RELEASE}-slim AS scanner-bin
-COPY --from=build /out/bundle/ /bundle/
+COPY --from=dist /bundle/ /bundle/
 RUN test -x /bundle/linux-amd64/bomcensus-scanner && test -x /bundle/linux-arm64/bomcensus-scanner \
     || { echo "bomcensus-scanner was not built: cmd/bomcensus-scanner does not exist" >&2; exit 1; }
 # Empty state directory for the scanner image, which has no shell to make one.
@@ -102,14 +113,15 @@ RUN mkdir /state
 FROM gcr.io/distroless/static-debian13:nonroot AS server
 ARG TARGETARCH
 ARG VERSION=0.0.0-dev
+ARG SOURCE_URL=https://github.com/bomcensus/bomcensus
 LABEL org.opencontainers.image.title="bomcensus-server" \
       org.opencontainers.image.description="bomcensus server: console, API, agent gateway and embedded scanner" \
-      org.opencontainers.image.source="https://github.com/bomcensus/bomcensus" \
+      org.opencontainers.image.source="${SOURCE_URL}" \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.licenses="AGPL-3.0-only OR LicenseRef-bomcensus-Commercial" \
       org.opencontainers.image.vendor="JC-Lab"
-COPY --from=build /out/bomcensus-server-linux-${TARGETARCH} /usr/local/bin/bomcensus-server
-COPY --from=build /out/release/ /usr/share/bomcensus/releases/
+COPY --from=dist /bomcensus-server-linux-${TARGETARCH} /usr/local/bin/bomcensus-server
+COPY --from=dist /release/ /usr/share/bomcensus/releases/
 ENV BOMCENSUS_RELEASE_DIR=/usr/share/bomcensus/releases
 USER nonroot:nonroot
 EXPOSE 8080 8443
@@ -124,9 +136,10 @@ CMD ["serve"]
 FROM gcr.io/distroless/static-debian13:nonroot AS scanner
 ARG TARGETARCH
 ARG VERSION=0.0.0-dev
+ARG SOURCE_URL=https://github.com/bomcensus/bomcensus
 LABEL org.opencontainers.image.title="bomcensus-scanner" \
       org.opencontainers.image.description="bomcensus remote scanner" \
-      org.opencontainers.image.source="https://github.com/bomcensus/bomcensus" \
+      org.opencontainers.image.source="${SOURCE_URL}" \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.licenses="AGPL-3.0-only OR LicenseRef-bomcensus-Commercial" \
       org.opencontainers.image.vendor="JC-Lab"
@@ -145,9 +158,10 @@ CMD ["run"]
 FROM debian:${DEBIAN_RELEASE}-slim AS agent
 ARG TARGETARCH
 ARG VERSION=0.0.0-dev
+ARG SOURCE_URL=https://github.com/bomcensus/bomcensus
 LABEL org.opencontainers.image.title="bomcensus-agent" \
       org.opencontainers.image.description="bomcensus agent (demo and test image)" \
-      org.opencontainers.image.source="https://github.com/bomcensus/bomcensus" \
+      org.opencontainers.image.source="${SOURCE_URL}" \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.licenses="AGPL-3.0-only OR LicenseRef-bomcensus-Commercial" \
       org.opencontainers.image.vendor="JC-Lab"
@@ -159,7 +173,7 @@ RUN set -eu; \
     install -d -o bomcensus -g bomcensus -m 0755 /opt/bomcensus /opt/bomcensus/versions; \
     install -d -o root -g root -m 0755 /var/lib/bomcensus; \
     install -d -o bomcensus -g bomcensus -m 0700 /var/lib/bomcensus/agent /var/lib/bomcensus/update-spool
-COPY --from=build --chown=bomcensus:bomcensus --chmod=0755 /out/bundle/linux-${TARGETARCH}/ /opt/bomcensus/versions/${VERSION}/
+COPY --from=dist --chown=bomcensus:bomcensus --chmod=0755 /bundle/linux-${TARGETARCH}/ /opt/bomcensus/versions/${VERSION}/
 COPY --chmod=0755 deploy/docker/agent-entrypoint.sh /usr/local/bin/bomcensus-agent-entrypoint
 RUN set -eu; \
     rm -f /opt/bomcensus/versions/${VERSION}/bomcensus-scanner; \

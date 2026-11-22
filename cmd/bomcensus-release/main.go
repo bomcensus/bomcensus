@@ -27,6 +27,7 @@ var commands = []command{
 	{"keygen", "generate a manifest key pair and a code-signing CA and certificate", runKeygen},
 	{"sign-elf", "add an AuthentiELF signature to ELF files in place", runSignELF},
 	{"bundle", "build a signed release bundle from a binary directory", runBundle},
+	{"manifest-pub", "print the public key of a manifest key (PEM file or Cloud KMS)", runManifestPub},
 	{"print-ldflags", "print the -X linker flags that compile the trust into binaries", runPrintLDFlags},
 	{"verify", "verify release bundles against the trust compiled into this binary", runVerify},
 }

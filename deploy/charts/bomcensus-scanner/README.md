@@ -12,7 +12,7 @@ The chart can be installed on its own (scanner in another cluster than the serve
 ```sh
 kubectl create namespace bomcensus
 kubectl -n bomcensus create secret generic scanner-enrollment --from-literal=token='bc1.…'
-helm install scanner deploy/charts/bomcensus-scanner -n bomcensus \
+helm install scanner oci://ghcr.io/bomcensus/bomcensus/charts/bomcensus-scanner --version VERSION -n bomcensus \
   --set server.url=https://bomcensus.example.com:8443 \
   --set enrollment.existingSecret.name=scanner-enrollment
 ```
@@ -46,7 +46,7 @@ With `networkPolicy.enabled=true` the pod accepts no connections and may only re
 
 | Key | Default | Description |
 |---|---|---|
-| `image.repository` | `bomcensus/scanner` | Image |
+| `image.repository` | `bomcensus/scanner` | Image. Published charts: `ghcr.io/bomcensus/bomcensus/scanner` |
 | `image.tag` | `""` (appVersion) | Image tag |
 | `image.pullPolicy` | `IfNotPresent` | |
 | `imagePullSecrets` | `[]` | |

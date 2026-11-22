@@ -1,0 +1,309 @@
+# Copyright (C) 2026 JC-Lab
+# SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-bomcensus-Commercial
+# Additional terms apply. See LICENSING.md.
+
+name: Release
+
+# Push a tag like v1.2.3 (or v1.2.3-rc.1 for a pre-release) to publish:
+#   - a GitHub release with every binary (Linux: AuthentiELF, Windows:
+#     Authenticode), the agent bundle, the systemd files and the Helm charts
+#   - the server, scanner and agent images on ghcr.io (cosign-signed)
+#   - the Helm charts as OCI artifacts on ghcr.io (cosign-signed)
+# with SLSA build provenance for all of them. See docs/RELEASING.md.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test
+    uses: ./.github/workflows/ci.yml
+
+  release:
+    needs: test
+    runs-on: ubuntu-24.04
+    environment: signed-release
+    concurrency:
+      group: release-publish-${{ github.ref }}
+      cancel-in-progress: false
+    permissions:
+      contents: write          # create the release and upload assets
+      packages: write          # push images and charts to ghcr.io
+      id-token: write          # OIDC token for Sigstore and Google Cloud
+      attestations: write      # store the build provenance attestations
+      artifact-metadata: write # artifact storage records (required by actions/attest)
+    env:
+      TAG: ${{ github.ref_name }}
+      SIGN_TSA: http://timestamp.digicert.com
+      AUTHENTIELF_VERSION: v0.0.1
+      HELM_VERSION: v3.18.6
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Check tag
+        run: |
+          if [[ ! $TAG =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::tag '$TAG' is not of the form vMAJOR.MINOR.PATCH[-PRERELEASE]"
+            exit 1
+          fi
+          repo=${GITHUB_REPOSITORY,,}
+          {
+            echo "VERSION=${TAG#v}"
+            if [[ $TAG == *-* ]]; then echo "PRERELEASE=true"; else echo "PRERELEASE=false"; fi
+            echo "IMAGE_REPO=ghcr.io/$repo"
+            echo "CHART_REPO=ghcr.io/$repo/charts"
+          } >>"$GITHUB_ENV"
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+
+      - uses: pnpm/action-setup@v6
+        with:
+          package_json_file: frontend/package.json
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '26'
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      # jsign signs the Windows binaries (Authenticode) with the same Cloud
+      # KMS key; osslsigncode verifies them.
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Install signing tools
+        env:
+          JSIGN_VERSION: '7.6'
+          JSIGN_SHA256: 6cf58aa080e7ff82656f320cff8d4a3bff30408df8766806dcba3740dd839fa5
+        run: |
+          jar=$RUNNER_TEMP/jsign-$JSIGN_VERSION.jar
+          curl -fsSL -o "$jar" "https://github.com/ebourg/jsign/releases/download/$JSIGN_VERSION/jsign-$JSIGN_VERSION.jar"
+          echo "$JSIGN_SHA256  $jar" | sha256sum -c -
+          echo "JSIGN=java -jar $jar" >>"$GITHUB_ENV"
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends osslsigncode
+          GOBIN=$RUNNER_TEMP/bin go install "github.com/jc-lab/authentielf/cmd/authentielf@$AUTHENTIELF_VERSION"
+          echo "AUTHENTIELF=$RUNNER_TEMP/bin/authentielf" >>"$GITHUB_ENV"
+
+      - uses: azure/setup-helm@v5
+        with:
+          version: ${{ env.HELM_VERSION }}
+
+      - uses: sigstore/cosign-installer@v4
+        with:
+          cosign-release: v3.1.4
+
+      # Workload Identity Federation -> short-lived access token for the
+      # signing service account (roles/cloudkms.signerVerifier and
+      # roles/cloudkms.viewer on the code-signing key and the manifest key).
+      # It must outlive the build below.
+      - name: Authenticate to Google Cloud
+        id: gcp
+        uses: google-github-actions/auth@v3
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_KMS_SERVICE_ACCOUNT }}
+          token_format: access_token
+          access_token_lifetime: 1800s
+          create_credentials_file: false
+
+      # Builds every command with the trust compiled in, signs the Linux
+      # binaries with AuthentiELF and the Windows binaries with jsign, packs
+      # the agent bundle and signs its manifest with the Ed25519 key; all keys
+      # are in Cloud KMS. See scripts/release.sh.
+      - name: Build and sign
+        env:
+          SIGN_KEY_FILE: ${{ secrets.SIGN_KEY_FILE }}
+          SIGN_CERT: ${{ vars.SIGN_CERT }}
+          CODESIGN_ROOTS: ${{ vars.CODESIGN_ROOTS }}
+          MANIFEST_KEY_FILE: ${{ secrets.MANIFEST_KEY_FILE }}
+          GOOGLE_OAUTH_ACCESS_TOKEN: ${{ steps.gcp.outputs.access_token }}
+        run: |
+          for v in SIGN_KEY_FILE SIGN_CERT CODESIGN_ROOTS MANIFEST_KEY_FILE; do
+            [ -n "${!v}" ] || { echo "::error::$v is not set (see docs/RELEASING.md)"; exit 1; }
+          done
+          scripts/release.sh "$VERSION" dist/release
+
+      # The release script verified every ELF signature against
+      # CODESIGN_ROOTS and the bundle with the compiled-in trust. Windows
+      # binaries must verify against public roots, as they will for users.
+      - name: Verify signatures
+        run: |
+          a=dist/release/assets
+          ca=/etc/ssl/certs/ca-certificates.crt
+          for f in "$a"/*_windows_*.exe; do
+            echo "::group::$f"; osslsigncode verify -in "$f" -CAfile "$ca" -TSA-CAfile "$ca"; echo "::endgroup::"
+          done
+          # The shipped tools, not fresh builds.
+          "$a/bomcensus-server_${VERSION}_linux_amd64" version | grep -qxF "$VERSION"
+          "$a/bomcensus-release_${VERSION}_linux_amd64" verify "$a/bomcensus-$VERSION.tar"
+
+      - name: Package Helm charts
+        run: |
+          scripts/package-charts.sh "$VERSION" "$IMAGE_REPO" dist/charts
+          cp dist/charts/*.tgz dist/release/assets/
+          (cd dist/release/assets && rm -f SHA256SUMS && sha256sum -- * >"$RUNNER_TEMP/SHA256SUMS" && mv "$RUNNER_TEMP/SHA256SUMS" SHA256SUMS)
+          cat dist/release/assets/SHA256SUMS
+
+      # SLSA build provenance for every release asset, signed with a
+      # Sigstore certificate bound to this workflow run:
+      #   gh attestation verify <file> --repo OWNER/REPO
+      - name: Attest release assets
+        uses: actions/attest@v4
+        with:
+          subject-checksums: dist/release/assets/SHA256SUMS
+
+      - uses: docker/setup-qemu-action@v4
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # The images take the signed files of the step above (build context
+      # "dist"); nothing is rebuilt inside the image build.
+      - name: Build and push images
+        env:
+          REPO: ${{ env.IMAGE_REPO }}
+          DIST: dist/release/docker
+          SOURCE_URL: ${{ github.server_url }}/${{ github.repository }}
+        run: |
+          if [ "$PRERELEASE" = true ]; then export LATEST=false; else export LATEST=true; fi
+          docker buildx bake -f deploy/docker/docker-bake.hcl \
+            --set '*.platform=linux/amd64,linux/arm64' \
+            --provenance=mode=max --sbom=true \
+            --metadata-file "$RUNNER_TEMP/bake.json" --push \
+            server scanner agent
+          for t in server scanner agent; do
+            d=$(jq -er --arg t "$t" '.[$t]["containerimage.digest"]' "$RUNNER_TEMP/bake.json")
+            echo "DIGEST_${t^^}=$d" >>"$GITHUB_ENV"
+          done
+
+      - name: Push Helm charts
+        run: |
+          echo "$GH_TOKEN" | helm registry login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          for c in scanner manager; do
+            out=$(helm push "dist/charts/bomcensus-$c-$VERSION.tgz" "oci://$CHART_REPO" 2>&1)
+            echo "$out"
+            d=$(awk '/^Digest:/ {print $2}' <<<"$out")
+            [ -n "$d" ] || { echo "::error::no digest for bomcensus-$c"; exit 1; }
+            echo "DIGEST_CHART_${c^^}=$d" >>"$GITHUB_ENV"
+          done
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Keyless signatures (Sigstore), checked with:
+      #   cosign verify REF --certificate-identity-regexp 'https://github.com/OWNER/REPO/.github/workflows/release.yml@.*' \
+      #     --certificate-oidc-issuer https://token.actions.githubusercontent.com
+      - name: Sign images and charts
+        run: |
+          cosign sign --yes \
+            "$IMAGE_REPO/server@$DIGEST_SERVER" \
+            "$IMAGE_REPO/scanner@$DIGEST_SCANNER" \
+            "$IMAGE_REPO/agent@$DIGEST_AGENT" \
+            "$CHART_REPO/bomcensus-scanner@$DIGEST_CHART_SCANNER" \
+            "$CHART_REPO/bomcensus-manager@$DIGEST_CHART_MANAGER"
+
+      - name: Attest server image
+        uses: actions/attest@v4
+        with:
+          subject-name: ${{ env.IMAGE_REPO }}/server
+          subject-digest: ${{ env.DIGEST_SERVER }}
+          push-to-registry: true
+      - name: Attest scanner image
+        uses: actions/attest@v4
+        with:
+          subject-name: ${{ env.IMAGE_REPO }}/scanner
+          subject-digest: ${{ env.DIGEST_SCANNER }}
+          push-to-registry: true
+      - name: Attest agent image
+        uses: actions/attest@v4
+        with:
+          subject-name: ${{ env.IMAGE_REPO }}/agent
+          subject-digest: ${{ env.DIGEST_AGENT }}
+          push-to-registry: true
+      - name: Attest scanner chart
+        uses: actions/attest@v4
+        with:
+          subject-name: ${{ env.CHART_REPO }}/bomcensus-scanner
+          subject-digest: ${{ env.DIGEST_CHART_SCANNER }}
+          push-to-registry: true
+      - name: Attest manager chart
+        uses: actions/attest@v4
+        with:
+          subject-name: ${{ env.CHART_REPO }}/bomcensus-manager
+          subject-digest: ${{ env.DIGEST_CHART_MANAGER }}
+          push-to-registry: true
+
+      - name: Verify attestations and signatures
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Retry briefly: a fresh attestation may take a moment to be served.
+          verify() {
+            for i in 1 2 3 4 5; do
+              gh attestation verify "$1" \
+                --repo "$GITHUB_REPOSITORY" \
+                --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release.yml" \
+                --source-ref "$GITHUB_REF" >/dev/null && { echo "attestation ok: $1"; return 0; }
+              sleep $((i * 5))
+            done
+            echo "::error::attestation of $1 does not verify"
+            return 1
+          }
+          a=dist/release/assets
+          verify "$a/bomcensus-$VERSION.tar"
+          verify "$a/bomcensus-agent_${VERSION}_linux_amd64"
+          verify "$a/bomcensus-release_${VERSION}_windows_amd64.exe"
+          verify "oci://$IMAGE_REPO/server@$DIGEST_SERVER"
+          verify "oci://$CHART_REPO/bomcensus-manager@$DIGEST_CHART_MANAGER"
+          identity="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/.github/workflows/release.yml@$GITHUB_REF"
+          for ref in "$IMAGE_REPO/server@$DIGEST_SERVER" "$CHART_REPO/bomcensus-manager@$DIGEST_CHART_MANAGER"; do
+            cosign verify "$ref" --certificate-identity "$identity" \
+              --certificate-oidc-issuer https://token.actions.githubusercontent.com >/dev/null
+            echo "signature ok: $ref"
+          done
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release
+          path: dist/release/assets/
+          if-no-files-found: error
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          notes=$RUNNER_TEMP/notes.md
+          cat >"$notes" <<EOF
+          Images (cosign-signed, with provenance and SBOM attestations):
+
+              $IMAGE_REPO/server:$VERSION
+              $IMAGE_REPO/scanner:$VERSION
+              $IMAGE_REPO/agent:$VERSION
+
+          Helm charts:
+
+              helm install bomcensus oci://$CHART_REPO/bomcensus-manager --version $VERSION
+              helm install bomcensus-scanner oci://$CHART_REPO/bomcensus-scanner --version $VERSION
+
+          Verify a downloaded file: \`gh attestation verify FILE --repo $GITHUB_REPOSITORY\`
+          EOF
+          cd dist/release/assets
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            # Re-run of the workflow: replace the assets, keep the notes.
+            gh release upload "$TAG" ./* --clobber
+          else
+            flags=(--verify-tag --title "$TAG" --notes-file "$notes" --generate-notes)
+            [ "$PRERELEASE" = true ] && flags+=(--prerelease)
+            gh release create "$TAG" "${flags[@]}" ./*
+          fi

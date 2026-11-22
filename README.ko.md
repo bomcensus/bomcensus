@@ -14,6 +14,7 @@ Linux Agent(connect·listen 모드), SSH를 통한 Agentless 수집, Kubernetes 
 - [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md): Docker Compose, Helm, systemd로 서버·Agent·Scanner를 빌드하고 실행하는 방법 (영문)
 - [docs/SECURITY.md](docs/SECURITY.md): 보안 설계, 권한 구성, 알려진 한계 (영문)
 - [docs/PROTOCOL.md](docs/PROTOCOL.md): Agent 프로토콜의 서명과 비밀값 암호화 (영문)
+- [docs/RELEASING.md](docs/RELEASING.md): 배포되는 이미지·차트·바이너리와 검증 방법 (영문)
 
 ## 라이선스
 

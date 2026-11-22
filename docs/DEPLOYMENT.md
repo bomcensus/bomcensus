@@ -44,6 +44,8 @@ Register Keys can restrict enrollment to source address ranges. The server check
 | `bomcensus/scanner:VERSION` | `gcr.io/distroless/static-debian13:nonroot` | `bomcensus-scanner`, state in `/var/lib/bomcensus/scanner`. Runs as uid 65532 |
 | `bomcensus/agent:VERSION` | `debian:trixie-slim` | the agent laid out as on a host (see 2.8). For trying the product and for tests |
 
+Released images are published as `ghcr.io/bomcensus/bomcensus/{server,scanner,agent}:VERSION` for linux/amd64 and linux/arm64, signed and attested ([RELEASING.md](RELEASING.md)). To use them instead of a local build, set `BOMCENSUS_REPO=ghcr.io/bomcensus/bomcensus` and `BOMCENSUS_VERSION` in `.env`.
+
 The server image has no shell. Its healthcheck is `bomcensus-server healthcheck`, which requests `/readyz` on the loopback address of `BOMCENSUS_WEB_LISTEN`, over HTTP when `BOMCENSUS_WEB_TLS=off` and HTTPS otherwise (5.1).
 
 ### 2.3 Building
@@ -220,7 +222,7 @@ Each chart has a README with all values. `make helm-lint` checks both charts and
 With the [CloudNativePG](https://cloudnative-pg.io) operator installed, this creates a PostgreSQL cluster, the server and the in-cluster scanner:
 
 ```sh
-printf '%s\n' 'the password' | docker run --rm -i bomcensus/server:VERSION hash-password > hash.txt
+printf '%s\n' 'the password' | docker run --rm -i ghcr.io/bomcensus/bomcensus/server:VERSION hash-password > hash.txt
 cat > values.local.yaml <<EOV
 admin:
   passwordHash: '$(cat hash.txt)'
@@ -230,11 +232,12 @@ cnpg:
 scanner:
   enabled: true
 EOV
-helm dependency build deploy/charts/bomcensus-manager
-helm install bomcensus deploy/charts/bomcensus-manager -n bomcensus --create-namespace \
-    -f values.local.yaml --wait --timeout 15m
+helm install bomcensus oci://ghcr.io/bomcensus/bomcensus/charts/bomcensus-manager --version VERSION \
+    -n bomcensus --create-namespace -f values.local.yaml --wait --timeout 15m
 kubectl -n bomcensus port-forward svc/bomcensus-web 8080
 ```
+
+The published charts use the published images ([RELEASING.md](RELEASING.md)). To install from the checkout instead, run `helm dependency build deploy/charts/bomcensus-manager` and pass `deploy/charts/bomcensus-manager` as the chart; its default images are the local `bomcensus/server` and `bomcensus/scanner` of `make docker-build`.
 
 Then open `https://localhost:8080/` and, under Kubernetes, register the cluster with the scanner and the in-cluster connection.
 

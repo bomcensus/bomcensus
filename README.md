@@ -14,6 +14,7 @@ Implemented: Linux agents (connect and listen mode), agentless collection over S
 - [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md): building and running the server, agents and scanners with Docker Compose, Helm or systemd.
 - [docs/SECURITY.md](docs/SECURITY.md): security design, privileges and known limitations.
 - [docs/PROTOCOL.md](docs/PROTOCOL.md): signatures and sealed secrets on the agent protocol.
+- [docs/RELEASING.md](docs/RELEASING.md): published images, charts and binaries, and how to verify them.
 
 ## License
 

@@ -7,6 +7,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto"
 	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/sha256"
@@ -179,7 +180,7 @@ func runSignELF(ctx context.Context, args []string, stdout io.Writer) error {
 func runBundle(ctx context.Context, args []string, stdout io.Writer) error {
 	fs := newFlagSet("bundle", "--version V --manifest-key KEY --dir BINDIR --out FILE")
 	version := fs.String("version", "", "release version (semver)")
-	keyFile := fs.String("manifest-key", "", "Ed25519 manifest private key (PEM)")
+	keyFile := fs.String("manifest-key", "", "Ed25519 manifest private key: PEM file, or gcp-kms://<CryptoKeyVersion> (token in $GOOGLE_OAUTH_ACCESS_TOKEN)")
 	dir := fs.String("dir", "", "directory with <os>-<arch>/<binary> files")
 	out := fs.String("out", "", "bundle file to write")
 	validity := fs.Duration("validity", 365*24*time.Hour, "manifest validity")
@@ -193,9 +194,9 @@ func runBundle(ctx context.Context, args []string, stdout io.Writer) error {
 	if !sign.ValidVersion(*version) {
 		return fmt.Errorf("bundle: %q is not a semver version", *version)
 	}
-	key, err := readManifestKey(*keyFile)
+	key, err := openManifestSigner(ctx, *keyFile)
 	if err != nil {
-		return err
+		return fmt.Errorf("bundle: %w", err)
 	}
 	files, err := collectFiles(*dir)
 	if err != nil {
@@ -215,7 +216,10 @@ func runBundle(ctx context.Context, args []string, stdout io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("bundle: %w", err)
 	}
-	sig := sign.SignManifest(key, manifest)
+	sig, err := key.Sign(nil, manifest, crypto.Hash(0))
+	if err != nil {
+		return fmt.Errorf("bundle: sign manifest: %w", err)
+	}
 	if !ed25519.Verify(key.Public().(ed25519.PublicKey), manifest, sig) {
 		return errors.New("bundle: manifest signature does not verify")
 	}
@@ -262,6 +266,28 @@ func collectFiles(dir string) ([]release.File, error) {
 		return nil, fmt.Errorf("bundle: no files in %s", dir)
 	}
 	return files, nil
+}
+
+func runManifestPub(ctx context.Context, args []string, stdout io.Writer) error {
+	fs := newFlagSet("manifest-pub", "--manifest-key KEY")
+	keyFile := fs.String("manifest-key", "", "Ed25519 manifest private key: PEM file, or gcp-kms://<CryptoKeyVersion>")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *keyFile == "" || fs.NArg() != 0 {
+		fs.Usage()
+		return errors.New("manifest-pub: --manifest-key is required")
+	}
+	key, err := openManifestSigner(ctx, *keyFile)
+	if err != nil {
+		return fmt.Errorf("manifest-pub: %w", err)
+	}
+	out, err := encodePublicKey(key.Public())
+	if err != nil {
+		return err
+	}
+	_, err = stdout.Write(out)
+	return err
 }
 
 func runPrintLDFlags(_ context.Context, args []string, stdout io.Writer) error {
