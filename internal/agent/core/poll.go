@@ -16,6 +16,7 @@ import (
 
 	"github.com/bomcensus/bomcensus/internal/gen/agentapi"
 	"github.com/bomcensus/bomcensus/internal/msgsig"
+	"github.com/bomcensus/bomcensus/internal/pki"
 	"github.com/bomcensus/bomcensus/internal/report"
 )
 
@@ -109,11 +110,17 @@ func (r *Runtime) pollRequest(ctx context.Context) (agentapi.PollRequest, []stri
 		req.CertNotAfter = &na
 	}
 	if fp, leaf, ok := r.ObservedServer(); ok {
-		req.ObservedServerCert = &agentapi.ObservedCert{
+		oc := &agentapi.ObservedCert{
 			Sha256:  hex.EncodeToString(fp[:]),
 			Subject: leaf.Subject.String(),
 			Issuer:  leaf.Issuer.String(),
 		}
+		if ic := r.ObservedIssuer(); ic != nil {
+			h := pki.SPKIHash(ic)
+			hs := hex.EncodeToString(h[:])
+			oc.IssuerSpkiSha256 = &hs
+		}
+		req.ObservedServerCert = oc
 	}
 	r.ackMu.Lock()
 	acks := append([]string(nil), r.pendingAcks...)

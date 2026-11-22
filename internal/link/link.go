@@ -81,21 +81,33 @@ func AnchorVerifier(anchors func() []*x509.Certificate, serverName string) Serve
 // fingerprint (pki.Fingerprint) and the leaf certificate the server
 // presented. The agent reports the fingerprint so the server can detect
 // TLS termination in transit.
-type PeerObserver func(fingerprint [32]byte, leaf *x509.Certificate)
+//
+// issuer is the presented certificate that signed leaf, or nil when the
+// chain does not contain one.
+type PeerObserver func(fingerprint [32]byte, leaf, issuer *x509.Certificate)
 
 // ObservedPeer keeps the last observed server certificate. Its Observe
 // method is a PeerObserver. The zero value is ready to use.
 type ObservedPeer struct {
-	mu   sync.Mutex
-	fp   [32]byte
-	leaf *x509.Certificate
+	mu     sync.Mutex
+	fp     [32]byte
+	leaf   *x509.Certificate
+	issuer *x509.Certificate
 }
 
 // Observe records a handshake.
-func (o *ObservedPeer) Observe(fingerprint [32]byte, leaf *x509.Certificate) {
+func (o *ObservedPeer) Observe(fingerprint [32]byte, leaf, issuer *x509.Certificate) {
 	o.mu.Lock()
-	o.fp, o.leaf = fingerprint, leaf
+	o.fp, o.leaf, o.issuer = fingerprint, leaf, issuer
 	o.mu.Unlock()
+}
+
+// Issuer returns the presented certificate that signed the last observed
+// leaf, or nil.
+func (o *ObservedPeer) Issuer() *x509.Certificate {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return o.issuer
 }
 
 // Last returns the last observed fingerprint and leaf. ok is false before
@@ -108,6 +120,10 @@ func (o *ObservedPeer) Last() (fingerprint [32]byte, leaf *x509.Certificate, ok 
 
 func observe(obs PeerObserver, chain []*x509.Certificate) {
 	if obs != nil && len(chain) > 0 {
-		obs(pki.Fingerprint(chain[0]), chain[0])
+		var issuer *x509.Certificate
+		if len(chain) > 1 && chain[0].CheckSignatureFrom(chain[1]) == nil {
+			issuer = chain[1]
+		}
+		obs(pki.Fingerprint(chain[0]), chain[0], issuer)
 	}
 }

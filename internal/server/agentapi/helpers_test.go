@@ -101,6 +101,7 @@ type fakePKI struct {
 	chain   []*x509.Certificate
 	client  tls.Certificate
 	agentCA *pki.CA
+	pending *pki.CA // prepared anchor, when set
 
 	mu            sync.Mutex
 	bundleVersion uint64
@@ -163,7 +164,11 @@ func (p *fakePKI) AgentCA() (*x509.Certificate, error) { return p.agentCA.Cert, 
 func (p *fakePKI) TrustBundle() (*pki.TrustBundle, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	return &pki.TrustBundle{Version: p.bundleVersion, Anchors: []*x509.Certificate{p.tlsCA.Cert}, AgentCA: p.agentCA.Cert}, nil
+	anchors := []*x509.Certificate{p.tlsCA.Cert}
+	if p.pending != nil {
+		anchors = append(anchors, p.pending.Cert)
+	}
+	return &pki.TrustBundle{Version: p.bundleVersion, Anchors: anchors, AgentCA: p.agentCA.Cert}, nil
 }
 
 func (p *fakePKI) setBundleVersion(v uint64) {

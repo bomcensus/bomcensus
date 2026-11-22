@@ -369,21 +369,24 @@ func invalidInput(err error) bool {
 	return errors.As(err, &p) && p.Permanent()
 }
 
-// ownFingerprints returns the fingerprints of the certificates the server
-// presents to agents: the Agent TLS server and client leaves.
-func (h *Handlers) ownFingerprints() [][32]byte {
-	var out [][32]byte
+// ownCAs returns the CA certificates the server may present to agents: those
+// in the chains of the Agent TLS server and client certificates, and the
+// trust bundle anchors (the current one and a prepared one, whose
+// certificates may already be in use).
+func (h *Handlers) ownCAs() []*x509.Certificate {
+	var out []*x509.Certificate
+	if b, err := h.pki.TrustBundle(); err == nil && b != nil {
+		out = append(out, b.Anchors...)
+	}
 	for _, get := range []func() (*tls.Certificate, error){h.pki.AgentServerCertificate, h.pki.AgentClientCertificate} {
 		c, err := get()
-		if err != nil || c == nil || len(c.Certificate) == 0 {
+		if err != nil || c == nil {
 			continue
 		}
-		if c.Leaf != nil {
-			out = append(out, pki.Fingerprint(c.Leaf))
-			continue
-		}
-		if leaf, err := x509.ParseCertificate(c.Certificate[0]); err == nil {
-			out = append(out, pki.Fingerprint(leaf))
+		for _, der := range c.Certificate[min(1, len(c.Certificate)):] {
+			if ca, err := x509.ParseCertificate(der); err == nil {
+				out = append(out, ca)
+			}
 		}
 	}
 	return out

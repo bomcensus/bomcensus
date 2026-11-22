@@ -678,6 +678,9 @@ type K8sSyncDirectiveType string
 type ObservedCert struct {
 	Issuer string `json:"issuer"`
 
+	// IssuerSpkiSha256 Hex SHA-256 of the SubjectPublicKeyInfo of the presented certificate that signed the leaf. Absent when the chain has none.
+	IssuerSpkiSha256 *string `json:"issuer_spki_sha256,omitempty"`
+
 	// Sha256 Hex SHA-256 of the leaf certificate DER.
 	Sha256  string `json:"sha256"`
 	Subject string `json:"subject"`

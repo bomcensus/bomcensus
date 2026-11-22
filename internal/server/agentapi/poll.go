@@ -17,6 +17,7 @@ import (
 
 	gen "github.com/bomcensus/bomcensus/internal/gen/agentapi"
 	"github.com/bomcensus/bomcensus/internal/msgsig"
+	"github.com/bomcensus/bomcensus/internal/pki"
 	"github.com/bomcensus/bomcensus/internal/report"
 	"github.com/bomcensus/bomcensus/internal/server/dispatch"
 	"github.com/bomcensus/bomcensus/internal/server/store"
@@ -299,15 +300,21 @@ func (h *Handlers) computedDirectives(ctx context.Context, agentID string, body 
 }
 
 // observedIssuer returns the issuer of the server certificate the agent
-// saw when it is not one of the server's own certificates, empty otherwise.
+// saw when it was not issued by one of the server's own CAs, empty
+// otherwise. Only the CA matters: the leaf changes whenever it is renewed
+// or its names change. A certificate whose issuing CA the agent did not
+// report is treated as foreign.
 func (h *Handlers) observedIssuer(o *gen.ObservedCert) string {
 	if o == nil {
 		return ""
 	}
-	seen := strings.ToLower(o.Sha256)
-	for _, fp := range h.ownFingerprints() {
-		if hex.EncodeToString(fp[:]) == seen {
-			return ""
+	if o.IssuerSpkiSha256 != nil {
+		ca := strings.ToLower(*o.IssuerSpkiSha256)
+		for _, c := range h.ownCAs() {
+			sum := pki.SPKIHash(c)
+			if hex.EncodeToString(sum[:]) == ca {
+				return ""
+			}
 		}
 	}
 	if o.Issuer == "" {

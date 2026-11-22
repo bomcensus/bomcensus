@@ -67,7 +67,7 @@ func TestConnectPinnedWrongPin(t *testing.T) {
 	c := connectClient(t, ClientConfig{
 		Mode:        TLSPinned,
 		Verify:      PinnedVerifier(pki.SPKIHash(other.Cert), testServerName),
-		ObservePeer: func([32]byte, *x509.Certificate) { called = true },
+		ObservePeer: func([32]byte, *x509.Certificate, *x509.Certificate) { called = true },
 	})
 	if _, err := get(t, c, url+"/x"); err == nil {
 		t.Fatal("request with wrong pin succeeded")

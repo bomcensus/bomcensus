@@ -885,6 +885,12 @@ components:
           type: string
         issuer:
           type: string
+        issuer_spki_sha256:
+          description: >-
+            Hex SHA-256 of the SubjectPublicKeyInfo of the presented
+            certificate that signed the leaf. Absent when the chain has none.
+          type: string
+          pattern: "^[0-9a-f]{64}$"
     PollRequest:
       type: object
       required: [version, os, arch, connect_mode, tls_mode, privilege, section_digests, trust_bundle_serial, update]

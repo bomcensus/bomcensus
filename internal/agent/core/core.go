@@ -347,6 +347,15 @@ func (r *Runtime) HTTPClient() *http.Client { return r.httpc }
 // valid during Run.
 func (r *Runtime) BaseURL() string { return r.lc.baseURL }
 
+// ObservedIssuer returns the certificate that signed the server certificate
+// seen in the last handshake, or nil.
+func (r *Runtime) ObservedIssuer() *x509.Certificate {
+	if r.lc == nil {
+		return nil
+	}
+	return r.lc.observed.Issuer()
+}
+
 // ObservedServer returns the server certificate seen in the last handshake.
 func (r *Runtime) ObservedServer() (fingerprint [32]byte, leaf *x509.Certificate, ok bool) {
 	if r.lc == nil {
