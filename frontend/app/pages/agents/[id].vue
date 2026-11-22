@@ -5,9 +5,9 @@
 -->
 
 <script setup lang="ts">
-import { Ban, Check } from '@lucide/vue'
+import { Ban, Check, Pencil } from '@lucide/vue'
 import type { Agent } from '~/types'
-import { approveAgent, getAgent, getAsset, getRegisterKey, optional, revokeAgent, toApiError } from '~/api'
+import { approveAgent, getAgent, getAsset, getRegisterKey, optional, revokeAgent, toApiError, updateAgent } from '~/api'
 
 const route = useRoute()
 const id = String(route.params.id)
@@ -46,6 +46,35 @@ async function approve() {
     actionError.value = err.status === 409 ? '승인 대기 상태가 아닙니다' : err.message
   } finally {
     approveBusy.value = false
+  }
+}
+
+// ── Description ───────────────────────────────────────
+
+const descOpen = ref(false)
+const descText = ref('')
+const descBusy = ref(false)
+const descError = ref('')
+const descValid = computed(() => [...descText.value.trim()].length <= agentDescriptionMax)
+
+function openDescription() {
+  descText.value = agent.value?.description ?? ''
+  descError.value = ''
+  descOpen.value = true
+}
+
+async function saveDescription() {
+  if (!descValid.value || descBusy.value) return
+  descBusy.value = true
+  descError.value = ''
+  try {
+    await updateAgent(id, { description: descText.value.trim() })
+    descOpen.value = false
+    await refresh()
+  } catch (e) {
+    descError.value = toApiError(e).message
+  } finally {
+    descBusy.value = false
   }
 }
 
@@ -89,6 +118,7 @@ async function revoke() {
     <template v-else>
       <PageHeader :title="agent.hostname" :back="{ to: '/agents', label: '에이전트 목록' }">
         <template #subtitle>
+          <template v-if="agent.description">{{ agent.description }} · </template>
           {{ kindLabel(agent) }} · {{ agent.os }} · <span class="mono">{{ agent.address }}</span>
         </template>
         <template #actions>
@@ -110,6 +140,12 @@ async function revoke() {
           <dd class="mono">{{ agent.id }}</dd>
           <dt>종류</dt>
           <dd>{{ kindLabel(agent) }}</dd>
+          <dt>설명</dt>
+          <dd class="flex items-start gap-2">
+            <span v-if="agent.description" class="break-words">{{ agent.description }}</span>
+            <span v-else class="text-ink-3">—</span>
+            <AppButton size="sm" variant="ghost" :icon="Pencil" @click="openDescription">편집</AppButton>
+          </dd>
           <dt>자산</dt>
           <dd>
             <NuxtLink v-if="asset" :to="`/assets/${asset.id}`" class="link">{{ asset.name }}</NuxtLink>
@@ -168,6 +204,23 @@ async function revoke() {
           <dd>{{ formatDateTime(agent.lastSeen) }} <TimeAgo :at="agent.lastSeen" class="text-ink-3" /></dd>
         </dl>
       </Panel>
+
+      <AppModal v-model:open="descOpen" title="설명 편집">
+        <form id="agent-description-form" class="grid grid-cols-1 gap-3" @submit.prevent="saveDescription">
+          <FormField
+            label="설명"
+            :hint="`같은 호스트명의 에이전트를 구분할 때 씁니다. 최대 ${agentDescriptionMax}자`"
+            :error="descValid ? undefined : `${agentDescriptionMax}자 이하로 입력합니다`"
+          >
+            <input v-model="descText" class="input w-full" placeholder="예: prod 클러스터 scanner" />
+          </FormField>
+          <p v-if="descError" class="note note-danger" role="alert">{{ descError }}</p>
+        </form>
+        <template #footer>
+          <AppButton @click="descOpen = false">취소</AppButton>
+          <AppButton type="submit" form="agent-description-form" variant="primary" :disabled="!descValid || descBusy">저장</AppButton>
+        </template>
+      </AppModal>
 
       <AppModal v-model:open="revokeOpen" title="에이전트 폐기">
         <p class="text-sm">

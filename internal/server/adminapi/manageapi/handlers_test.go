@@ -314,8 +314,26 @@ func TestAgents(t *testing.T) {
 		t.Fatalf("agent update %s %v", a.UpdateState, a.UpdateMessage)
 	}
 
+	// The administrator-set description, searchable and clearable.
+	a := decode[gen.Agent](t, e.do("PATCH", "/agents/"+online.ID, gen.AgentUpdate{Description: ptr("  rack 3 scanner ")}))
+	if a.Description == nil || *a.Description != "rack 3 scanner" {
+		t.Fatalf("description %v", a.Description)
+	}
+	if l := decode[gen.AgentList](t, e.do("GET", "/agents?q=RACK", nil)); l.Total != 1 || l.Items[0].Id != online.ID {
+		t.Fatalf("q by description %+v", l)
+	}
+	if a := decode[gen.Agent](t, e.do("PATCH", "/agents/"+online.ID, gen.AgentUpdate{})); a.Description == nil {
+		t.Fatal("absent description cleared the stored one")
+	}
+	if a := decode[gen.Agent](t, e.do("PATCH", "/agents/"+online.ID, gen.AgentUpdate{Description: ptr("")})); a.Description != nil {
+		t.Fatalf("description %q after clearing", *a.Description)
+	}
+	e.want(e.do("PATCH", "/agents/"+online.ID, gen.AgentUpdate{Description: ptr(strings.Repeat("가", 201))}), 400, apierr.CodeInvalidArgument)
+	e.want(e.do("PATCH", "/agents/"+online.ID, gen.AgentUpdate{Description: ptr("a\nb")}), 400, apierr.CodeInvalidArgument)
+	e.want(e.do("PATCH", "/agents/00000000-0000-0000-0000-000000000000", gen.AgentUpdate{Description: ptr("x")}), 404, apierr.CodeNotFound)
+
 	e.want(e.do("POST", "/agents/"+online.ID+"/approve", nil), 409, apierr.CodeInvalidState)
-	a := decode[gen.Agent](t, e.do("POST", "/agents/"+pending.ID+"/approve", nil))
+	a = decode[gen.Agent](t, e.do("POST", "/agents/"+pending.ID+"/approve", nil))
 	if a.Status != gen.AgentStatusOffline {
 		t.Fatalf("approved status %s", a.Status)
 	}

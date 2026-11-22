@@ -1642,12 +1642,15 @@ type Agent struct {
 	// CertExpiresAt Absent until a certificate is issued.
 	CertExpiresAt *time.Time `json:"certExpiresAt,omitempty"`
 	ConnMode      ConnMode   `json:"connMode"`
-	EnrolledAt    time.Time  `json:"enrolledAt"`
-	ExecHelper    bool       `json:"execHelper"`
-	Hostname      string     `json:"hostname"`
-	Id            string     `json:"id"`
-	Kind          AgentKind  `json:"kind"`
-	LastSeen      time.Time  `json:"lastSeen"`
+
+	// Description Set by an administrator to tell agents apart. Absent when none.
+	Description *string   `json:"description,omitempty"`
+	EnrolledAt  time.Time `json:"enrolledAt"`
+	ExecHelper  bool      `json:"execHelper"`
+	Hostname    string    `json:"hostname"`
+	Id          string    `json:"id"`
+	Kind        AgentKind `json:"kind"`
+	LastSeen    time.Time `json:"lastSeen"`
 
 	// ListenAddress Address the server dials (`connMode=listen`).
 	ListenAddress  *string        `json:"listenAddress,omitempty"`
@@ -1697,6 +1700,11 @@ type AgentList struct {
 
 // AgentStatus defines model for AgentStatus.
 type AgentStatus string
+
+// AgentUpdate defines model for AgentUpdate.
+type AgentUpdate struct {
+	Description *string `json:"description,omitempty"`
+}
 
 // Asset defines model for Asset.
 type Asset struct {
@@ -3091,6 +3099,9 @@ type ListScanTargetsParams struct {
 // ListScanTargetsParamsSort defines parameters for ListScanTargets.
 type ListScanTargetsParamsSort string
 
+// UpdateAgentJSONRequestBody defines body for UpdateAgent for application/json ContentType.
+type UpdateAgentJSONRequestBody = AgentUpdate
+
 // LoginJSONRequestBody defines body for Login for application/json ContentType.
 type LoginJSONRequestBody = LoginRequest
 
@@ -3209,7 +3220,7 @@ type ClientInterface interface {
 
 	// ListAgents List agents and scanners
 	//
-	// `q` matches hostname, address, id, OS and listen address.
+	// `q` matches hostname, description, address, id, OS and listen address.
 	//
 	// Corresponds with GET /agents (the `ListAgents` operationId).
 	ListAgents(ctx context.Context, params *ListAgentsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -3218,6 +3229,24 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /agents/{id} (the `GetAgent` operationId).
 	GetAgent(ctx context.Context, id PathId, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateAgentWithBody Change the administrator-set fields of an agent or scanner
+	//
+	// Absent fields are left unchanged; an empty `description` removes it.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PATCH /agents/{id} (the `UpdateAgent` operationId).
+	UpdateAgentWithBody(ctx context.Context, id PathId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateAgent Change the administrator-set fields of an agent or scanner
+	//
+	// Absent fields are left unchanged; an empty `description` removes it.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PATCH /agents/{id} (the `UpdateAgent` operationId).
+	UpdateAgent(ctx context.Context, id PathId, body UpdateAgentJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ApproveAgent Approve a pending enrollment
 	//
@@ -3738,7 +3767,7 @@ type ClientInterface interface {
 
 // ListAgents List agents and scanners
 //
-// `q` matches hostname, address, id, OS and listen address.
+// `q` matches hostname, description, address, id, OS and listen address.
 //
 // Corresponds with GET /agents (the `ListAgents` operationId).
 func (c *Client) ListAgents(ctx context.Context, params *ListAgentsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -3758,6 +3787,44 @@ func (c *Client) ListAgents(ctx context.Context, params *ListAgentsParams, reqEd
 // Corresponds with GET /agents/{id} (the `GetAgent` operationId).
 func (c *Client) GetAgent(ctx context.Context, id PathId, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetAgentRequest(c.Server, id)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateAgentWithBody Change the administrator-set fields of an agent or scanner
+//
+// Absent fields are left unchanged; an empty `description` removes it.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PATCH /agents/{id} (the `UpdateAgent` operationId).
+func (c *Client) UpdateAgentWithBody(ctx context.Context, id PathId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateAgentRequestWithBody(c.Server, id, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateAgent Change the administrator-set fields of an agent or scanner
+//
+// Absent fields are left unchanged; an empty `description` removes it.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PATCH /agents/{id} (the `UpdateAgent` operationId).
+func (c *Client) UpdateAgent(ctx context.Context, id PathId, body UpdateAgentJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateAgentRequest(c.Server, id, body)
 	if err != nil {
 		return nil, err
 	}
@@ -5148,6 +5215,53 @@ func NewGetAgentRequest(server string, id PathId) (*http.Request, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	return req, nil
+}
+
+// NewUpdateAgentRequest calls the generic UpdateAgent builder with application/json body
+func NewUpdateAgentRequest(server string, id PathId, body UpdateAgentJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateAgentRequestWithBody(server, id, "application/json", bodyReader)
+}
+
+// NewUpdateAgentRequestWithBody constructs an http.Request for the UpdateAgent method, with any body, and a specified content type
+func NewUpdateAgentRequestWithBody(server string, id PathId, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/agents/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPatch, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -8620,7 +8734,7 @@ type ClientWithResponsesInterface interface {
 
 	// ListAgentsWithResponse List agents and scanners
 	//
-	// `q` matches hostname, address, id, OS and listen address.
+	// `q` matches hostname, description, address, id, OS and listen address.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -8633,6 +8747,24 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /agents/{id} (the `GetAgent` operationId).
 	GetAgentWithResponse(ctx context.Context, id PathId, reqEditors ...RequestEditorFn) (*GetAgentResponse, error)
+
+	// UpdateAgentWithBodyWithResponse Change the administrator-set fields of an agent or scanner
+	//
+	// Absent fields are left unchanged; an empty `description` removes it.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PATCH /agents/{id} (the `UpdateAgent` operationId).
+	UpdateAgentWithBodyWithResponse(ctx context.Context, id PathId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateAgentResponse, error)
+
+	// UpdateAgentWithResponse Change the administrator-set fields of an agent or scanner
+	//
+	// Absent fields are left unchanged; an empty `description` removes it.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PATCH /agents/{id} (the `UpdateAgent` operationId).
+	UpdateAgentWithResponse(ctx context.Context, id PathId, body UpdateAgentJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateAgentResponse, error)
 
 	// ApproveAgentWithResponse Approve a pending enrollment
 	//
@@ -9347,6 +9479,75 @@ func (r GetAgentResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r GetAgentResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type UpdateAgentResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Agent
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *BadRequest
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *UnexpectedError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r UpdateAgentResponse) GetJSON200() *Agent {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r UpdateAgentResponse) GetJSON400() *BadRequest {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r UpdateAgentResponse) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r UpdateAgentResponse) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r UpdateAgentResponse) GetJSONDefault() *UnexpectedError {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r UpdateAgentResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateAgentResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateAgentResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r UpdateAgentResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -12781,7 +12982,7 @@ func (r SetUpdateSettingsResponse) ContentType() string {
 
 // ListAgentsWithResponse List agents and scanners
 //
-// `q` matches hostname, address, id, OS and listen address.
+// `q` matches hostname, description, address, id, OS and listen address.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -12805,6 +13006,36 @@ func (c *ClientWithResponses) GetAgentWithResponse(ctx context.Context, id PathI
 		return nil, err
 	}
 	return ParseGetAgentResponse(rsp)
+}
+
+// UpdateAgentWithBodyWithResponse Change the administrator-set fields of an agent or scanner
+//
+// Absent fields are left unchanged; an empty `description` removes it.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PATCH /agents/{id} (the `UpdateAgent` operationId).
+func (c *ClientWithResponses) UpdateAgentWithBodyWithResponse(ctx context.Context, id PathId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateAgentResponse, error) {
+	rsp, err := c.UpdateAgentWithBody(ctx, id, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateAgentResponse(rsp)
+}
+
+// UpdateAgentWithResponse Change the administrator-set fields of an agent or scanner
+//
+// Absent fields are left unchanged; an empty `description` removes it.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PATCH /agents/{id} (the `UpdateAgent` operationId).
+func (c *ClientWithResponses) UpdateAgentWithResponse(ctx context.Context, id PathId, body UpdateAgentJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateAgentResponse, error) {
+	rsp, err := c.UpdateAgent(ctx, id, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateAgentResponse(rsp)
 }
 
 // ApproveAgentWithResponse Approve a pending enrollment
@@ -13864,6 +14095,60 @@ func ParseGetAgentResponse(rsp *http.Response) (*GetAgentResponse, error) {
 			return nil, err
 		}
 		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest UnexpectedError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateAgentResponse parses an HTTP response from a UpdateAgentWithResponse call
+func ParseUpdateAgentResponse(rsp *http.Response) (*UpdateAgentResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateAgentResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Agent
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
 		var dest Unauthorized
@@ -16572,6 +16857,9 @@ type ServerInterface interface {
 	// GetAgent Get an agent or scanner
 	// (GET /agents/{id})
 	GetAgent(w http.ResponseWriter, r *http.Request, id PathId)
+	// UpdateAgent Change the administrator-set fields of an agent or scanner
+	// (PATCH /agents/{id})
+	UpdateAgent(w http.ResponseWriter, r *http.Request, id PathId)
 	// ApproveAgent Approve a pending enrollment
 	// (POST /agents/{id}/approve)
 	ApproveAgent(w http.ResponseWriter, r *http.Request, id PathId)
@@ -16746,6 +17034,12 @@ func (_ Unimplemented) ListAgents(w http.ResponseWriter, r *http.Request, params
 // GetAgent Get an agent or scanner
 // (GET /agents/{id})
 func (_ Unimplemented) GetAgent(w http.ResponseWriter, r *http.Request, id PathId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// UpdateAgent Change the administrator-set fields of an agent or scanner
+// (PATCH /agents/{id})
+func (_ Unimplemented) UpdateAgent(w http.ResponseWriter, r *http.Request, id PathId) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -17256,6 +17550,32 @@ func (siw *ServerInterfaceWrapper) GetAgent(w http.ResponseWriter, r *http.Reque
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetAgent(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateAgent operation middleware
+func (siw *ServerInterfaceWrapper) UpdateAgent(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id PathId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateAgent(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -20092,6 +20412,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Get(options.BaseURL+"/agents/{id}", wrapper.GetAgent)
 	})
 	r.Group(func(r chi.Router) {
+		r.Patch(options.BaseURL+"/agents/{id}", wrapper.UpdateAgent)
+	})
+	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/agents/{id}/approve", wrapper.ApproveAgent)
 	})
 	r.Group(func(r chi.Router) {
@@ -20317,6 +20640,88 @@ type GetAgentdefaultJSONResponse struct {
 }
 
 func (response GetAgentdefaultJSONResponse) VisitGetAgentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateAgentRequestObject struct {
+	Id   PathId `json:"id"`
+	Body *UpdateAgentJSONRequestBody
+}
+
+type UpdateAgentResponseObject interface {
+	VisitUpdateAgentResponse(w http.ResponseWriter) error
+}
+
+type UpdateAgent200JSONResponse Agent
+
+func (response UpdateAgent200JSONResponse) VisitUpdateAgentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateAgent400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response UpdateAgent400JSONResponse) VisitUpdateAgentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateAgent401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response UpdateAgent401JSONResponse) VisitUpdateAgentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateAgent404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response UpdateAgent404JSONResponse) VisitUpdateAgentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateAgentdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response UpdateAgentdefaultJSONResponse) VisitUpdateAgentResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -24203,6 +24608,9 @@ type StrictServerInterface interface {
 	// GetAgent Get an agent or scanner
 	// (GET /agents/{id})
 	GetAgent(ctx context.Context, request GetAgentRequestObject) (GetAgentResponseObject, error)
+	// UpdateAgent Change the administrator-set fields of an agent or scanner
+	// (PATCH /agents/{id})
+	UpdateAgent(ctx context.Context, request UpdateAgentRequestObject) (UpdateAgentResponseObject, error)
 	// ApproveAgent Approve a pending enrollment
 	// (POST /agents/{id}/approve)
 	ApproveAgent(ctx context.Context, request ApproveAgentRequestObject) (ApproveAgentResponseObject, error)
@@ -24448,6 +24856,39 @@ func (sh *strictHandler) GetAgent(w http.ResponseWriter, r *http.Request, id Pat
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetAgentResponseObject); ok {
 		if err := validResponse.VisitGetAgentResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateAgent operation middleware
+func (sh *strictHandler) UpdateAgent(w http.ResponseWriter, r *http.Request, id PathId) {
+	var request UpdateAgentRequestObject
+
+	request.Id = id
+
+	var body UpdateAgentJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateAgent(ctx, request.(UpdateAgentRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateAgent")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateAgentResponseObject); ok {
+		if err := validResponse.VisitUpdateAgentResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

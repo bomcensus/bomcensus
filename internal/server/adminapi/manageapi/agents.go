@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	gen "github.com/bomcensus/bomcensus/internal/gen/adminapi"
 	"github.com/bomcensus/bomcensus/internal/server/adminapi/apierr"
@@ -48,6 +50,7 @@ func (v agentView) agent(a store.Agent) gen.Agent {
 		Id:                a.ID,
 		Kind:              gen.AgentKind(a.Kind),
 		Hostname:          a.Hostname,
+		Description:       optString(a.Description),
 		AssetId:           optString(a.AssetID),
 		Version:           a.Version,
 		Os:                a.OS,
@@ -178,6 +181,39 @@ func (h *Handlers) GetAgent(ctx context.Context, req gen.GetAgentRequestObject) 
 		return nil, err
 	}
 	return gen.GetAgent200JSONResponse(a), nil
+}
+
+// maxAgentDescription is the longest description in characters.
+const maxAgentDescription = 200
+
+// UpdateAgent implements updateAgent.
+func (h *Handlers) UpdateAgent(ctx context.Context, req gen.UpdateAgentRequestObject) (gen.UpdateAgentResponseObject, error) {
+	b := req.Body
+	if b == nil {
+		return nil, apierr.Invalid("request body is required")
+	}
+	a, err := h.st.GetAgent(ctx, req.Id)
+	if err != nil {
+		return nil, err
+	}
+	if b.Description != nil {
+		desc := strings.TrimSpace(*b.Description)
+		if utf8.RuneCountInString(desc) > maxAgentDescription {
+			return nil, apierr.Invalid("description must be at most %d characters", maxAgentDescription)
+		}
+		if strings.ContainsFunc(desc, unicode.IsControl) {
+			return nil, apierr.Invalid("description must not contain control characters")
+		}
+		if err := h.st.SetAgentDescription(ctx, a.ID, desc); err != nil {
+			return nil, err
+		}
+		h.log.Info("agent description changed", "agent_id", a.ID, "hostname", a.Hostname, "by", h.who(ctx))
+	}
+	dto, err := h.getAgentDTO(ctx, a.ID)
+	if err != nil {
+		return nil, err
+	}
+	return gen.UpdateAgent200JSONResponse(dto), nil
 }
 
 // ApproveAgent implements approveAgent. Approval only changes the state;

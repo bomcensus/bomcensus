@@ -699,6 +699,10 @@ export type Agent = {
     kind: AgentKind;
     hostname: string;
     /**
+     * Set by an administrator to tell agents apart. Absent when none.
+     */
+    description?: string;
+    /**
      * The host asset of an agent. Absent for scanners and pending agents.
      */
     assetId?: string;
@@ -739,6 +743,10 @@ export type Agent = {
     updateMessage?: string;
     enrolledAt: string;
     lastSeen: string;
+};
+
+export type AgentUpdate = {
+    description?: string;
 };
 
 export type AgentList = {
@@ -2356,6 +2364,45 @@ export type GetAgentResponses = {
 };
 
 export type GetAgentResponse = GetAgentResponses[keyof GetAgentResponses];
+
+export type UpdateAgentData = {
+    body: AgentUpdate;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/agents/{id}';
+};
+
+export type UpdateAgentErrors = {
+    /**
+     * The request is malformed or a value is invalid.
+     */
+    400: Error;
+    /**
+     * No valid session, or wrong credentials on login.
+     */
+    401: Error;
+    /**
+     * The resource does not exist.
+     */
+    404: Error;
+    /**
+     * Unexpected error.
+     */
+    default: Error;
+};
+
+export type UpdateAgentError = UpdateAgentErrors[keyof UpdateAgentErrors];
+
+export type UpdateAgentResponses = {
+    /**
+     * Agent updated
+     */
+    200: Agent;
+};
+
+export type UpdateAgentResponse = UpdateAgentResponses[keyof UpdateAgentResponses];
 
 export type ApproveAgentData = {
     body?: never;

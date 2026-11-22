@@ -18,7 +18,7 @@ import (
 )
 
 // mgAgentColumns reads an agent through the alias a.
-const mgAgentColumns = `a.id::text, a.kind, a.hostname, a.identity_key, a.hpke_public_key,
+const mgAgentColumns = `a.id::text, a.kind, a.hostname, a.description, a.identity_key, a.hpke_public_key,
 	coalesce(a.register_key_id, ''), a.state, a.version, a.os, a.arch, a.connect_mode, a.listen_address,
 	a.tls_mode, a.observed_issuer, a.privilege, a.exec_helper, a.address, a.trust_bundle_version,
 	a.update_state, a.update_message, coalesce(a.asset_id::text, ''), a.enrolled_at, a.approved_at, a.revoked_at, a.last_seen,
@@ -27,7 +27,7 @@ const mgAgentColumns = `a.id::text, a.kind, a.hostname, a.identity_key, a.hpke_p
 // mgScanAgent scans mgAgentColumns followed by extra.
 func mgScanAgent(r mgRow, extra ...any) (store.Agent, error) {
 	var a store.Agent
-	dest := []any{&a.ID, &a.Kind, &a.Hostname, &a.IdentityKey, &a.HPKEPublicKey,
+	dest := []any{&a.ID, &a.Kind, &a.Hostname, &a.Description, &a.IdentityKey, &a.HPKEPublicKey,
 		&a.RegisterKeyID, &a.State, &a.Version, &a.OS, &a.Arch, &a.ConnectMode, &a.ListenAddress,
 		&a.TLSMode, &a.ObservedIssuer, &a.Privilege, &a.ExecHelper, &a.Address, &a.TrustBundleVersion,
 		&a.UpdateState, &a.UpdateMessage, &a.AssetID, &a.EnrolledAt, &a.ApprovedAt, &a.RevokedAt, &a.LastSeen,
@@ -75,14 +75,14 @@ func (d *DB) CreateAgent(ctx context.Context, a store.Agent) (store.Agent, error
 	out, err := mgScanAgent(d.q.QueryRow(ctx, `
 		INSERT INTO agents AS a (id, kind, hostname, identity_key, hpke_public_key, register_key_id, state,
 			version, os, arch, connect_mode, listen_address, tls_mode, observed_issuer, privilege, exec_helper,
-			address, trust_bundle_version, update_state, asset_id, enrolled_at, approved_at, last_seen)
+			address, trust_bundle_version, update_state, asset_id, enrolled_at, approved_at, last_seen, description)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20,
-			$21, $22, $23)
+			$21, $22, $23, $24)
 		RETURNING `+mgAgentColumns,
 		a.ID, a.Kind, a.Hostname, a.IdentityKey, mgBytes(a.HPKEPublicKey), mgText(a.RegisterKeyID), a.State,
 		a.Version, a.OS, a.Arch, a.ConnectMode, a.ListenAddress, a.TLSMode, a.ObservedIssuer, a.Privilege,
 		a.ExecHelper, a.Address, a.TrustBundleVersion, a.UpdateState, mgText(a.AssetID), enrolled, approved,
-		mgTimePtr(a.LastSeen)))
+		mgTimePtr(a.LastSeen), a.Description))
 	if err != nil {
 		return store.Agent{}, mgErr("create agent", err)
 	}
@@ -128,6 +128,7 @@ const mgAgentWhere = `
 	  AND ($4 = '' OR a.connect_mode = $4)
 	  AND ($5 = '' OR a.tls_mode = $5)
 	  AND ($6 = '' OR strpos(lower(a.hostname), lower($6)) > 0
+	              OR strpos(lower(a.description), lower($6)) > 0
 	              OR strpos(lower(a.address), lower($6)) > 0
 	              OR strpos(a.id::text, lower($6)) > 0
 	              OR strpos(lower(a.os), lower($6)) > 0
@@ -236,6 +237,12 @@ func (d *DB) TouchAgent(ctx context.Context, id string, at time.Time) error {
 	tag, err := d.q.Exec(ctx,
 		`UPDATE agents SET last_seen = greatest(last_seen, $2) WHERE id = $1`, id, at.UTC())
 	return mgExactlyOne("touch agent", tag, err)
+}
+
+// SetAgentDescription implements store.Agents.
+func (d *DB) SetAgentDescription(ctx context.Context, id, description string) error {
+	tag, err := d.q.Exec(ctx, `UPDATE agents SET description = $2 WHERE id = $1`, id, description)
+	return mgExactlyOne("set agent description", tag, err)
 }
 
 // SetAgentAsset implements store.Agents.

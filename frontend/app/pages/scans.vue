@@ -409,7 +409,10 @@ async function removeCred() {
             <template #cell-address="{ row }"><span class="mono whitespace-nowrap">{{ row.address }}:{{ row.port }}</span></template>
             <template #cell-credential="{ row }">{{ credentialName(row) }}</template>
             <template #cell-scanner="{ row }">
-              <NuxtLink v-if="row.scannerId" :to="`/agents/${row.scannerId}`" class="link whitespace-nowrap">{{ scannerName(row) }}</NuxtLink>
+              <template v-if="row.scannerId">
+                <NuxtLink :to="`/agents/${row.scannerId}`" class="link whitespace-nowrap">{{ scannerName(row) }}</NuxtLink>
+                <div v-if="agentById.get(row.scannerId)?.description" class="text-xs text-ink-3">{{ agentById.get(row.scannerId)?.description }}</div>
+              </template>
               <span v-else class="whitespace-nowrap">{{ scannerName(row) }}</span>
             </template>
             <template #cell-sudo="{ row }"><span class="whitespace-nowrap">{{ row.sudo ? '사용' : '미사용' }}</span></template>
@@ -500,7 +503,7 @@ async function removeCred() {
         <FormField label="Scanner">
           <select v-model="targetForm.scannerId" class="select w-full">
             <option value="">내장 Scanner</option>
-            <option v-for="s in scannerOptions" :key="s.id" :value="s.id">{{ s.hostname }}</option>
+            <option v-for="s in scannerOptions" :key="s.id" :value="s.id">{{ agentOptionLabel(s) }}</option>
           </select>
         </FormField>
         <label v-if="editingTarget?.hostKeyPinned" class="inline-flex items-center gap-1.5 text-sm">

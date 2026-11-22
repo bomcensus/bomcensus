@@ -69,6 +69,7 @@ type Agent struct {
 	ID            string
 	Kind          AgentKind
 	Hostname      string
+	Description   string // set by an administrator to tell agents apart; empty when none
 	IdentityKey   []byte // Ed25519 public key; unique
 	HPKEPublicKey []byte // scanners only
 	RegisterKeyID string
@@ -124,8 +125,8 @@ type AgentFilter struct {
 	OnlineAfter time.Time
 	ConnectMode ConnectMode
 	TLSMode     TLSVerifyMode
-	// Q matches a case-insensitive substring of hostname, address, ID, OS
-	// or listen address.
+	// Q matches a case-insensitive substring of hostname, description,
+	// address, ID, OS or listen address.
 	Q string
 	// Sort is one of hostname, version, address, last_seen, enrolled_at,
 	// optionally prefixed with "-" for descending. Default hostname.
@@ -188,6 +189,9 @@ type Agents interface {
 	UpdateAgentPoll(ctx context.Context, id string, s AgentPollStatus) error
 	// TouchAgent sets LastSeen when at is later than the stored value.
 	TouchAgent(ctx context.Context, id string, at time.Time) error
+	// SetAgentDescription replaces the description. ErrNotFound when the
+	// agent does not exist.
+	SetAgentDescription(ctx context.Context, id, description string) error
 	// SetAgentAsset links the agent to an asset; an empty assetID unlinks.
 	SetAgentAsset(ctx context.Context, id, assetID string) error
 	// AdvanceAgentCounter stores value as the agent's message counter only

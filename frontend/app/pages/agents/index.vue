@@ -55,7 +55,7 @@ const rows = computed(() => {
     if (conn.value && a.connMode !== conn.value) return false
     if (tls.value && a.tlsMode !== tls.value) return false
     if (!needle) return true
-    return [a.hostname, a.address, a.id, a.os, a.listenAddress].some((v) => v?.toLowerCase().includes(needle))
+    return [a.hostname, a.description, a.address, a.id, a.os, a.listenAddress].some((v) => v?.toLowerCase().includes(needle))
   })
 })
 
@@ -254,7 +254,7 @@ async function removeTarget() {
       </button>
 
       <FilterBar :count="rows.length" :total="ofTab.length" unit="개">
-        <SearchInput v-model="q" placeholder="호스트명, 주소, ID" />
+        <SearchInput v-model="q" placeholder="호스트명, 설명, 주소, ID" />
         <SelectFilter v-model="status" label="상태" :options="statusOptions" />
         <SelectFilter v-model="conn" label="연결 모드" :options="connOptions" />
         <SelectFilter v-model="tls" label="TLS 모드" :options="tlsOptions" />
@@ -273,6 +273,7 @@ async function removeTarget() {
         >
           <template #cell-hostname="{ row }">
             <NuxtLink :to="`/agents/${row.id}`" class="font-medium hover:underline">{{ row.hostname }}</NuxtLink>
+            <div v-if="row.description" class="text-xs text-ink-2">{{ row.description }}</div>
             <div class="mono whitespace-nowrap text-xs text-ink-3">{{ row.id }}</div>
           </template>
           <template #cell-status="{ row }">

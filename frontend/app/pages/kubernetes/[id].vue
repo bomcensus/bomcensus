@@ -209,7 +209,10 @@ async function remove() {
             <dd><StatusBadge :tone="cluster.execEnabled ? 'ok' : 'neutral'" :label="cluster.execEnabled ? '사용' : '미사용'" /></dd>
             <dt>Scanner</dt>
             <dd>
-              <NuxtLink v-if="scanner" :to="`/agents/${scanner.id}`" class="link mono">{{ scanner.hostname }}</NuxtLink>
+              <template v-if="scanner">
+                <NuxtLink :to="`/agents/${scanner.id}`" class="link mono">{{ scanner.hostname }}</NuxtLink>
+                <span v-if="scanner.description" class="text-ink-3"> {{ scanner.description }}</span>
+              </template>
               <span v-else class="text-ink-3">—</span>
             </dd>
             <dt>워크로드</dt>

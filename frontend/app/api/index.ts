@@ -9,6 +9,7 @@ import * as sdk from './gen/sdk.gen'
 import type * as gen from './gen/types.gen'
 import type {
   AgentAnchorChange,
+  AgentUpdate,
   CredentialCreate,
   K8sClusterCreate,
   K8sClusterUpdate,
@@ -91,6 +92,7 @@ export const syncK8sCluster = async (id: string) => {
 
 export const listAgents = (query?: Query<gen.ListAgentsData>) => call(sdk.listAgents({ query }))
 export const getAgent = (id: string) => call(sdk.getAgent({ path: { id } }))
+export const updateAgent = (id: string, body: AgentUpdate) => call(sdk.updateAgent({ path: { id }, body }))
 export const approveAgent = (id: string) => call(sdk.approveAgent({ path: { id } }))
 export const revokeAgent = (id: string) => call(sdk.revokeAgent({ path: { id } }))
 export const listListenTargets = (query?: Query<gen.ListListenTargetsData>) => call(sdk.listListenTargets({ query }))

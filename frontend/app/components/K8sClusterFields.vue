@@ -41,14 +41,14 @@ const filterFields: { label: string; include: keyof K8sClusterForm['filter']; ex
       <FormField label="Scanner">
         <select v-model="form.scannerId" class="select w-full">
           <option value="">내장 Scanner</option>
-          <option v-for="s in scanners" :key="s.id" :value="s.id">{{ s.hostname }}</option>
+          <option v-for="s in scanners" :key="s.id" :value="s.id">{{ agentOptionLabel(s) }}</option>
         </select>
       </FormField>
     </template>
     <FormField v-else label="Scanner" hint="클러스터 안에 배포된 Scanner">
       <select v-model="form.scannerId" class="select w-full">
         <option value="" disabled>선택</option>
-        <option v-for="s in scanners" :key="s.id" :value="s.id">{{ s.hostname }}</option>
+        <option v-for="s in scanners" :key="s.id" :value="s.id">{{ agentOptionLabel(s) }}</option>
       </select>
     </FormField>
     <label class="inline-flex items-center gap-1.5 text-sm">

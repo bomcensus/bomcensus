@@ -71,6 +71,7 @@ export type {
   TlsMode,
   UpdateState,
   Agent,
+  AgentUpdate,
   ListenTargetState,
   ListenTarget,
   ListenTargetCreate,

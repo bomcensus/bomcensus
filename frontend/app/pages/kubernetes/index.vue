@@ -16,7 +16,8 @@ const { data: clusters, pending, error, refresh } = useLoad('k8s-clusters', () =
 // Scanner hostnames; a failed agent lookup only leaves the column empty
 const { data: agents } = useLoad('k8s-clusters:agents', () => fetchAll((page) => listAgents(page)), () => [])
 
-const scannerName = (c: K8sCluster) => agents.value.find((a) => a.id === c.scannerId)?.hostname
+const scannerOf = (c: K8sCluster) => agents.value.find((a) => a.id === c.scannerId)
+const scannerName = (c: K8sCluster) => scannerOf(c)?.hostname
 
 const columns: TableColumn<K8sCluster>[] = [
   { key: 'name', label: '이름', sortValue: (c) => c.name },
@@ -89,7 +90,10 @@ async function create() {
           <StatusBadge :tone="row.execEnabled ? 'ok' : 'neutral'" :label="row.execEnabled ? '사용' : '미사용'" />
         </template>
         <template #cell-scanner="{ row }">
-          <span v-if="scannerName(row)" class="mono">{{ scannerName(row) }}</span>
+          <template v-if="scannerName(row)">
+            <span class="mono">{{ scannerName(row) }}</span>
+            <div v-if="scannerOf(row)?.description" class="text-xs text-ink-3">{{ scannerOf(row)?.description }}</div>
+          </template>
           <span v-else class="text-ink-3">—</span>
         </template>
         <template #cell-workloads="{ row }"><span class="mono whitespace-nowrap">{{ row.workloadCount }}</span></template>

@@ -927,7 +927,7 @@ paths:
       tags: [agents]
       operationId: listAgents
       summary: List agents and scanners
-      description: "`q` matches hostname, address, id, OS and listen address."
+      description: "`q` matches hostname, description, address, id, OS and listen address."
       parameters:
         - $ref: "#/components/parameters/QueryQ"
         - name: kind
@@ -994,6 +994,32 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Agent"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+    patch:
+      tags: [agents]
+      operationId: updateAgent
+      summary: Change the administrator-set fields of an agent or scanner
+      description: Absent fields are left unchanged; an empty `description` removes it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgentUpdate"
+      responses:
+        "200":
+          description: Agent updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Agent"
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
@@ -2886,6 +2912,9 @@ components:
           $ref: "#/components/schemas/AgentKind"
         hostname:
           type: string
+        description:
+          description: Set by an administrator to tell agents apart. Absent when none.
+          type: string
         assetId:
           description: The host asset of an agent. Absent for scanners and pending agents.
           type: string
@@ -2936,6 +2965,12 @@ components:
         lastSeen:
           type: string
           format: date-time
+    AgentUpdate:
+      type: object
+      properties:
+        description:
+          type: string
+          maxLength: 200
     AgentList:
       type: object
       required: [items, total]
