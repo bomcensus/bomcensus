@@ -1,0 +1,181 @@
+# Copyright (C) 2026 JC-Lab
+# SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-bomcensus-Commercial
+# Additional terms apply. See LICENSING.md.
+
+# bomcensus demo: a server with example data, for trying the product only.
+#
+#   docker compose up -d --build --wait     (or, from the repository root: make demo-up)
+#   open http://localhost:8080, log in as admin / demo
+#   docker compose down -v                  (or: make demo-down)
+#
+# DEMO ONLY. Every secret below is fixed and published in this file, the
+# console is plain HTTP, and the SSH targets accept a known password. Use
+# deploy/docker for a real installation.
+
+name: bomcensus-demo
+
+x-build: &build
+  context: ../..
+  dockerfile: deploy/docker/Dockerfile
+  args:
+    VERSION: ${BOMCENSUS_VERSION:-0.0.0-dev}
+
+x-ssh-target: &ssh-target
+  restart: unless-stopped
+  healthcheck:
+    test: ["CMD-SHELL", "pgrep -x sshd >/dev/null"]
+    interval: 2s
+    timeout: 2s
+    retries: 30
+
+services:
+  postgres:
+    image: postgres:17-trixie
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: bomcensus
+      POSTGRES_DB: bomcensus
+      POSTGRES_PASSWORD: demo
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "bomcensus", "-d", "bomcensus"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  server:
+    image: ${BOMCENSUS_REPO:-bomcensus}/server:${BOMCENSUS_VERSION:-0.0.0-dev}
+    build:
+      <<: *build
+      target: server
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      BOMCENSUS_DATABASE_URL: postgres://bomcensus:demo@postgres:5432/bomcensus?sslmode=disable
+      BOMCENSUS_MASTER_KEY: oJOXjPqjy0bn8kjYnj542DuOiG97xcndWHNome6lzRE=
+      BOMCENSUS_ADMIN_USER: admin
+      # argon2id hash of "demo". "$$" is a literal "$" in Compose files.
+      BOMCENSUS_ADMIN_PASSWORD_HASH: $$argon2id$$v=19$$m=65536,t=3,p=4$$kLi3FMQdcA9vNlZzAH2TGQ$$KKVaphBYefCydiItfgZd8Ioy8678znCO69trkGGiO6M
+      BOMCENSUS_WEB_TLS: "off"
+      BOMCENSUS_WEB_SERVER_NAMES: localhost
+      BOMCENSUS_AGENT_SERVER_NAMES: localhost,server
+      BOMCENSUS_LOG_LEVEL: ${BOMCENSUS_LOG_LEVEL:-info}
+    ports:
+      - "127.0.0.1:${WEB_PORT:-8080}:8080"
+      - "127.0.0.1:${AGENT_PORT:-8443}:8443"
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/bomcensus-server", "healthcheck"]
+      interval: 2s
+      timeout: 5s
+      retries: 60
+
+  # One-shot: creates the Register Key for the agent below, the SSH
+  # credential and one scan target per SSH target, and starts a first scan.
+  # Objects that already exist are left alone, so it can run on every start.
+  setup:
+    image: bomcensus/demo-setup:local
+    build:
+      context: .
+      dockerfile_inline: |
+        FROM alpine:3.22
+        RUN apk add --no-cache curl jq
+    depends_on:
+      server:
+        condition: service_healthy
+      ssh-debian:
+        condition: service_healthy
+      ssh-alpine:
+        condition: service_healthy
+      ssh-alma:
+        condition: service_healthy
+    environment:
+      DEMO_API: http://server:8080/api/v1
+      DEMO_ADMIN_USER: admin
+      DEMO_ADMIN_PASSWORD: demo
+      DEMO_SSH_TARGETS: ssh-debian ssh-alpine ssh-alma
+    volumes:
+      - ./setup.sh:/setup.sh:ro
+      - setup-data:/demo
+    command: ["/bin/sh", "/setup.sh"]
+
+  # Agent in a container. It inventories its own container file system.
+  agent:
+    image: ${BOMCENSUS_REPO:-bomcensus}/agent:${BOMCENSUS_VERSION:-0.0.0-dev}
+    build:
+      <<: *build
+      target: agent
+    restart: unless-stopped
+    init: true
+    hostname: demo-agent
+    depends_on:
+      setup:
+        condition: service_completed_successfully
+    environment:
+      BOMCENSUS_SERVER: https://server:8443
+      BOMCENSUS_TOKEN_FILE: /demo/agent-token
+      BOMCENSUS_LOG_LEVEL: ${BOMCENSUS_LOG_LEVEL:-info}
+    volumes:
+      - agent-state:/var/lib/bomcensus/agent
+      - setup-data:/demo:ro
+
+  # SSH targets for agentless collection, one per package format (dpkg, apk,
+  # rpm). Account demo / demo with password login, reachable only on the
+  # Compose network.
+  ssh-debian:
+    <<: *ssh-target
+    image: bomcensus/demo-ssh-debian:local
+    hostname: ssh-debian
+    build:
+      context: .
+      dockerfile_inline: |
+        FROM debian:trixie-slim
+        RUN set -eu; \
+            apt-get update; \
+            apt-get install -y --no-install-recommends openssh-server procps; \
+            rm -rf /var/lib/apt/lists/*; \
+            useradd --create-home --shell /bin/bash demo; \
+            echo 'demo:demo' | chpasswd; \
+            mkdir -p /run/sshd; \
+            printf 'PasswordAuthentication yes\nPermitRootLogin no\n' > /etc/ssh/sshd_config.d/demo.conf
+        CMD ["/usr/sbin/sshd", "-D", "-e"]
+
+  ssh-alpine:
+    <<: *ssh-target
+    image: bomcensus/demo-ssh-alpine:local
+    hostname: ssh-alpine
+    build:
+      context: .
+      dockerfile_inline: |
+        FROM alpine:3.22
+        RUN set -eu; \
+            apk add --no-cache openssh-server procps; \
+            adduser -D -s /bin/sh demo; \
+            echo 'demo:demo' | chpasswd; \
+            ssh-keygen -A; \
+            printf 'PasswordAuthentication yes\nPermitRootLogin no\n' >> /etc/ssh/sshd_config
+        CMD ["/usr/sbin/sshd", "-D", "-e"]
+
+  ssh-alma:
+    <<: *ssh-target
+    image: bomcensus/demo-ssh-alma:local
+    hostname: ssh-alma
+    build:
+      context: .
+      dockerfile_inline: |
+        FROM almalinux:10-minimal
+        RUN set -eu; \
+            microdnf install -y --nodocs openssh-server passwd shadow-utils procps-ng; \
+            microdnf clean all; \
+            useradd --create-home --shell /bin/bash demo; \
+            echo 'demo:demo' | chpasswd; \
+            ssh-keygen -A; \
+            printf 'PasswordAuthentication yes\nPermitRootLogin no\n' > /etc/ssh/sshd_config.d/demo.conf
+        CMD ["/usr/sbin/sshd", "-D", "-e"]
+
+volumes:
+  postgres-data:
+  agent-state:
+  setup-data:

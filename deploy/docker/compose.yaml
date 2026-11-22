@@ -6,10 +6,10 @@
 #
 #   ./init.sh                                  create .env (once)
 #   docker compose up -d                       postgres + server
-#   docker compose --profile demo up -d        also the demo agent and SSH target
 #
 # Images are built by `make docker-build`; `docker compose build` builds the
-# server and agent from the same Dockerfile.
+# server from the same Dockerfile. For a demo with example data, see
+# deploy/demo.
 
 name: bomcensus
 
@@ -66,53 +66,5 @@ services:
       retries: 3
       start_period: 30s
 
-  # ---- demo profile: for trying the product only ---------------------------
-
-  # Agent in a container. It inventories its own container file system.
-  agent:
-    profiles: [demo]
-    image: ${BOMCENSUS_REPO:-bomcensus}/agent:${BOMCENSUS_VERSION:-0.0.0-dev}
-    build:
-      <<: *build
-      target: agent
-    restart: unless-stopped
-    init: true
-    hostname: demo-agent
-    depends_on:
-      server:
-        condition: service_healthy
-    environment:
-      BOMCENSUS_SERVER: https://server:8443
-      BOMCENSUS_TOKEN: ${BOMCENSUS_TOKEN:-}
-      BOMCENSUS_LOG_LEVEL: ${BOMCENSUS_LOG_LEVEL:-info}
-    volumes:
-      # A named volume takes the owner and mode of the image directory, so the
-      # agent can keep it at 0700. Use a subdirectory when binding a host path.
-      - agent-state:/var/lib/bomcensus/agent
-
-  # SSH target for agentless collection. DEMO ONLY: fixed account
-  # demo/demo with password login, reachable only on the compose network as
-  # ssh-target:22.
-  ssh-target:
-    profiles: [demo]
-    image: bomcensus/demo-ssh-target:local
-    build:
-      context: .
-      dockerfile_inline: |
-        FROM debian:trixie-slim
-        RUN set -eu; \
-            apt-get update; \
-            apt-get install -y --no-install-recommends openssh-server; \
-            rm -rf /var/lib/apt/lists/*; \
-            useradd --create-home --shell /bin/bash demo; \
-            echo 'demo:demo' | chpasswd; \
-            mkdir -p /run/sshd; \
-            printf 'PasswordAuthentication yes\nPermitRootLogin no\n' > /etc/ssh/sshd_config.d/demo.conf
-        EXPOSE 22
-        CMD ["/usr/sbin/sshd", "-D", "-e"]
-    restart: unless-stopped
-    hostname: ssh-target
-
 volumes:
   postgres-data:
-  agent-state:

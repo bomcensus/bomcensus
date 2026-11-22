@@ -28,7 +28,7 @@ Register Keys can restrict enrollment to source address ranges. The server check
 
 ## 2. Docker Compose
 
-`deploy/docker/` contains a Compose setup for a single host: PostgreSQL and the server, and an optional `demo` profile with one agent container and one SSH target. The demo containers are for trying the product and for tests; they are not a way to inventory real hosts.
+`deploy/docker/` contains a Compose setup for a single host: PostgreSQL and the server. `deploy/demo/` is a separate, self-contained demo with example data (2.9); it is for trying the product only.
 
 ### 2.1 Prerequisites
 
@@ -129,27 +129,13 @@ All commands below run in `deploy/docker/` unless noted.
 
    ```sh
    curl -k -b cookies -H 'Content-Type: application/json' -H 'X-Requested-With: bomcensus' \
-        --data '{"name":"demo","target":"agent","approval":"auto","maxUses":1}' \
+        --data '{"name":"web servers","target":"agent","approval":"manual"}' \
         https://localhost:8080/api/v1/register-keys
    ```
 
-   The `enrollment` field of the response is the string.
+   The `enrollment` field of the response is the string. Install agents with it on the hosts to inventory (chapter 4), or add agentless targets under `/scans`.
 
-6. Start the demo agent and SSH target with that string:
-
-   ```sh
-   BOMCENSUS_TOKEN='bc1.…' docker compose --profile demo up -d --wait
-   ```
-
-   (or put it into `BOMCENSUS_TOKEN` in `.env`). On first start the agent enrolls against `https://server:8443`, then runs. Its identity is kept in the volume `agent-state`, so restarts and re-creation do not enroll again. Remove the token from `.env` afterwards; it is only read for the first enrollment.
-
-7. The agent appears under `/agents` (`GET /api/v1/agents`) within seconds. After its first collection, a host named `demo-agent` appears under `/assets` with the Debian packages of the agent container. It is marked as partial coverage, because the agent and the probe run without privileges in this image.
-
-8. Agentless collection of the SSH target. Under `/scans`, add a credential of kind SSH password with user `demo`, password `demo`, then a scan target with address `ssh-target`, port 22, and run it. The embedded scanner connects over the Compose network, pins the host key it sees first, pushes the signed probe and collects. A host named `ssh-target` appears under `/assets`.
-
-   **The SSH target is demo-only:** a fixed account with a known password, reachable only on the Compose network.
-
-Stop with `docker compose down` (or `make docker-down`). `docker compose down -v` also deletes the database and the agent state.
+Stop with `docker compose down` (or `make docker-down`). `docker compose down -v` also deletes the database.
 
 ### 2.5 Upgrading
 
@@ -158,8 +144,6 @@ Stop with `docker compose down` (or `make docker-down`). `docker compose down -v
 3. Back up the database (2.6).
 4. `docker compose up -d --wait`. The server applies new migrations at start (`bomcensus-server migrate` runs them alone) and imports the new bundle from the image.
 5. Agents are updated through the server's update settings (`/updates`); each agent verifies the bundle itself and rolls back when the new version does not come up.
-
-A demo agent container is reset to the version in its image whenever it is re-created; its state volume is kept.
 
 ### 2.6 Backup
 
@@ -189,13 +173,36 @@ docker run -d --restart unless-stopped -v bomcensus-scanner:/var/lib/bomcensus/s
 ```
 /opt/bomcensus/versions/VERSION/{bomcensus-agent,bomcensus-probe,bomcensus-updater}
 /opt/bomcensus/current -> versions/VERSION
-/var/lib/bomcensus/agent/          state (volume agent-state in compose)
+/var/lib/bomcensus/agent/          state (a volume)
 /var/lib/bomcensus/update-spool/   downloaded releases
 ```
 
 Users `bomcensus` (990), `bomcensus-probe` (991) and `bomcensus-update` (992) exist as on a host. There is no systemd in the container: the agent starts the probe (`bomcensus-probe collect`) and the updater as its own children, so all three run as `bomcensus`, and `bomcensus` owns `/opt/bomcensus` so that the updater can install. The separation of [SECURITY.md](SECURITY.md) §6.1 is therefore not in effect in this image.
 
-When `BOMCENSUS_SERVER` and `BOMCENSUS_TOKEN` are set, the entry point runs `bomcensus-agent enroll --if-not-enrolled`, which does nothing for an approved enrollment and resumes a pending one. It then removes the token from the environment and runs `bomcensus-agent run`. Other commands are passed to the agent (`docker run --rm bomcensus/agent:VERSION version`). Variables: see 5.3.
+When `BOMCENSUS_SERVER` and `BOMCENSUS_TOKEN` (or `BOMCENSUS_TOKEN_FILE`) are set, the entry point runs `bomcensus-agent enroll --if-not-enrolled`, which does nothing for an approved enrollment and resumes a pending one. It then removes the token from the environment and runs `bomcensus-agent run`. Other commands are passed to the agent (`docker run --rm bomcensus/agent:VERSION version`). Variables: see 5.3.
+
+### 2.9 Demo
+
+`deploy/demo/` starts a server with example data in one step. From the repository root:
+
+```sh
+make demo-up        # builds the server and agent images, then starts deploy/demo/compose.yaml
+```
+
+Open `http://localhost:8080` and log in as `admin` / `demo`. The stack contains:
+
+| Service | Role |
+|---|---|
+| `server`, `postgres` | the server, console on plain HTTP bound to 127.0.0.1 |
+| `setup` | one-shot: creates a Register Key for the agent, an SSH password credential and one scan target per SSH target, and starts a first scan. It reuses objects that already exist, so it runs again on every start without duplicating them |
+| `agent` | an agent container (2.8) that enrolls with the key from `setup` and inventories its own file system |
+| `ssh-debian`, `ssh-alpine`, `ssh-alma` | SSH targets with dpkg, apk and rpm packages for the embedded scanner |
+
+Within about a minute four hosts appear under `/assets`. They show partial coverage because the agent and the SSH logins run without privileges.
+
+Stop and delete everything with `make demo-down`. `docker compose up -d --build --wait` and `docker compose down -v` in `deploy/demo/` do the same; `docker compose build` builds the server and agent separately, so prefer `make demo-up` (2.3, release keys). `WEB_PORT` and `AGENT_PORT` change the host ports.
+
+**The demo is not a deployment:** its master key, database password and admin password are fixed in `compose.yaml`, the console has no TLS, and the SSH targets accept the password `demo`. For a console in development, `BOMCENSUS_API=http://localhost:8080 pnpm dev` in `frontend/` uses the demo server.
 
 ## 3. Helm
 
@@ -427,8 +434,7 @@ Commands:
 | `ADMIN_USER`, `ADMIN_PASSWORD_HASH` | written by `init.sh` | console login. Keep the hash in single quotes |
 | `BOMCENSUS_MASTER_KEY` | written by `init.sh` | master key |
 | `POSTGRES_PASSWORD` | written by `init.sh` | password of the bundled PostgreSQL |
-| `BOMCENSUS_LOG_LEVEL` | `info` | server and demo agent log level |
-| `BOMCENSUS_TOKEN` | | demo profile: enrollment string for the demo agent's first start |
+| `BOMCENSUS_LOG_LEVEL` | `info` | server log level |
 
 ### 5.3 Agent
 
@@ -467,6 +473,7 @@ Variables read only by the agent image's entry point:
 |---|---|
 | `BOMCENSUS_SERVER` | `--server` for the first enrollment |
 | `BOMCENSUS_TOKEN` | enrollment string for the first enrollment; removed from the environment before `run` |
+| `BOMCENSUS_TOKEN_FILE` | file with the enrollment string, read when `BOMCENSUS_TOKEN` is not set |
 | `BOMCENSUS_SERVER_NAME` | `--server-name` |
 | `BOMCENSUS_TLS_VERIFY` | `--tls-verify` |
 | `BOMCENSUS_TLS_CA` | `--tls-ca` |

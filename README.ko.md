@@ -10,6 +10,7 @@ Linux Agent(connect·listen 모드), SSH를 통한 Agentless 수집, Kubernetes 
 
 ## 시작하기
 
+- `make demo-up`: 예제 데이터가 들어간 로컬 데모, http://localhost:8080 (admin / demo). [DEPLOYMENT.md §2.9](docs/DEPLOYMENT.md#29-demo) 참고 (영문)
 - [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md): Docker Compose, Helm, systemd로 서버·Agent·Scanner를 빌드하고 실행하는 방법 (영문)
 - [docs/SECURITY.md](docs/SECURITY.md): 보안 설계, 권한 구성, 알려진 한계 (영문)
 - [docs/PROTOCOL.md](docs/PROTOCOL.md): Agent 프로토콜의 서명과 비밀값 암호화 (영문)

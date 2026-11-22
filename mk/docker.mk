@@ -12,8 +12,8 @@
 # it; set DOCKER_OUTPUT accordingly).
 #
 # docker-up and docker-down start and stop deploy/docker/compose.yaml
-# (run deploy/docker/init.sh once before docker-up). COMPOSE_PROFILES=demo
-# includes the demo agent and SSH target.
+# (run deploy/docker/init.sh once before docker-up). For a demo, see
+# mk/demo.mk.
 
 DOCKER          ?= docker
 DOCKER_REPO     ?= bomcensus

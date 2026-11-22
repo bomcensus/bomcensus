@@ -10,6 +10,7 @@ Implemented: Linux agents (connect and listen mode), agentless collection over S
 
 ## Getting started
 
+- `make demo-up`: a local demo with example data at http://localhost:8080 (admin / demo), see [DEPLOYMENT.md §2.9](docs/DEPLOYMENT.md#29-demo).
 - [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md): building and running the server, agents and scanners with Docker Compose, Helm or systemd.
 - [docs/SECURITY.md](docs/SECURITY.md): security design, privileges and known limitations.
 - [docs/PROTOCOL.md](docs/PROTOCOL.md): signatures and sealed secrets on the agent protocol.

@@ -11,7 +11,8 @@
 #
 # Enrollment on first start needs:
 #   BOMCENSUS_SERVER       https://HOST:PORT of the agent listener
-#   BOMCENSUS_TOKEN        enrollment string of a Register Key
+#   BOMCENSUS_TOKEN        enrollment string of a Register Key, or
+#   BOMCENSUS_TOKEN_FILE   a file that holds it
 # Optional:
 #   BOMCENSUS_SERVER_NAME  name in the server certificate (default: host of BOMCENSUS_SERVER)
 #   BOMCENSUS_TLS_VERIFY   pinned (default), system or none
@@ -47,6 +48,10 @@ shift
 # enroll --if-not-enrolled returns at once for an approved enrollment and
 # resumes a pending one. Without the variables, run reports a missing
 # enrollment itself.
+if [ -z "${BOMCENSUS_TOKEN:-}" ] && [ -n "${BOMCENSUS_TOKEN_FILE:-}" ] && [ -r "$BOMCENSUS_TOKEN_FILE" ]; then
+	BOMCENSUS_TOKEN=$(cat "$BOMCENSUS_TOKEN_FILE")
+	export BOMCENSUS_TOKEN
+fi
 if [ -n "${BOMCENSUS_SERVER:-}" ] && [ -n "${BOMCENSUS_TOKEN:-}" ]; then
 	enroll
 fi
