@@ -16,6 +16,7 @@ import (
 	"log/slog"
 	"net"
 	"os"
+	"runtime"
 	"strings"
 	"time"
 
@@ -28,6 +29,7 @@ import (
 	"github.com/bomcensus/bomcensus/internal/gen/agentapi"
 	"github.com/bomcensus/bomcensus/internal/link"
 	"github.com/bomcensus/bomcensus/internal/pki"
+	"github.com/bomcensus/bomcensus/internal/platform/paths"
 	"github.com/bomcensus/bomcensus/internal/version"
 )
 
@@ -125,7 +127,7 @@ func Run(ctx context.Context, o Options) error {
 		}
 	}
 
-	st, err := state.Open(o.StateDir)
+	st, err := state.OpenAs(o.StateDir, paths.AgentService)
 	if err != nil {
 		return err
 	}
@@ -190,7 +192,7 @@ func Enroll(ctx context.Context, o EnrollOptions) error {
 	if err != nil {
 		return err
 	}
-	st, err := state.Open(o.StateDir)
+	st, err := state.OpenAs(o.StateDir, paths.AgentService)
 	if err != nil {
 		return err
 	}
@@ -230,7 +232,7 @@ func HostFacts(ctx context.Context) agentapi.HostFacts {
 	h := hostinfo.Collect(ctx, collect.NewEnv())
 	if h == nil {
 		name, _ := os.Hostname()
-		return agentapi.HostFacts{Hostname: name, Os: agentapi.OsRelease{Family: "linux"}}
+		return agentapi.HostFacts{Hostname: name, Os: agentapi.OsRelease{Family: runtime.GOOS}}
 	}
 	str := func(s string) *string {
 		if s = strings.TrimSpace(s); s == "" {

@@ -631,7 +631,7 @@ components:
       enum: [pinned, system, none]
     TargetOs:
       type: string
-      enum: [linux]
+      enum: [linux, windows]
     TargetArch:
       type: string
       enum: [amd64, arm64]

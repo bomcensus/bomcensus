@@ -28,6 +28,8 @@ import (
 	"github.com/bomcensus/bomcensus/internal/agent/state"
 	"github.com/bomcensus/bomcensus/internal/link"
 	"github.com/bomcensus/bomcensus/internal/pki"
+	"github.com/bomcensus/bomcensus/internal/platform/paths"
+	"github.com/bomcensus/bomcensus/internal/platform/winsvc"
 	"github.com/bomcensus/bomcensus/internal/scanner/hpkebox"
 	"github.com/bomcensus/bomcensus/internal/scanner/runner"
 	"github.com/bomcensus/bomcensus/internal/version"
@@ -41,7 +43,7 @@ const (
 )
 
 // defaultStateDir is the scanner's state directory.
-const defaultStateDir = "/var/lib/bomcensus/scanner"
+var defaultStateDir = paths.ScannerStateDir()
 
 // hpkeKeyFile holds the HPKE private key (PKCS#8 PEM, mode 0600).
 const hpkeKeyFile = "hpke-key.pem"
@@ -59,6 +61,9 @@ Run 'bomcensus-scanner <command> -h' for the flags of a command.
 var errUsage = errors.New("usage error")
 
 func main() {
+	if winsvc.IsService() {
+		os.Exit(service())
+	}
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
 }
 
@@ -145,7 +150,7 @@ func cmdEnroll(ctx context.Context, args []string, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
-	st, err := state.Open(*stateDir)
+	st, err := state.OpenAs(*stateDir, paths.ScannerService)
 	if err != nil {
 		return err
 	}
@@ -242,7 +247,7 @@ func cmdRun(ctx context.Context, args []string, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
-	st, err := state.Open(*stateDir)
+	st, err := state.OpenAs(*stateDir, paths.ScannerService)
 	if err != nil {
 		return err
 	}

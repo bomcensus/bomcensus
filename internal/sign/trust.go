@@ -3,7 +3,8 @@
 // Additional terms apply. See LICENSING.md.
 
 // Package sign verifies bomcensus releases: the signed release manifest and
-// the AuthentiELF code signatures of the executables.
+// the code signatures of the executables (AuthentiELF for ELF files,
+// Authenticode for PE files).
 //
 // The trust anchors are compiled into the binaries with
 //

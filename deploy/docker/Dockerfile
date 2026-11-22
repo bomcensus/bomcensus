@@ -54,8 +54,9 @@ RUN --mount=type=cache,id=bomcensus-pnpm,target=/pnpm-store \
     && test -f .output/public/index.html
 
 # ---------------------------------------------------------------------------
-# Go build: every command for linux/amd64 and linux/arm64, the trust
-# compiled in, the target-side commands AuthentiELF-signed and bundled.
+# Go build: every command for linux/amd64 and linux/arm64, and the
+# target-side commands also for windows/amd64 and windows/arm64, the trust
+# compiled in, signed and bundled. The images themselves are Linux only.
 FROM --platform=$BUILDPLATFORM golang:${GO_VERSION}-${DEBIAN_RELEASE} AS build
 WORKDIR /src
 COPY go.mod go.sum ./

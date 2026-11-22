@@ -123,7 +123,16 @@ func runKeygen(_ context.Context, args []string, stdout io.Writer) error {
 }
 
 func runSignELF(ctx context.Context, args []string, stdout io.Writer) error {
-	fs := newFlagSet("sign-elf", "--key KEY --cert CERT [--timestamp-url URL] FILE...")
+	return runSign(ctx, "sign-elf", sign.SignELF, args, stdout)
+}
+
+func runSignPE(ctx context.Context, args []string, stdout io.Writer) error {
+	return runSign(ctx, "sign-pe", sign.SignPE, args, stdout)
+}
+
+// runSign signs files in place with signFile (AuthentiELF or Authenticode).
+func runSign(ctx context.Context, name string, signFile func(context.Context, []byte, *sign.CodeSigner) ([]byte, error), args []string, stdout io.Writer) error {
+	fs := newFlagSet(name, "--key KEY --cert CERT [--timestamp-url URL] FILE...")
 	keyFile := fs.String("key", "", "code-signing private key (PEM)")
 	certFile := fs.String("cert", "", "code-signing certificate, optionally followed by intermediates (PEM)")
 	tsURL := fs.String("timestamp-url", "", "RFC 3161 timestamp authority URL (optional)")
@@ -133,7 +142,7 @@ func runSignELF(ctx context.Context, args []string, stdout io.Writer) error {
 	}
 	if *keyFile == "" || *certFile == "" || fs.NArg() == 0 {
 		fs.Usage()
-		return errors.New("sign-elf: --key, --cert and at least one file are required")
+		return fmt.Errorf("%s: --key, --cert and at least one file are required", name)
 	}
 	key, err := readSigner(*keyFile)
 	if err != nil {
@@ -143,7 +152,7 @@ func runSignELF(ctx context.Context, args []string, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
-	signer := &sign.ELFSigner{
+	signer := &sign.CodeSigner{
 		Key:           key,
 		Certificate:   certs[0],
 		Intermediates: certs[1:],
@@ -156,21 +165,21 @@ func runSignELF(ctx context.Context, args []string, stdout io.Writer) error {
 		}
 		st, err := os.Stat(path)
 		if err != nil {
-			return fmt.Errorf("sign-elf: %w", err)
+			return fmt.Errorf("%s: %w", name, err)
 		}
 		if !st.Mode().IsRegular() {
-			return fmt.Errorf("sign-elf: %s is not a regular file", path)
+			return fmt.Errorf("%s: %s is not a regular file", name, path)
 		}
 		data, err := os.ReadFile(path)
 		if err != nil {
-			return fmt.Errorf("sign-elf: %w", err)
+			return fmt.Errorf("%s: %w", name, err)
 		}
-		signed, err := sign.SignELF(ctx, data, signer)
+		signed, err := signFile(ctx, data, signer)
 		if err != nil {
-			return fmt.Errorf("sign-elf: %s: %w", path, err)
+			return fmt.Errorf("%s: %s: %w", name, path, err)
 		}
 		if err := writeFileAtomic(path, signed, st.Mode().Perm()); err != nil {
-			return fmt.Errorf("sign-elf: %w", err)
+			return fmt.Errorf("%s: %w", name, err)
 		}
 		fmt.Fprintf(stdout, "signed %s\n", path)
 	}

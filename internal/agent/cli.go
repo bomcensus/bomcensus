@@ -13,6 +13,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"runtime"
 	"strings"
 	"syscall"
 
@@ -76,6 +77,12 @@ func Main(args []string, stdout, stderr io.Writer) int {
 	case errors.As(err, &re):
 		stop()
 		fmt.Fprintln(stderr, "bomcensus-agent:", re.Error())
+		if runtime.GOOS == "windows" {
+			// No exec on Windows. The service manager restarts the
+			// service (see RunService); a console run must be started again.
+			fmt.Fprintf(stderr, "bomcensus-agent: version %s is installed; start %s again\n", re.Version, re.Path)
+			return 1
+		}
 		// The state lock is held through a close-on-exec descriptor and
 		// was released by Run.
 		xerr := syscall.Exec(re.Path, append([]string{re.Path}, os.Args[1:]...), os.Environ())

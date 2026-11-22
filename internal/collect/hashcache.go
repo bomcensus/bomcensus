@@ -12,7 +12,6 @@ import (
 	"io"
 	"os"
 	"sync"
-	"syscall"
 )
 
 // MaxHashSize is the largest file the collectors hash.
@@ -78,20 +77,6 @@ func (c *HashCache) Marshal() (json.RawMessage, error) {
 	return json.Marshal(list)
 }
 
-func keyOf(fi os.FileInfo) (fileKey, bool) {
-	st, ok := fi.Sys().(*syscall.Stat_t)
-	if !ok {
-		return fileKey{}, false
-	}
-	return fileKey{
-		Dev:   uint64(st.Dev),
-		Ino:   st.Ino,
-		Size:  st.Size,
-		Mtime: st.Mtim.Nano(),
-		Ctime: st.Ctim.Nano(),
-	}, true
-}
-
 // SHA256File returns the hex SHA-256 of an open file, using the cache when the
 // file is unchanged. The file is read from its current offset.
 func (c *HashCache) SHA256File(f *os.File) (string, error) {
@@ -105,7 +90,7 @@ func (c *HashCache) SHA256File(f *os.File) (string, error) {
 	if fi.Size() > MaxHashSize {
 		return "", fmt.Errorf("collect: %s is larger than %d bytes", f.Name(), int64(MaxHashSize))
 	}
-	key, keyed := keyOf(fi)
+	key, keyed := keyOfFile(f, fi)
 	if keyed {
 		c.mu.Lock()
 		e := c.entries[key]

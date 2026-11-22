@@ -52,8 +52,28 @@ jobs:
           [ -z "$out" ] || { echo "::error::not gofmt-ed:"; echo "$out"; exit 1; }
       - run: go vet ./...
       - run: go test ./...
+      - name: Windows cross-compile
+        run: |
+          GOOS=windows GOARCH=amd64 go vet ./...
+          GOOS=windows GOARCH=arm64 go build ./...
       - name: License headers
         run: go run ./tools/licensehdr .
+
+  windows:
+    name: go on windows (build, vet, test)
+    runs-on: windows-2025
+    steps:
+      # Test fixtures must keep LF line endings.
+      - run: git config --global core.autocrlf false
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      # PostgreSQL-backed tests skip without BOMCENSUS_TEST_DATABASE_URL.
+      - run: go build ./...
+      - run: go vet ./...
+      - run: go test ./...
 
   console:
     name: console (typecheck, build)

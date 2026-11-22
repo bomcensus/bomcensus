@@ -93,7 +93,7 @@ func (r *Runtime) pollRequest(ctx context.Context) (agentapi.PollRequest, []stri
 	}
 	req := agentapi.PollRequest{
 		Version:        r.opts.Version,
-		Os:             agentapi.Linux,
+		Os:             agentapi.TargetOs(runtime.GOOS),
 		Arch:           agentapi.TargetArch(runtime.GOARCH),
 		ConnectMode:    agentapi.ConnectMode(enr.ConnectMode),
 		TlsMode:        tlsMode,

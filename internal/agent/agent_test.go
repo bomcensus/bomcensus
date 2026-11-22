@@ -119,14 +119,8 @@ func TestEnrollApproved(t *testing.T) {
 	if len(agents) != 1 || !agents[0].Pub.Equal(id.Key.Public()) {
 		t.Fatal("server has another identity key")
 	}
-	fi, err := os.Stat(h.stateDir)
-	if err != nil || fi.Mode().Perm() != 0o700 {
-		t.Fatalf("state directory mode = %v, %v", fi.Mode(), err)
-	}
-	fi, err = os.Stat(filepath.Join(h.stateDir, "identity.pem"))
-	if err != nil || fi.Mode().Perm() != 0o600 {
-		t.Fatalf("identity mode = %v, %v", fi.Mode(), err)
-	}
+	checkPrivateDir(t, h.stateDir)
+	checkPrivateFile(t, filepath.Join(h.stateDir, "identity.pem"))
 	assertNoSecret(t, h)
 
 	if err := h.enroll(nil); err == nil || !strings.Contains(err.Error(), "already enrolled") {

@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-bomcensus-Commercial
 // Additional terms apply. See LICENSING.md.
 
+//go:build linux
+
 // Package artifact finds software outside the package database: Java
 // archives, Go binaries and files recognized by a known-software detector.
 //

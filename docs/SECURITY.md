@@ -237,19 +237,21 @@ A release is installed only if **both** checks pass.
 | Check | Covers | Trust basis |
 |---|---|---|
 | Release manifest signature | Version, per-OS/architecture file hashes and sizes, issue and expiry time | A dedicated Ed25519 public key compiled into the binaries. The key is used for nothing else |
-| Code signature | The executable itself | [AuthentiELF](https://github.com/jc-lab/authentielf) on Linux, Authenticode on Windows (not implemented). Every signer chain must end at a compiled-in code-signing root, with an optional timestamp |
+| Code signature | The executable itself | [AuthentiELF](https://github.com/jc-lab/authentielf) on Linux, Authenticode on Windows. Every signer chain must end at a compiled-in code-signing root, with an optional timestamp |
 
 - The private manifest key exists only in the build pipeline's HSM or KMS.
 - Binaries accept a list of manifest public keys, so that they can carry the current and the next key and the key can be rotated.
 - Trust is compiled in through build flags (`-ldflags -X` for `internal/sign.releaseKeys` and `internal/sign.codeSigningRoots`). A binary built without them fails every manifest and code signature verification, so it can neither install updates nor deliver probes.
 - Code signatures without a timestamp are verified against the current time, so they **stop verifying when the signing certificate expires**. Release builds must therefore be timestamped (RFC 3161). With a timestamp the signer chain is validated at the time of the timestamp. Verifying the timestamp needs the root of the TSA's chain, either in the system trust store of the verifying host or among the compiled-in code-signing roots.
+- Both formats follow the same rules (`internal/sign`): SHA-256, SHA-384 or SHA-512 only (SHA-1 is rejected), RSA (PKCS #1 v1.5) or ECDSA signers, the code-signing extended key usage listed in the signer certificate itself, and every signature in a file must be valid.
+- Authenticode is verified in Go on every platform, without Windows APIs. A PE file is accepted only if its certificate table holds exactly one `WIN_CERT_TYPE_PKCS_SIGNED_DATA` entry, lies after all headers and section data and ends the file, so that every byte outside the signature is covered by the image hash; data appended after the signature is rejected. The only accepted timestamp is the RFC 3161 counter-signature (unsigned attribute `1.3.6.1.4.1.311.3.3.1`, as written by `jsign --tsmode RFC3161` and `signtool /tr`). Signatures nested in the primary one (`signtool /as`) must verify as well; any other unsigned attribute, such as a legacy Authenticode counter-signature, makes the file fail. Parsing accepts DER only and is size-bounded, because it runs on the server for uploaded bundles.
 - Rollback protection: the manifest version must be higher than the installed one. The manifest expiry time prevents an old manifest from being replayed indefinitely.
 - The server obtains releases by upload in the console or from a directory read at start (`BOMCENSUS_RELEASE_DIR`). Download from a release server is not implemented. The server performs the same verification when it receives a release, and stores only releases that pass.
 
 ### 5.2 Updater
 
 - The agent downloads a release into a spool directory. It cannot write to the install directory.
-- The updater checks hashes, the manifest signature and the code signatures itself. It does not rely on any check the agent made, and nothing the agent writes into the spool is trusted. It reads only the spool; under its systemd unit it has no network access.
+- The updater checks hashes, the manifest signature and the code signatures itself. It does not rely on any check the agent made, and nothing the agent writes into the spool is trusted. It reads only the spool; under its systemd unit it has no network access, and on Windows firewall rules for its service SID block all traffic.
 - The updater installs into a per-version directory and switches a `current` link. The current and the previous version are kept, older ones are removed. It installs only the agent's files of the bundle (agent, probe, updater; the scanner is verified as part of the bundle but not installed), records their hashes and only ever switches to a version directory whose agent files still match them. A `bomcensus-scanner` file left in a version directory by an earlier version is ignored.
 - A bundle is installed only if its version is newer than the current one, and never if that version was rolled back before: rolled-back versions are remembered in the install state.
 
@@ -265,7 +267,14 @@ The hand-off between agent and updater (`internal/updater`) uses files in the sp
 - `bomcensus-updater boot-check` runs before every agent start. It counts start attempts of a pending version and rolls back when the attempts exceed the limit (3 by default) or the version has been pending longer than the pending timeout (30 minutes by default).
 - Boot-check acts only at start. A new version that keeps running without ever reaching the server would stay pending, so the agent writes `rollback` itself when its pending version is older than the same timeout.
 - A rollback is possible only while a version is pending. Once it is confirmed it stays, and only a newer release replaces it. The version that was rolled back is recorded as failed and its directory removed.
-- A first installation from a release bundle (`deploy/systemd/install.sh`) runs the updater contained in that bundle, because no installed updater exists yet. That updater verifies the bundle the normal way, but its own origin cannot be checked on the host: check where the bundle came from out of band before installing. Later updates are verified by the installed updater.
+- A first installation from a release bundle (`deploy/systemd/install.sh`, `deploy/windows/install.ps1`) runs the updater contained in that bundle, because no installed updater exists yet. That updater verifies the bundle the normal way, but its own origin cannot be checked on the host: check where the bundle came from out of band before installing. Later updates are verified by the installed updater. Both scripts give that updater a private spool in the install directory: they run as root or Administrator and must not write into the shared spool, where the agent could have planted a link under the name they use.
+
+On Windows (DEPLOYMENT.md chapter 5) the same files and checks are used, with these differences:
+
+- One updater service replaces the systemd path unit and the boot check unit. It runs the boot check before it reports *running*, and the agent service depends on it. Every 5 seconds it runs `apply` when the spool holds an entry. While a version is pending it counts each new process of the agent service as a start, and it rolls back a version that has been pending longer than the timeout itself, so a crashing or hanging agent does not need to cooperate.
+- After a version change the updater restarts the agent service and then stops with a failure status; the service manager starts it again through `current`, so the updater code of the version just installed (or rolled back to) is what runs afterwards. The agent never runs the updater on Windows.
+- `current` is a directory junction. Creating one needs no privilege, and the updater switches versions by replacing the target of the existing junction in one file system operation, so a process started through it never sees a missing path. A junction found where a regular file is expected in the spool is refused like a symbolic link.
+- Executables that are running cannot be deleted. The directory of a rolled-back version is removed when the updater starts again after the restarts.
 
 ### 5.3 Probe delivery
 
@@ -340,15 +349,24 @@ Some software is installed so that only its owner can execute it. The exec helpe
 
 ### 6.4 Windows
 
-Not implemented. The design follows.
+The agent and updater services are implemented (DEPLOYMENT.md chapter 5); the probe service is not, and the rest of this section describes its design. Administrator rights are needed only at install time.
 
 | Component | Account | Restrictions |
 |---|---|---|
-| agent service | virtual service account | no administrative rights |
-| probe service | LocalSystem with a reduced token | only the required privileges are declared (`SeBackupPrivilege` for reading files); write-restricted token; network blocked by a per-service firewall rule |
-| updater service | dedicated account | write access to the install directory only |
+| agent service | virtual account `NT SERVICE\bomcensus-agent` | no administrative rights; `SeChangeNotifyPrivilege` only; writes its state directory and the update spool, reads and executes the install directory |
+| probe service (planned) | LocalSystem with a reduced token | only the required privileges are declared (`SeBackupPrivilege` for reading files); write-restricted token; network blocked by a per-service firewall rule |
+| updater service | LocalSystem | `SeChangeNotifyPrivilege` only; all traffic blocked by firewall rules for its service SID; the only component that writes the install directory |
+
+The updater runs as LocalSystem, not as a dedicated account as on Linux. It must stop and start the agent service, and it installs the executables that LocalSystem services run (itself, and the planned probe service), so a dedicated account that can replace them would not limit what a compromised updater reaches. What keeps it narrow is the input: it has no network, reads only the spool, and installs nothing that does not pass the manifest and Authenticode checks. The agent's account cannot write the install directory or any executable a LocalSystem service runs. In the spool it may create, change and delete files; an `OWNER RIGHTS` entry stops it from changing the ACL of files it owns, and the updater refuses junctions and symbolic links there (5.2).
 
 The agent and the probe communicate over a named pipe whose ACL admits only the agent service SID. `SeDebugPrivilege` is not granted. This configuration still has to be validated on real systems (section 12).
+
+What runs today, until the probe service exists:
+
+- **No collection.** The probe reads the host identity from the registry (`HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion`, `MachineGuid`) and reports every other section with coverage `none` and the reason "not implemented on Windows", so the server records the sections as not collected and removes nothing.
+- **No probe sandbox.** None of 6.2 applies; the probe keeps every right of the account that started it, and `bomcensus-probe self-test` reports this as a failed check. This is acceptable only while the probe reads nothing but the registry values above. Collection must not be added before the probe service restrictions exist.
+- The agent starts `bomcensus-probe.exe` as a child, at below-normal priority, in a job object that kills it when the agent stops or the request is cancelled. The probe lowers itself further to the idle priority class and background mode.
+- State directories (`%ProgramData%\bomcensus\agent`, `%ProgramData%\bomcensus\scanner`) get a protected DACL on every open: full control for `SYSTEM`, `BUILTIN\Administrators`, the account of the process and the component's service account (`NT SERVICE\bomcensus-agent` or `NT SERVICE\bomcensus-scanner`), nothing inherited. Files inside, including the identity and HPKE keys, inherit it. The process also takes ownership; when it cannot and the owner is anyone other than those principals, it refuses to start (`internal/platform/winacl`). The directory is locked with `LockFileEx` instead of `flock`.
 
 ### 6.5 Running without privileges
 
@@ -456,6 +474,7 @@ The probe parses arbitrary files while holding the capability to read every file
 - The listen-mode agent listener cannot be restricted to source addresses by configuration (4.5).
 - Containers: rootless Docker and containerd, Podman and CRI-O are not covered; the writable layer of a container is found only for the overlay2 and overlayfs storage drivers.
 - The collection policy (`exec_version`, `collect_cmdline`) is server-wide; it cannot be set per asset group.
+- On Windows the updater counts starts of a pending agent version by polling the process ID of the agent service every 5 seconds. Starts closer together than that can be counted as one; the pending timeout still applies.
 
 ## 12. Open questions
 

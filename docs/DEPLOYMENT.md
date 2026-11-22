@@ -6,7 +6,8 @@ This document describes how to build and run bomcensus. Each installation method
 - [2. Docker Compose](#2-docker-compose)
 - [3. Helm](#3-helm)
 - [4. systemd](#4-systemd)
-- [5. Configuration reference](#5-configuration-reference)
+- [5. Windows services](#5-windows-services)
+- [6. Configuration reference](#6-configuration-reference)
 
 ## 1. Components and ports
 
@@ -61,8 +62,8 @@ make docker-build DOCKER_TARGETS="server agent"
 `docker-build` runs `docker buildx bake -f deploy/docker/docker-bake.hcl`. The build:
 
 1. builds the console (`pnpm install --frozen-lockfile`, `nuxt generate`) and copies it into `internal/server/console/dist`;
-2. runs `make release-dev` with the release keys: every command for linux/amd64 and linux/arm64 with the trust compiled in, the agent, probe, updater and scanner AuthentiELF-signed and packed into `bomcensus-VERSION.tar`, which is then verified;
-3. assembles the images for the target platform.
+2. runs `make release-dev` with the release keys: every command for linux/amd64 and linux/arm64 with the trust compiled in, and the agent, probe, updater and scanner also for windows/amd64 and windows/arm64; those four are signed (AuthentiELF for Linux, Authenticode for Windows) and packed into `bomcensus-VERSION.tar`, which is then verified;
+3. assembles the images for the target platform (Linux only; there are no Windows images).
 
 Steps 1 and 2 run on the build platform and cross-compile, so building for the other architecture needs no emulation for them:
 
@@ -338,9 +339,9 @@ sh install.sh dist/bomcensus-<version>.tar --server https://HOST:8443 --token bc
     [--connect-mode connect|listen] [--listen :7443 --server-name NAME] [--tls-verify pinned|system|none]
 ```
 
-`install.sh` is idempotent: running it again keeps users, state and the installed version, refreshes the unit files, and does not enroll again when `/var/lib/bomcensus/agent/enrollment.json` exists. The token can also be passed in `BOMCENSUS_TOKEN` (section 5.3). For `--connect-mode listen` the port must be above 1023, because the agent has no capabilities.
+`install.sh` is idempotent: running it again keeps users, state and the installed version, refreshes the unit files, and does not enroll again when `/var/lib/bomcensus/agent/enrollment.json` exists. The token can also be passed in `BOMCENSUS_TOKEN` (section 6.3). For `--connect-mode listen` the port must be above 1023, because the agent has no capabilities.
 
-How a bundle is installed: the script does not check signatures itself. It copies the bundle into the spool, runs the `bomcensus-updater` taken from the bundle once as `bomcensus-update` (there is no installed updater yet), and the updater verifies the manifest signature, the hashes and the code signatures and installs into `versions/<version>/` the normal way. Because that first updater comes from the bundle, check where the bundle came from before you run the script; later updates are checked by the installed updater. A bundle that fails verification is rejected and deleted by the updater and the script stops.
+How a bundle is installed: the script does not check signatures itself. It copies the bundle into a private spool under `/opt/bomcensus` (not the shared spool, which the agent user can write), runs the `bomcensus-updater` taken from the bundle once as `bomcensus-update` on it (there is no installed updater yet), and the updater verifies the manifest signature, the hashes and the code signatures and installs into `versions/<version>/` the normal way. Because that first updater comes from the bundle, check where the bundle came from before you run the script; later updates are checked by the installed updater. A bundle that fails verification is rejected and deleted by the updater and the script stops.
 
 A directory of binaries is copied as it is into `versions/<version>/` (the version comes from `bomcensus-updater version`) and the `current` link is created if it is missing. The updater adopts that version the first time it runs if the binaries pass the code signature check, so that a rollback to it is possible. Use this for development builds and for hosts where a bundle is not at hand.
 
@@ -376,7 +377,7 @@ Each probe run logs `sandbox step=...` lines. `seccomp status=applied` and `capa
 
 ### 4.6 Without systemd, or without root
 
-The agent does not need any of the units. As an ordinary user (flags and environment variables: section 5.3):
+The agent does not need any of the units. As an ordinary user (flags and environment variables: section 6.3):
 
 ```sh
 bomcensus-agent enroll --server https://HOST:8443 --token bc1.… --state-dir ~/.bomcensus/agent
@@ -387,9 +388,119 @@ The binaries (agent and probe in the same directory) can be anywhere. The agent 
 
 Coverage in this mode is what the user can read: files and processes of that user, and nothing under other users' `/proc/<pid>/{exe,maps,fd,root}`. Each report states the privilege level it was collected with and the coverage of every section, the console shows the asset as limited visibility, and items that vanished only because of reduced coverage are not treated as removed. Run it under a service manager of your own (an init script, a user unit, a container) if it should stay up. For full coverage use the units, or run the probe as root through SSH collection.
 
-## 5. Configuration reference
+## 5. Windows services
 
-### 5.1 Server environment
+The Windows host agent runs as Windows services with separate accounts (SECURITY section 6.4). The files are in `deploy/windows/`. On Windows the probe collects the host section only; the other sections are reported as not collected.
+
+| Service or file | Purpose |
+|---|---|
+| `bomcensus-updater` | `bomcensus-updater service`, LocalSystem, blocked from the network by firewall rules. Runs the boot check at start, installs releases from the update spool and restarts the agent after a version change. |
+| `bomcensus-agent` | `bomcensus-agent run`, virtual account `NT SERVICE\bomcensus-agent`, no administrative rights. Depends on the updater. Starts the probe as a child process. |
+| `bomcensus-scanner` | optional (`-Scanner`), virtual account `NT SERVICE\bomcensus-scanner`. |
+| `install.ps1`, `uninstall.ps1` | Installer and remover. Windows PowerShell 5.1 or later, 64-bit, run as Administrator. |
+
+Windows 10 1809 or Windows Server 2019 and later (they ship `tar.exe`), amd64 or arm64. Logs go to the Application event log under the service names as sources.
+
+### 5.1 Layout and permissions
+
+```
+%ProgramFiles%\bomcensus\              SYSTEM, Administrators: full; Users, agent, scanner: read and execute
+  versions\<version>\{bomcensus-agent.exe,bomcensus-probe.exe,bomcensus-updater.exe}
+  current                              directory junction to versions\<version>
+  state.json, updater.lock             written by the updater
+  scanner\bomcensus-scanner.exe        with -Scanner
+%ProgramData%\bomcensus\               SYSTEM, Administrators: full; Users: list this folder
+  agent\                               SYSTEM, Administrators, NT SERVICE\bomcensus-agent: full
+  scanner\                             SYSTEM, Administrators, NT SERVICE\bomcensus-scanner: full
+  update-spool\                        SYSTEM, Administrators: full; NT SERVICE\bomcensus-agent: modify
+```
+
+- Every DACL is protected: nothing is inherited from `%ProgramFiles%` or `%ProgramData%` (where every user may create folders). `install.ps1` makes Administrators the owner, replaces the DACL, and refuses a junction or symbolic link found in place of one of these directories. The agent applies the DACL of its state directory again at every start.
+- The agent's account can read the install directory but not change it, so a compromised agent cannot replace an executable that a LocalSystem service runs.
+- In the spool the agent may create, write, rename and delete files. An `OWNER RIGHTS` entry limits it to the same rights on the files it owns, so it cannot lock the updater out of them. The updater only opens names that are regular files (not junctions or symbolic links) and checks that the file it opened is the one it looked at.
+- `current` is a directory junction, not a symbolic link: creating one needs no privilege. The updater switches versions by replacing the target of the existing junction (`FSCTL_SET_REPARSE_POINT`), a single file system operation, so a service started through `current` gets the old or the new version and never a missing path. The service command lines point into `current`.
+- The command lines name the install directory, the state directory and the spool explicitly.
+
+### 5.2 Install
+
+Run from an elevated 64-bit PowerShell in a directory that holds `install.ps1` (a checkout or a release directory). Use `powershell -ExecutionPolicy Bypass -File .\install.ps1 …` where scripts are not allowed to run.
+
+```powershell
+# From a release bundle: the updater verifies and installs it (first install included).
+.\install.ps1 .\bomcensus-<version>.tar
+
+# From a directory with bomcensus-agent.exe, bomcensus-probe.exe and bomcensus-updater.exe
+# (or a directory holding windows-<arch>\ with them). Not verified by the script.
+.\install.ps1 .\windows-amd64
+
+# With enrollment (the agent is started only when enrolled). The token from the environment:
+$env:BOMCENSUS_TOKEN = 'bc1.…'
+.\install.ps1 .\bomcensus-<version>.tar -Server https://HOST:8443 `
+    [-ConnectMode connect|listen] [-Listen :7443 -ServerName NAME] [-TlsVerify pinned|system|none]
+
+# Also install the scanner service:
+.\install.ps1 .\bomcensus-<version>.tar -Scanner
+```
+
+`install.ps1` is idempotent: running it again keeps the state and the installed version, applies the directory ACLs and the service configuration again, and does not enroll again when `%ProgramData%\bomcensus\agent\enrollment.json` exists. `-Token` is accepted too, but command lines are visible to other users. `-NoStart` installs without starting the services. With a source, the agent and updater services are stopped while the release is installed.
+
+How a bundle is installed: the script extracts `manifest.json` and `windows-<arch>/bomcensus-updater.exe` from the bundle into a scratch directory under `%ProgramFiles%\bomcensus` and runs that updater once (as Administrator) with a private spool that holds a copy of the bundle. The updater verifies the manifest signature, the hashes and the Authenticode signatures and installs into `versions\<version>\` the normal way. As with `install.sh`, that first updater comes from the bundle: check where the bundle came from before you run the script. Later updates are checked by the installed updater.
+
+A directory of binaries is copied as it is into `versions\<version>\` (the version comes from `bomcensus-updater.exe version`) and `current` is created if it is missing. The updater adopts that version when it first runs if the binaries pass the Authenticode check, so that a rollback to it is possible.
+
+The scanner is not part of an agent installation and is not updated by the updater. `-Scanner` copies `bomcensus-scanner.exe` to `%ProgramFiles%\bomcensus\scanner\`. From a bundle it is used only when the bundle's `manifest.json` is the manifest the updater recorded for that version in `state.json` and the file matches its hash in it. Run `install.ps1` again with a newer bundle to update it. The scanner enrolls separately:
+
+```powershell
+& "$env:ProgramFiles\bomcensus\scanner\bomcensus-scanner.exe" enroll --server https://HOST:8443 `
+    --state-dir "$env:ProgramData\bomcensus\scanner"
+Start-Service bomcensus-scanner
+```
+
+Enrollment runs as Administrator; the state directory keeps its DACL, and the agent takes ownership of it at its next start. In listen mode the script adds an inbound firewall rule for the listen port that applies to the agent service only.
+
+### 5.3 Remove
+
+`uninstall.ps1` stops and deletes the services, removes the firewall rules, `%ProgramFiles%\bomcensus` and the spool. The state directories (identity key, certificate, trust bundle) and the event log sources are kept, so a later `install.ps1` continues with the same identity. `uninstall.ps1 -Purge` removes `%ProgramData%\bomcensus` and the event log sources as well. Revoke the agent in the console either way.
+
+### 5.4 Services and updates
+
+There are no systemd units on Windows, so the updater service does what the path unit and the boot check unit do on Linux. The hand-off files in the spool are the same (SECURITY section 5.2). The agent never runs the updater on Windows.
+
+1. At boot the service manager starts `bomcensus-updater`. Before it reports *running* it runs the boot check (count a start of a pending version, roll back when the limits are exceeded) and removes version directories other than the current and the previous one. The agent depends on the updater, so it starts afterwards. If the updater does not start, the agent does not start either.
+2. The agent downloads a newer release into the spool under a temporary name and renames it to `bomcensus-<version>.tar`.
+3. The updater checks the spool every 5 seconds and runs `apply` when it holds a bundle, a confirmation or a rollback request. After a version change (install or rollback) it restarts the agent service and then stops itself with a failure status; its recovery action starts it again through `current`, so the updater of the new version takes over. If the agent notices the change first, it exits with a failure status and its own recovery action starts the new version.
+4. The new updater's boot check counts the agent start. While a version is pending, every new process of the agent service counts as another start; when the starts exceed 3, or the version has been pending for 30 minutes, the updater rolls back. These limits are flags of `bomcensus-updater service` (section 6.4).
+5. The agent writes `confirm-<version>` after its first successful signed poll, and the updater clears the pending mark.
+
+Files of a running executable cannot be deleted on Windows. The directory of a rolled-back version is removed by the next start of the updater, after both services have been restarted.
+
+Service configuration set by `install.ps1`:
+
+| | `bomcensus-updater` | `bomcensus-agent`, `bomcensus-scanner` |
+|---|---|---|
+| Account | LocalSystem | `NT SERVICE\<name>` |
+| Start | automatic | automatic; the agent depends on the updater |
+| Recovery | restart after 2 s, 5 s, 10 s | restart after 5 s, 30 s, 60 s |
+| Failure actions also on an error exit | yes | yes |
+| Service SID | unrestricted | unrestricted |
+| Privileges | `SeChangeNotifyPrivilege` only | `SeChangeNotifyPrivilege` only |
+| Firewall | inbound and outbound blocked | no rule (in listen mode: inbound allowed on the listen port) |
+
+The recovery counters reset after one day without failures; the last action repeats, so the services are restarted indefinitely.
+
+### 5.5 Checking an installation
+
+```powershell
+Get-Service bomcensus-*
+sc.exe qc bomcensus-agent; sc.exe qfailure bomcensus-updater; sc.exe qprivs bomcensus-updater
+Get-WinEvent -FilterHashtable @{ LogName = 'Application'; ProviderName = 'bomcensus-agent', 'bomcensus-updater' } -MaxEvents 50
+& "$env:ProgramFiles\bomcensus\current\bomcensus-updater.exe" status
+icacls "$env:ProgramData\bomcensus\update-spool"
+```
+
+## 6. Configuration reference
+
+### 6.1 Server environment
 
 The server reads `BOMCENSUS_*` environment variables only. All variables that are set are checked at start and all problems are reported together.
 
@@ -424,7 +535,7 @@ Commands:
 | `bomcensus-server healthcheck` | request `/readyz` on the loopback address of `BOMCENSUS_WEB_LISTEN` (an all-interfaces listener is reached at 127.0.0.1), over HTTP when `BOMCENSUS_WEB_TLS=off` and HTTPS otherwise, without verifying the certificate; 3 s timeout. Exit 0 and no output when ready, else exit 1 with the reason. Needs neither the database URL nor the master key |
 | `bomcensus-server version` | print the version |
 
-### 5.2 Compose `.env`
+### 6.2 Compose `.env`
 
 | Variable | Default | Meaning |
 |---|---|---|
@@ -439,7 +550,7 @@ Commands:
 | `POSTGRES_PASSWORD` | written by `init.sh` | password of the bundled PostgreSQL |
 | `BOMCENSUS_LOG_LEVEL` | `info` | server log level |
 
-### 5.3 Agent
+### 6.3 Agent
 
 `bomcensus-agent enroll` enrolls and, when the Register Key needs approval, waits for it. A pending agent asks for the result every 10 seconds, so an approval reaches it within about 10 seconds. An interrupted pending enrollment is resumed by `enroll` or `run`.
 
@@ -462,11 +573,11 @@ Commands:
 |---|---|---|
 | `--state-dir` | `$BOMCENSUS_STATE_DIR` or `/var/lib/bomcensus/agent` | state directory |
 | `--install-dir` | `$BOMCENSUS_INSTALL_DIR`, else derived from the executable path (`<install>/versions/<v>/bomcensus-agent`) | install directory; updates are disabled when it cannot be determined |
-| `--update-spool` | `/var/lib/bomcensus/update-spool` | update spool directory |
+| `--update-spool` | `/var/lib/bomcensus/update-spool`; Windows: `%ProgramData%\bomcensus\update-spool` | update spool directory |
 | `--probe-socket` | `/run/bomcensus/probe.sock` | probe socket; when it does not exist the probe runs as a child |
 | `--log-level` | `$BOMCENSUS_LOG_LEVEL` or `info` | log level |
 
-`BOMCENSUS_UPDATER=systemd` tells the agent that systemd units run the updater (`apply` from a path unit, `boot-check` before the agent). Otherwise the agent runs both itself.
+`BOMCENSUS_UPDATER=systemd` tells the agent that systemd units run the updater (`apply` from a path unit, `boot-check` before the agent). Otherwise the agent runs both itself. On Windows the agent never runs the updater; the `bomcensus-updater` service does (section 5.4). There the install directory is also derived from `<install>\current\bomcensus-agent.exe`, the path a service started through the junction sees.
 
 The state directory of the agent and of the scanner is created if needed and set to mode 0700 at every start; the command fails when that `chmod` is not possible. When the state is kept on a volume, point `--state-dir` at a subdirectory of the volume, not at the volume root, whose mode the process may not be allowed to change.
 
@@ -482,15 +593,18 @@ Variables read only by the agent image's entry point:
 | `BOMCENSUS_TLS_CA` | `--tls-ca` |
 | `BOMCENSUS_STATE_DIR` | state directory for both commands |
 
-### 5.4 Updater
+### 6.4 Updater
 
 | Command | Flags (default) |
 |---|---|
 | `bomcensus-updater apply` | `--spool` (`/var/lib/bomcensus/update-spool`), `--install` (`/opt/bomcensus`), `--lock-wait` (`30s`) |
 | `bomcensus-updater boot-check` | `--install` (`/opt/bomcensus`), `--max-attempts` (`3`), `--pending-timeout` (`30m`), `--lock-wait` (`30s`) |
 | `bomcensus-updater status` | `--install` (`/opt/bomcensus`); prints the install state as JSON |
+| `bomcensus-updater service` | Windows only, run by the service manager (section 5.4): `--install`, `--spool`, `--agent-service` (`bomcensus-agent`), `--poll` (`5s`), `--max-attempts` (`3`), `--pending-timeout` (`30m`), `--lock-wait` (`30s`) |
 
-### 5.5 Scanner
+On Windows the defaults are `%ProgramFiles%\bomcensus` for `--install` and `%ProgramData%\bomcensus\update-spool` for `--spool`.
+
+### 6.5 Scanner
 
 `bomcensus-scanner enroll` takes `--server`, `--token` (`$BOMCENSUS_TOKEN`), `--server-name`, `--tls-verify`, `--tls-ca`, `--state-dir`, `--log-level` and `--if-not-enrolled` as the agent does. Scanners support connect mode only. The default state directory is `/var/lib/bomcensus/scanner`.
 

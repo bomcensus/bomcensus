@@ -145,12 +145,14 @@ install_bundle() { # file
 	tar -xOf "$_b" "linux-$ARCH/bomcensus-updater" >"$tmp/bomcensus-updater" ||
 		die "$_b has no linux-$ARCH/bomcensus-updater"
 	chmod 0755 "$tmp/bomcensus-updater"
-	cp "$_b" "$SPOOL/.bomcensus-$_v.tar.part"
-	chown $U_AGENT:$U_UPDATE "$SPOOL/.bomcensus-$_v.tar.part"
-	chmod 0640 "$SPOOL/.bomcensus-$_v.tar.part"
-	mv "$SPOOL/.bomcensus-$_v.tar.part" "$SPOOL/bomcensus-$_v.tar"
+	# A private spool: root must not write into the shared spool, where the
+	# agent user could have planted a symlink under the name used here.
+	mkdir "$tmp/spool"
+	cp "$_b" "$tmp/spool/bomcensus-$_v.tar"
+	chown -R $U_UPDATE:$U_UPDATE "$tmp/spool"
+	chmod 0700 "$tmp/spool"
 	info "installing $_v through the updater"
-	as_user $U_UPDATE "$tmp/bomcensus-updater" apply --spool $SPOOL --install $OPT ||
+	as_user $U_UPDATE "$tmp/bomcensus-updater" apply --spool "$tmp/spool" --install $OPT ||
 		die "the updater failed"
 	if [ ! -d "$OPT/versions/$_v" ] || [ ! -L $OPT/current ]; then
 		die "the updater did not install $_v (see the messages above; a bundle that fails verification is rejected and deleted)"

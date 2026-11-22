@@ -2,15 +2,18 @@
 // SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-bomcensus-Commercial
 // Additional terms apply. See LICENSING.md.
 
-// Package updater installs verified bomcensus releases on a Linux host and
-// rolls back versions that do not come up.
+// Package updater installs verified bomcensus releases on a Linux or Windows
+// host and rolls back versions that do not come up.
 //
 // Install directory (written only by the updater):
 //
 //	<install>/versions/<version>/   files of one installed version
-//	<install>/current               symlink to versions/<version>
+//	<install>/current               link to versions/<version>: a symlink on
+//	                                Linux, a directory junction on Windows
 //	<install>/state.json            State, readable by the agent
 //	<install>/updater.lock          held while an updater runs
+//
+// On Windows the executables carry the ".exe" suffix, as in the bundle.
 //
 // Spool directory (written by the agent, read by the updater):
 //
@@ -29,10 +32,8 @@
 package updater
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
-	"debug/elf"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -69,18 +70,35 @@ const (
 	RollbackName = "rollback"
 )
 
-// AgentName is the executable every installed version must contain.
+// AgentName is the executable every installed version must contain, without
+// the ".exe" suffix it has on Windows (see ExeName).
 const AgentName = "bomcensus-agent"
 
-// agentFiles are the files of an agent installation. A release bundle holds
-// every file of a platform; the others are verified with the bundle but not
-// installed.
-var agentFiles = map[string]bool{AgentName: true, "bomcensus-probe": true, "bomcensus-updater": true}
+// agentBaseNames are the files of an agent installation. A release bundle
+// holds every file of a platform; the others are verified with the bundle
+// but not installed.
+var agentBaseNames = []string{AgentName, "bomcensus-probe", "bomcensus-updater"}
 
-// otherBundleFiles are bundle files an agent does not use. They may be
-// present in version directories installed by earlier versions or by an
-// installer and are ignored there.
-var otherBundleFiles = map[string]bool{"bomcensus-scanner": true}
+// otherBaseNames are bundle files an agent does not use. They may be present
+// in version directories installed by earlier versions or by an installer
+// and are ignored there.
+var otherBaseNames = []string{"bomcensus-scanner"}
+
+// ExeName returns the file name of executable name on the running operating
+// system: name plus ".exe" on Windows.
+func ExeName(name string) string { return release.ExeName(runtime.GOOS, name) }
+
+// hostOS selects the platform files of a bundle. A variable so that tests
+// can install Windows bundles on another system.
+var hostOS = runtime.GOOS
+
+func nameSet(goos string, names []string) map[string]bool {
+	m := make(map[string]bool, len(names))
+	for _, n := range names {
+		m[release.ExeName(goos, n)] = true
+	}
+	return m
+}
 
 // Defaults for BootCheck.
 const (
@@ -100,12 +118,45 @@ func BundleName(version string) string { return bundlePrefix + version + bundleS
 // ConfirmName returns the spool file name that confirms a pending version.
 func ConfirmName(version string) string { return confirmPrefix + version }
 
+// IsSpoolEntry reports whether Apply acts on a spool file of this name.
+func IsSpoolEntry(name string) bool {
+	k, _ := parseSpoolName(name)
+	return k != spoolIgnored
+}
+
+type spoolKind int
+
+const (
+	spoolIgnored spoolKind = iota
+	spoolRollback
+	spoolConfirm
+	spoolRelease
+)
+
+// parseSpoolName classifies a spool file name and returns the version it
+// names, if any.
+func parseSpoolName(name string) (spoolKind, string) {
+	switch {
+	case name == RollbackName:
+		return spoolRollback, ""
+	case strings.HasPrefix(name, confirmPrefix):
+		if v := name[len(confirmPrefix):]; sign.ValidVersion(v) {
+			return spoolConfirm, v
+		}
+	case strings.HasPrefix(name, bundlePrefix) && strings.HasSuffix(name, bundleSuffix):
+		if v := name[len(bundlePrefix) : len(name)-len(bundleSuffix)]; sign.ValidVersion(v) {
+			return spoolRelease, v
+		}
+	}
+	return spoolIgnored, ""
+}
+
 // Options configures Apply and BootCheck.
 type Options struct {
 	// InstallDir is the install directory (normally /opt/bomcensus).
 	InstallDir string
 	// Arch is the architecture to install; default runtime.GOARCH. The
-	// operating system is always linux.
+	// operating system is always the one the updater runs on.
 	Arch string
 	// Logger receives structured logs; default discards them.
 	Logger *slog.Logger
@@ -172,14 +223,13 @@ func Apply(ctx context.Context, opts Options, spoolDir string) (*Result, error) 
 	var confirms []spoolBundle
 	rollback := false
 	for _, n := range names {
-		switch {
-		case n == RollbackName:
+		switch k, v := parseSpoolName(n); k {
+		case spoolRollback:
 			rollback = true
-		case strings.HasPrefix(n, confirmPrefix) && sign.ValidVersion(n[len(confirmPrefix):]):
-			confirms = append(confirms, spoolBundle{n, n[len(confirmPrefix):]})
-		case strings.HasPrefix(n, bundlePrefix) && strings.HasSuffix(n, bundleSuffix) &&
-			sign.ValidVersion(n[len(bundlePrefix):len(n)-len(bundleSuffix)]):
-			bundles = append(bundles, spoolBundle{n, n[len(bundlePrefix) : len(n)-len(bundleSuffix)]})
+		case spoolConfirm:
+			confirms = append(confirms, spoolBundle{n, v})
+		case spoolRelease:
+			bundles = append(bundles, spoolBundle{n, v})
 		}
 	}
 
@@ -214,6 +264,34 @@ func Apply(ctx context.Context, opts Options, spoolDir string) (*Result, error) 
 // the previous version when the attempts exceed limits.MaxAttempts or the
 // version has been pending longer than limits.PendingTimeout.
 func BootCheck(ctx context.Context, opts Options, limits BootLimits) (*Result, error) {
+	return checkPending(ctx, opts, limits, true)
+}
+
+// ExpirePending applies the limits of BootCheck without counting a start:
+// it rolls back a pending version that has been pending longer than
+// limits.PendingTimeout. The Windows updater service calls it while the
+// agent runs, because there no unit runs a boot check before each start.
+func ExpirePending(ctx context.Context, opts Options, limits BootLimits) (*Result, error) {
+	return checkPending(ctx, opts, limits, false)
+}
+
+// Cleanup removes version directories other than the current and the
+// previous one, and temporary files of interrupted runs. Apply does this
+// after an install. On Windows the files of a running executable cannot be
+// removed, so the updater service calls Cleanup again when it starts.
+func Cleanup(ctx context.Context, opts Options) error {
+	s, err := openSession(ctx, opts)
+	if err != nil {
+		return err
+	}
+	defer s.close()
+	if s.st.Current != "" {
+		s.cleanup()
+	}
+	return nil
+}
+
+func checkPending(ctx context.Context, opts Options, limits BootLimits, count bool) (*Result, error) {
 	if limits.MaxAttempts <= 0 {
 		limits.MaxAttempts = DefaultMaxAttempts
 	}
@@ -229,13 +307,18 @@ func BootCheck(ctx context.Context, opts Options, limits BootLimits) (*Result, e
 	if s.st.Pending == nil {
 		return res, nil
 	}
-	next := s.st.clone()
-	next.Pending.Attempts++
-	if err := s.commit(next); err != nil {
-		return res, err
+	next := s.st
+	if count {
+		next = s.st.clone()
+		next.Pending.Attempts++
+		if err := s.commit(next); err != nil {
+			return res, err
+		}
 	}
 	p := next.Pending
-	s.log.Info("boot check", "version", p.Version, "attempts", p.Attempts, "since", p.Since)
+	if count {
+		s.log.Info("boot check", "version", p.Version, "attempts", p.Attempts, "since", p.Since)
+	}
 	var reason string
 	if p.Attempts > limits.MaxAttempts {
 		reason = fmt.Sprintf("%d start attempts exceed the limit of %d", p.Attempts, limits.MaxAttempts)
@@ -314,7 +397,13 @@ type session struct {
 	root       *os.Root
 	installAbs string
 	lock       *os.File
+	goos       string
 	arch       string
+	// agentFiles and otherFiles are agentBaseNames and otherBaseNames as
+	// file names of goos; agentExe is the agent executable.
+	agentFiles map[string]bool
+	otherFiles map[string]bool
+	agentExe   string
 	log        *slog.Logger
 	now        func() time.Time
 	st         *State
@@ -324,10 +413,13 @@ func openSession(ctx context.Context, opts Options) (*session, error) {
 	if opts.InstallDir == "" {
 		return nil, errors.New("updater: install directory is required")
 	}
-	s := &session{arch: opts.Arch, log: opts.Logger, now: opts.Now}
+	s := &session{goos: hostOS, arch: opts.Arch, log: opts.Logger, now: opts.Now}
 	if s.arch == "" {
 		s.arch = runtime.GOARCH
 	}
+	s.agentFiles = nameSet(s.goos, agentBaseNames)
+	s.otherFiles = nameSet(s.goos, otherBaseNames)
+	s.agentExe = release.ExeName(s.goos, AgentName)
 	if s.log == nil {
 		s.log = slog.New(slog.DiscardHandler)
 	}
@@ -440,7 +532,7 @@ func readState(root *os.Root, installAbs string) (*State, bool, error) {
 // currentFromLink returns the version the current link points to, or ""
 // when there is no link. It reads the link; it never follows it.
 func currentFromLink(root *os.Root, installAbs string) (string, error) {
-	target, err := root.Readlink(currentName)
+	target, err := readCurrentLink(root, installAbs)
 	if errors.Is(err, fs.ErrNotExist) {
 		return "", nil
 	}
@@ -473,7 +565,7 @@ func (s *session) commit(next *State) error {
 		s.root.Remove(tmp)
 		return fmt.Errorf("updater: write %s: %w", stateName, err)
 	}
-	if err := s.root.Rename(tmp, stateName); err != nil {
+	if err := renameRetry(s.root, tmp, stateName); err != nil {
 		s.root.Remove(tmp)
 		return fmt.Errorf("updater: write %s: %w", stateName, err)
 	}
@@ -484,16 +576,11 @@ func (s *session) commit(next *State) error {
 	return nil
 }
 
-// switchCurrent points the current link at versions/<v> by renaming a new
-// link over the old one, so a reader always sees one complete target.
+// switchCurrent points the current link at versions/<v> so that a reader
+// always sees one complete target (see replaceCurrentLink).
 func (s *session) switchCurrent(v string) error {
-	tmp := ".current.tmp-" + randSuffix()
-	if err := s.root.Symlink(versionsDir+"/"+v, tmp); err != nil {
-		return fmt.Errorf("updater: create link: %w", err)
-	}
-	if err := s.root.Rename(tmp, currentName); err != nil {
-		s.root.Remove(tmp)
-		return fmt.Errorf("updater: switch %s: %w", currentName, err)
+	if err := replaceCurrentLink(s.root, s.installAbs, v); err != nil {
+		return err
 	}
 	if err := syncDir(s.root, "."); err != nil {
 		return fmt.Errorf("updater: %w", err)
@@ -592,14 +679,14 @@ func (s *session) applyBundle(ctx context.Context, spool *os.Root, b spoolBundle
 		s.reject(spool, res, b.name, "version is not newer than the current version", "version", v, "current", cur)
 		return nil
 	}
-	files := bundle.Files("linux", s.arch)
+	files := bundle.Files(s.goos, s.arch)
 	if len(files) == 0 {
-		s.reject(spool, res, b.name, "bundle has no files for this platform", "platform", "linux/"+s.arch)
+		s.reject(spool, res, b.name, "bundle has no files for this platform", "platform", s.goos+"/"+s.arch)
 		return nil
 	}
-	files = slices.DeleteFunc(files, func(f release.File) bool { return !agentFiles[f.Name] })
-	if !slices.ContainsFunc(files, func(f release.File) bool { return f.Name == AgentName }) {
-		s.reject(spool, res, b.name, "bundle has no "+AgentName+" for this platform", "platform", "linux/"+s.arch)
+	files = slices.DeleteFunc(files, func(f release.File) bool { return !s.agentFiles[f.Name] })
+	if !slices.ContainsFunc(files, func(f release.File) bool { return f.Name == s.agentExe }) {
+		s.reject(spool, res, b.name, "bundle has no "+s.agentExe+" for this platform", "platform", s.goos+"/"+s.arch)
 		return nil
 	}
 	if err := s.install(v, files, bundle.ManifestBytes()); err != nil {
@@ -643,7 +730,7 @@ func (s *session) install(v string, files []release.File, manifest []byte) error
 			return fmt.Errorf("updater: remove stale %s: %w", dst, err)
 		}
 	}
-	if err := s.root.Rename(tmp, dst); err != nil {
+	if err := renameRetry(s.root, tmp, dst); err != nil {
 		return fmt.Errorf("updater: install %s: %w", dst, err)
 	}
 	done = true
@@ -723,8 +810,8 @@ func (s *session) rollback(reason string) (bool, error) {
 
 // verifyInstalled checks that versions/<v> is a directory this updater
 // recorded and that it holds exactly the recorded agent files with the
-// recorded hashes. Other bundle files (otherBundleFiles), recorded or not,
-// are ignored: the agent never runs them.
+// recorded hashes. Other bundle files (otherBaseNames), recorded or not, are
+// ignored: the agent never runs them.
 func (s *session) verifyInstalled(v string) error {
 	in, ok := s.st.Installed[v]
 	if !ok {
@@ -744,7 +831,7 @@ func (s *session) verifyInstalled(v string) error {
 	}
 	recorded := 0
 	for name := range in.Files {
-		if agentFiles[name] {
+		if s.agentFiles[name] {
 			recorded++
 		}
 	}
@@ -753,11 +840,11 @@ func (s *session) verifyInstalled(v string) error {
 	}
 	present := 0
 	for _, name := range names {
-		if otherBundleFiles[name] {
+		if s.otherFiles[name] {
 			continue
 		}
 		want, ok := in.Files[name]
-		if !ok || !agentFiles[name] {
+		if !ok || !s.agentFiles[name] {
 			return fmt.Errorf("%s: unexpected entry %q", dir, name)
 		}
 		present++
@@ -788,15 +875,10 @@ func (s *session) hashFile(name string) (string, error) {
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
-var elfMachines = map[string]elf.Machine{
-	"amd64": elf.EM_X86_64,
-	"arm64": elf.EM_AARCH64,
-}
-
 // adopt verifies the files of a version directory that was not installed by
-// this updater: each agent file must be an ELF executable for this
-// architecture with a valid code signature. Other bundle files are ignored
-// and not recorded.
+// this updater: each agent file must be an executable of this operating
+// system and architecture with a valid code signature. Other bundle files
+// are ignored and not recorded.
 func (s *session) adopt(v string) (Installed, error) {
 	dir := versionsDir + "/" + v
 	fi, err := s.root.Lstat(dir)
@@ -812,27 +894,24 @@ func (s *session) adopt(v string) (Installed, error) {
 	}
 	sums := make(map[string]string, len(names))
 	for _, name := range names {
-		if otherBundleFiles[name] {
+		if s.otherFiles[name] {
 			continue
 		}
-		if !agentFiles[name] {
+		if !s.agentFiles[name] {
 			return Installed{}, fmt.Errorf("%s: unexpected entry %q", dir, name)
 		}
 		data, err := s.readFile(dir + "/" + name)
 		if err != nil {
 			return Installed{}, err
 		}
-		if err := checkELFArch(data, s.arch); err != nil {
-			return Installed{}, fmt.Errorf("%s/%s: %w", dir, name, err)
-		}
-		if err := sign.VerifyELF(data); err != nil {
+		if err := release.VerifyCode(s.goos, data, s.arch); err != nil {
 			return Installed{}, fmt.Errorf("%s/%s: %w", dir, name, err)
 		}
 		d := sha256.Sum256(data)
 		sums[name] = hex.EncodeToString(d[:])
 	}
-	if _, ok := sums[AgentName]; !ok {
-		return Installed{}, fmt.Errorf("%s has no %s", dir, AgentName)
+	if _, ok := sums[s.agentExe]; !ok {
+		return Installed{}, fmt.Errorf("%s has no %s", dir, s.agentExe)
 	}
 	return Installed{Source: SourceAdopted, InstalledAt: s.now().UTC(), Files: sums}, nil
 }
@@ -851,21 +930,6 @@ func (s *session) readFile(name string) ([]byte, error) {
 		return nil, fmt.Errorf("%s exceeds %d bytes", name, maxFileSize)
 	}
 	return data, nil
-}
-
-func checkELFArch(data []byte, arch string) error {
-	want, ok := elfMachines[arch]
-	if !ok {
-		return fmt.Errorf("unsupported architecture %q", arch)
-	}
-	ef, err := elf.NewFile(bytes.NewReader(data))
-	if err != nil {
-		return fmt.Errorf("not an ELF file: %w", err)
-	}
-	if ef.Machine != want {
-		return fmt.Errorf("ELF machine %s does not match architecture %s", ef.Machine, arch)
-	}
-	return nil
 }
 
 // cleanup removes everything in versions/ except the current and the

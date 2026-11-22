@@ -32,7 +32,6 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/bomcensus/bomcensus/internal/collect/artifact"
 	"github.com/bomcensus/bomcensus/internal/probe"
 	"github.com/bomcensus/bomcensus/internal/report"
 	"github.com/bomcensus/bomcensus/internal/version"
@@ -64,7 +63,7 @@ func usage(w io.Writer) {
 func main() {
 	// Must come first: the binary doubles as the exec helper of version
 	// commands and then never returns.
-	artifact.MaybeRunExecHelper()
+	maybeRunExecHelper()
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	err := run(ctx, os.Args[1:], os.Stdin, os.Stdout, os.Stderr)

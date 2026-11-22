@@ -9,7 +9,10 @@
 //
 // Every file is written atomically (temporary file, fsync, rename, fsync of
 // the directory). The directory is created with mode 0700 and locked with
-// flock so that two processes never share a counter.
+// flock so that two processes never share a counter. On Windows the
+// directory gets a protected DACL instead of the mode (see
+// internal/platform/winacl), the lock is LockFileEx and the rename is a
+// write-through MoveFileEx.
 package state
 
 import (
@@ -21,11 +24,12 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"syscall"
+
+	"github.com/bomcensus/bomcensus/internal/platform/paths"
 )
 
 // DefaultDir is the state directory of the host agent.
-const DefaultDir = "/var/lib/bomcensus/agent"
+var DefaultDir = paths.AgentStateDir()
 
 // File names inside the state directory.
 const (
@@ -55,7 +59,13 @@ type Dir struct {
 // Open creates path if needed (mode 0700), tightens its mode and takes an
 // exclusive lock on it. The lock is released by Close or when the process
 // exits or executes another program.
-func Open(path string) (*Dir, error) {
+func Open(path string) (*Dir, error) { return OpenAs(path, "") }
+
+// OpenAs is Open for the state directory of a Windows service: on Windows
+// the DACL also grants the service's virtual account (NT SERVICE\<service>),
+// so that an administrator may run a command such as enroll on the
+// directory the service uses. On other systems service is ignored.
+func OpenAs(path, service string) (*Dir, error) {
 	if path == "" {
 		return nil, errors.New("state: directory is required")
 	}
@@ -73,21 +83,16 @@ func Open(path string) (*Dir, error) {
 	if !fi.IsDir() {
 		return nil, fmt.Errorf("state: %s is not a directory", abs)
 	}
-	if fi.Mode().Perm() != 0o700 {
-		if err := os.Chmod(abs, 0o700); err != nil {
-			return nil, fmt.Errorf("state: chmod %s: %w", abs, err)
-		}
+	if err := securePrivateDir(abs, fi, service); err != nil {
+		return nil, err
 	}
 	f, err := os.OpenFile(filepath.Join(abs, lockName), os.O_RDWR|os.O_CREATE, 0o600)
 	if err != nil {
 		return nil, fmt.Errorf("state: open lock: %w", err)
 	}
-	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+	if err := lockFile(f); err != nil {
 		f.Close()
-		if errors.Is(err, syscall.EWOULDBLOCK) {
-			return nil, ErrLocked
-		}
-		return nil, fmt.Errorf("state: lock: %w", err)
+		return nil, err
 	}
 	return &Dir{path: abs, lock: f}, nil
 }
@@ -179,23 +184,11 @@ func WriteFileAtomic(path string, data []byte, perm os.FileMode) error {
 	if err := f.Close(); err != nil {
 		return fmt.Errorf("state: close %s: %w", base, err)
 	}
-	if err := os.Rename(tmp, path); err != nil {
+	if err := replaceFile(tmp, path); err != nil {
 		return fmt.Errorf("state: rename %s: %w", base, err)
 	}
 	ok = true
 	return syncDir(dir)
-}
-
-func syncDir(dir string) error {
-	d, err := os.Open(dir)
-	if err != nil {
-		return fmt.Errorf("state: sync directory: %w", err)
-	}
-	defer d.Close()
-	if err := d.Sync(); err != nil {
-		return fmt.Errorf("state: sync directory: %w", err)
-	}
-	return nil
 }
 
 func randSuffix() string {

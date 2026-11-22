@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"testing"
 	"time"
 
@@ -37,7 +38,8 @@ func TestPipeline(t *testing.T) {
 	if err := run(ctx, []string{"keygen", "--out", keys}, io.Discard, io.Discard); err == nil {
 		t.Fatal("keygen overwrote existing keys")
 	}
-	if st, err := os.Stat(filepath.Join(keys, fileManifestKey)); err != nil || st.Mode().Perm() != 0o600 {
+	// Windows has no Unix modes; os.Stat reports 0666 or 0444 there.
+	if st, err := os.Stat(filepath.Join(keys, fileManifestKey)); err != nil || (runtime.GOOS != "windows" && st.Mode().Perm() != 0o600) {
 		t.Fatalf("manifest key mode: %v %v", st, err)
 	}
 
@@ -54,9 +56,26 @@ func TestPipeline(t *testing.T) {
 		targets = append(targets, p)
 	}
 	mustRun(append([]string{"sign-elf", "--key", filepath.Join(keys, fileCodeKey), "--cert", filepath.Join(keys, fileCodeCert)}, targets...)...)
-	if st, err := os.Stat(targets[0]); err != nil || st.Mode().Perm() != 0o755 {
+	if st, err := os.Stat(targets[0]); err != nil || (runtime.GOOS != "windows" && st.Mode().Perm() != 0o755) {
 		t.Fatalf("signed file mode: %v %v", st, err)
 	}
+
+	var peTargets []string
+	for _, arch := range []string{"amd64", "arm64"} {
+		d := filepath.Join(bin, "windows-"+arch)
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		p := filepath.Join(d, "bomcensus-agent.exe")
+		if err := os.WriteFile(p, signtest.PE(t, arch), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		peTargets = append(peTargets, p)
+	}
+	if err := run(ctx, append([]string{"sign-elf", "--key", filepath.Join(keys, fileCodeKey), "--cert", filepath.Join(keys, fileCodeCert)}, peTargets...), io.Discard, io.Discard); err == nil {
+		t.Fatal("sign-elf signed a PE file")
+	}
+	mustRun(append([]string{"sign-pe", "--key", filepath.Join(keys, fileCodeKey), "--cert", filepath.Join(keys, fileCodeCert)}, peTargets...)...)
 
 	bundle := filepath.Join(tmp, "bomcensus-1.2.3.tar")
 	mustRun("bundle", "--version", "1.2.3", "--manifest-key", filepath.Join(keys, fileManifestKey), "--dir", bin, "--out", bundle)
@@ -76,10 +95,12 @@ func TestPipeline(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if b.Version() != "1.2.3" || len(b.Platforms()) != 2 {
+	if b.Version() != "1.2.3" || len(b.Platforms()) != 4 {
 		t.Fatalf("version %s platforms %v", b.Version(), b.Platforms())
 	}
-	mustRun("verify", bundle)
+	if out := mustRun("verify", bundle); !regexp.MustCompile(`platforms linux-amd64 linux-arm64 windows-amd64 windows-arm64: OK`).MatchString(out) {
+		t.Fatalf("verify output %q", out)
+	}
 
 	signtest.SetTrust(t, signtest.NewTrust(t).ReleaseKeys(), m[2])
 	if err := run(ctx, []string{"verify", bundle}, io.Discard, io.Discard); err == nil {

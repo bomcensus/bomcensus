@@ -6,11 +6,11 @@ package main
 
 import (
 	"bytes"
-	"encoding/json"
 	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -34,6 +34,9 @@ func probeBinary(t *testing.T) string {
 			return
 		}
 		binPath = filepath.Join(dir, "bomcensus-probe")
+		if runtime.GOOS == "windows" {
+			binPath += ".exe"
+		}
 		cmd := exec.Command("go", "build", "-trimpath", "-ldflags",
 			"-s -w -X github.com/bomcensus/bomcensus/internal/version.Version=9.9.9-test", "-o", binPath, ".")
 		cmd.Env = append(os.Environ(), "CGO_ENABLED=0")
@@ -92,7 +95,7 @@ func TestCollect(t *testing.T) {
 		if len(rep.Cache) == 0 {
 			t.Errorf("%v: no cache", args)
 		}
-		sandboxed := bytes.Contains(stderr, []byte("step=seccomp status=applied"))
+		sandboxed := bytes.Contains(stderr, []byte(sandboxLogMarker))
 		if (args[len(args)-1] == "collect") != sandboxed {
 			t.Errorf("%v: sandbox log mismatch:\n%s", args, stderr)
 		}
@@ -110,35 +113,5 @@ func TestCollectBadRequest(t *testing.T) {
 	}
 	if _, _, code := runProbe(t, "", "frobnicate"); code != 2 {
 		t.Errorf("unknown command: exit %d", code)
-	}
-}
-
-func TestSelfTest(t *testing.T) {
-	out, stderr, code := runProbe(t, "", "self-test", "--json")
-	if code != 0 {
-		t.Fatalf("exit %d\n%s", code, stderr)
-	}
-	var res struct {
-		Seccomp    int  `json:"seccomp"`
-		NoNewPrivs bool `json:"no_new_privs"`
-		Checks     []struct {
-			Name   string `json:"name"`
-			OK     bool   `json:"ok"`
-			Detail string `json:"detail"`
-		} `json:"checks"`
-	}
-	if err := json.Unmarshal(out, &res); err != nil {
-		t.Fatalf("%v\n%s", err, out)
-	}
-	if !res.NoNewPrivs {
-		t.Error("no_new_privs not set")
-	}
-	if res.Seccomp != 2 {
-		t.Skip("seccomp filters not available")
-	}
-	for _, c := range res.Checks {
-		if !c.OK {
-			t.Errorf("check %s: %s", c.Name, c.Detail)
-		}
 	}
 }

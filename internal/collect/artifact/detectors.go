@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-bomcensus-Commercial
 // Additional terms apply. See LICENSING.md.
 
+//go:build linux
+
 package artifact
 
 // Detectors is the built-in known-software table. To add software, append

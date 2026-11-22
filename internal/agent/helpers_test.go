@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"testing"
 	"time"
@@ -48,6 +49,9 @@ func fakeProbe(t *testing.T) string {
 		probeDir, probeErr = os.MkdirTemp("", "bomcensus-fakeprobe-")
 		if probeErr == nil {
 			out := filepath.Join(probeDir, "bomcensus-probe")
+			if runtime.GOOS == "windows" {
+				out += ".exe"
+			}
 			cmd := exec.Command(goBin, "build", "-o", out, "./testdata/fakeprobe")
 			cmd.Env = append(os.Environ(), "CGO_ENABLED=0")
 			if b, err := cmd.CombinedOutput(); err != nil {

@@ -80,7 +80,7 @@ const (
 var extStyles = map[string]style{
 	".go": styleSlash, ".ts": styleSlash, ".js": styleSlash, ".mjs": styleSlash,
 	".yaml": styleHash, ".yml": styleHash, ".sh": styleHash, ".mk": styleHash,
-	".toml": styleHash, ".tpl": styleHash,
+	".toml": styleHash, ".tpl": styleHash, ".ps1": styleHash,
 	".sql": styleDash,
 	".vue": styleHTML, ".html": styleHTML,
 	".css": styleCSS,

@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-bomcensus-Commercial
 // Additional terms apply. See LICENSING.md.
 
-// Package hostinfo collects the identity of the inspected system: OS release,
-// hostname, machine-id, kernel release and architecture.
+//go:build linux
+
 package hostinfo
 
 import (
@@ -18,7 +18,6 @@ import (
 	"regexp"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"golang.org/x/sys/unix"
 
@@ -44,7 +43,6 @@ var legacyRelease = []struct{ path, id string }{
 
 const (
 	maxReleaseFile = 64 << 10
-	maxValue       = 512
 	maxSymlinkHops = 40
 )
 
@@ -92,15 +90,6 @@ func Collect(ctx context.Context, env *collect.Env) *report.HostSection {
 	sec.CollectedAt = start.UTC()
 	sec.DurationMs = time.Since(start).Milliseconds()
 	return sec
-}
-
-// digestBody is HostSection without SectionMeta.
-type digestBody struct {
-	Hostname  string    `json:"hostname"`
-	MachineID string    `json:"machine_id,omitempty"`
-	OS        report.OS `json:"os"`
-	Kernel    string    `json:"kernel,omitempty"`
-	Arch      string    `json:"arch"`
 }
 
 // readOSRelease returns the parsed os-release. from names the legacy file
@@ -297,15 +286,4 @@ func resolve(env *collect.Env, p string) string {
 		return walk(path.Clean(target))
 	}
 	return walk(path.Clean(p))
-}
-
-func clean(s string) string {
-	s = strings.TrimSpace(s)
-	if len(s) > maxValue {
-		s = s[:maxValue]
-	}
-	if !utf8.ValidString(s) {
-		s = strings.ToValidUTF8(s, "�")
-	}
-	return s
 }

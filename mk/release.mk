@@ -4,9 +4,11 @@
 
 # release-dev builds a development release signed with throwaway keys.
 #
-# Every cmd/bomcensus-* command that exists is built for each architecture
-# with the trust from RELEASE_DEVKEYS compiled in. The commands that run on
-# collection targets are AuthentiELF-signed and packed into
+# Every cmd/bomcensus-* command that exists is built for linux and each
+# architecture with the trust from RELEASE_DEVKEYS compiled in. The commands
+# that run on collection targets are also built for windows (as <name>.exe).
+# Those are signed (AuthentiELF for
+# linux, Authenticode for windows) and packed into
 # $(DIST)/bomcensus-$(VERSION).tar, which is then verified by a host build of
 # bomcensus-release carrying the same trust. The server binary is written to
 # $(DIST). Paths are relative to the repository root.
@@ -43,11 +45,11 @@ release-dev:
 	for d in cmd/bomcensus-*/; do \
 		if ls $$d*.go >/dev/null 2>&1; then cmds="$$cmds $$(basename $$d)"; fi; \
 	done; \
-	signed=""; \
+	elf=""; pe=""; \
 	for arch in $(RELEASE_ARCHES); do \
 		for c in $$cmds; do \
 			case " $(RELEASE_BUNDLED) " in \
-			*" $$c "*) out=$$stage/bundle/linux-$$arch/$$c; signed="$$signed $$out" ;; \
+			*" $$c "*) out=$$stage/bundle/linux-$$arch/$$c; elf="$$elf $$out" ;; \
 			*) if [ "$$c" = bomcensus-server ]; then out=$(DIST)/$$c-linux-$$arch; \
 			   else out=$$stage/linux-$$arch/$$c; fi ;; \
 			esac; \
@@ -55,13 +57,24 @@ release-dev:
 			CGO_ENABLED=0 GOOS=linux GOARCH=$$arch go build $(GOFLAGS) \
 				-ldflags "$(LDFLAGS) $$trust" -o $$out ./cmd/$$c; \
 		done; \
+		for c in $$cmds; do \
+			case " $(RELEASE_BUNDLED) " in *" $$c "*) ;; *) continue ;; esac; \
+			out=$$stage/bundle/windows-$$arch/$$c.exe; pe="$$pe $$out"; \
+			echo "build $$c windows/$$arch"; \
+			CGO_ENABLED=0 GOOS=windows GOARCH=$$arch go build $(GOFLAGS) \
+				-ldflags "$(LDFLAGS) $$trust" -o $$out ./cmd/$$c; \
+		done; \
 	done; \
-	if [ -z "$$signed" ]; then \
+	if [ -z "$$elf" ]; then \
 		echo "none of $(RELEASE_BUNDLED) exist yet; no bundle written"; \
 		exit 0; \
 	fi; \
 	$$tool sign-elf --key $(RELEASE_DEVKEYS)/codesign.key \
-		--cert $(RELEASE_DEVKEYS)/codesign.crt $$signed; \
+		--cert $(RELEASE_DEVKEYS)/codesign.crt $$elf; \
+	if [ -n "$$pe" ]; then \
+		$$tool sign-pe --key $(RELEASE_DEVKEYS)/codesign.key \
+			--cert $(RELEASE_DEVKEYS)/codesign.crt $$pe; \
+	fi; \
 	$$tool bundle --version $(VERSION) --manifest-key $(RELEASE_DEVKEYS)/manifest.key \
 		--dir $$stage/bundle --out $(DIST)/bomcensus-$(VERSION).tar; \
 	$$tool verify $(DIST)/bomcensus-$(VERSION).tar

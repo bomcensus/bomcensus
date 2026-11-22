@@ -6,7 +6,7 @@
 
 # Releasing
 
-A release is published by pushing a tag `vMAJOR.MINOR.PATCH` (or `vMAJOR.MINOR.PATCH-PRERELEASE`, published as a pre-release). The workflow `.github/workflows/release.yml` first runs CI (`ci.yml`) and then builds, signs and publishes everything below. The GitHub release is created last, so it exists only when every step passed. Steps that fail after images, charts or attestations were pushed leave those on ghcr.io and GitHub without a release; a re-run of the same tag pushes them again and replaces the release assets.
+A release is published by pushing a tag `vMAJOR.MINOR.PATCH` (or `vMAJOR.MINOR.PATCH-PRERELEASE`, published as a pre-release). The workflow `.github/workflows/release.yml` first runs CI (`ci.yml`) and then has three jobs: `build` builds and signs everything below (the only job with access to the signing keys), `windows` runs the Windows binaries and the installer on Windows runners (x64 and arm64), and `publish` pushes images and charts, writes the attestations and creates the release. The GitHub release is created last, so it exists only when every step passed. Steps that fail after images, charts or attestations were pushed leave those on ghcr.io and GitHub without a release; a re-run of the same tag pushes them again and replaces the release assets.
 
 ## 1. What is published
 
@@ -15,9 +15,10 @@ Images are named after the GitHub repository (`ghcr.io/OWNER/REPO/<image>`) and 
 | Artifact | Where | Code signature | Provenance |
 |---|---|---|---|
 | `<command>_VERSION_linux_{amd64,arm64}`: server, agent, probe, updater, scanner, release | GitHub release | AuthentiELF, timestamped | attestation |
-| `bomcensus-release_VERSION_windows_{amd64,arm64}.exe` | GitHub release | Authenticode (jsign), timestamped | attestation |
-| `bomcensus-VERSION.tar`: agent bundle (agent, probe, updater, scanner for both architectures) | GitHub release, and inside the server image | Ed25519 manifest signature; the files inside are the AuthentiELF-signed binaries above | attestation |
+| `<command>_VERSION_windows_{amd64,arm64}.exe`: the same commands | GitHub release | Authenticode (jsign), timestamped | attestation |
+| `bomcensus-VERSION.tar`: agent bundle (agent, probe, updater, scanner for linux and windows, amd64 and arm64) | GitHub release, and inside the server image | Ed25519 manifest signature; the files inside are the signed binaries above | attestation |
 | `bomcensus-systemd_VERSION.tar.gz`: units, `install.sh`, `uninstall.sh` | GitHub release | — | attestation |
+| `bomcensus-windows_VERSION.zip`: `install.ps1`, `uninstall.ps1` | GitHub release | — | attestation |
 | `bomcensus-{manager,scanner}-VERSION.tgz` | GitHub release | — | attestation |
 | `SHA256SUMS` of all of the above | GitHub release | — | — |
 | `ghcr.io/bomcensus/bomcensus/{server,scanner,agent}:VERSION` (and `:latest` for releases that are not pre-releases), linux/amd64 and linux/arm64 | GitHub Container Registry | cosign (keyless) | attestation, BuildKit provenance and SBOM |
@@ -41,7 +42,8 @@ cosign verify ghcr.io/bomcensus/bomcensus/server:1.2.3 \
 
 # Code signatures:
 authentielf verify bomcensus-agent_1.2.3_linux_amd64
-osslsigncode verify -in bomcensus-release_1.2.3_windows_amd64.exe
+osslsigncode verify -in bomcensus-agent_1.2.3_windows_amd64.exe
+Get-AuthenticodeSignature .\bomcensus-agent_1.2.3_windows_amd64.exe   # on Windows
 
 # The agent bundle, with the trust compiled into the release tool of the same release:
 ./bomcensus-release_1.2.3_linux_amd64 verify bomcensus-1.2.3.tar
@@ -61,7 +63,7 @@ The release job runs in the GitHub environment **`signed-release`**. Protect it 
 | `CODESIGN_ROOTS` | variable | PEM: the root certificate(s) that `SIGN_CERT` chains to. Compiled into every binary as the code-signing trust |
 | `MANIFEST_KEY_FILE` | secret | `gcp-kms://projects/P/locations/L/keyRings/R/cryptoKeys/K/cryptoKeyVersions/N`, the release manifest key (algorithm `EC_SIGN_ED25519`). Its public key is compiled into every binary |
 
-The same key and certificate sign the Linux binaries (AuthentiELF) and the Windows binaries (Authenticode), as in the AuthentiELF project. Timestamps come from `http://timestamp.digicert.com`.
+The same key and certificate sign the Linux binaries (AuthentiELF) and the Windows binaries (Authenticode), as in the AuthentiELF project. Timestamps come from `http://timestamp.digicert.com`. The key must be RSA with PKCS #1 v1.5 padding (`RSA_SIGN_PKCS1_*`) or ECDSA: agents and the server verify Windows signatures themselves and do not accept RSA-PSS. Windows timestamps must be RFC 3161 counter-signatures (`scripts/sign-pe.sh` runs jsign with `--tsmode RFC3161`).
 
 Creating the manifest key, once (the key never leaves Cloud KMS; `bomcensus-release bundle` and `manifest-pub` use it through the API with `$GOOGLE_OAUTH_ACCESS_TOKEN`):
 
@@ -76,16 +78,16 @@ Use the key version (`.../cryptoKeyVersions/1`), not the key: binaries trust exa
 
 ## 4. Local build
 
-`scripts/release.sh` is what the workflow runs. Every key can also be a PEM file instead of a Cloud KMS key; with the development keys of `make release-dev` (no Windows build):
+`scripts/release.sh` is what the workflow runs. Every key can also be a PEM file instead of a Cloud KMS key; with the development keys of `make release-dev`, signing the Windows files with the release tool instead of jsign:
 
 ```sh
 K=.devstate/devkeys
 MANIFEST_KEY_FILE=$K/manifest.key CODESIGN_ROOTS_FILE=$K/codesign-ca.crt \
 SIGN_KEY_FILE=$K/codesign.key SIGN_CERT_FILE=$K/codesign.crt \
-RELEASE_WINDOWS=0 make release VERSION=1.2.3
+PE_SIGNER=go make release VERSION=1.2.3
 ```
 
-It needs Go, Node with pnpm and the `authentielf` CLI (`go install github.com/jc-lab/authentielf/cmd/authentielf@v0.0.1`); the Windows build also needs jsign (`JSIGN="java -jar jsign.jar"`), which cannot load the EC development key, so a test needs an RSA certificate. Output: `dist/release/assets` and `dist/release/docker`. Images from that output:
+It needs Go, Node with pnpm, `zip` and the `authentielf` CLI (`go install github.com/jc-lab/authentielf/cmd/authentielf@v0.0.1`). The workflow signs Windows files with jsign (`JSIGN="java -jar jsign.jar"`, the default `PE_SIGNER`), which also takes Cloud KMS keys. Output: `dist/release/assets` and `dist/release/docker`. Images from that output:
 
 ```sh
 VERSION=1.2.3 DIST=dist/release/docker docker buildx bake -f deploy/docker/docker-bake.hcl --load

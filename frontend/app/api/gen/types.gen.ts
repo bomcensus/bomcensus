@@ -113,7 +113,7 @@ export type SectionCoverage = {
 
 export type AssetOs = {
     /**
-     * `linux`.
+     * `linux` or `windows`.
      */
     family: string;
     name: string;

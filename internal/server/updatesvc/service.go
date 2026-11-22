@@ -32,8 +32,12 @@ import (
 	"github.com/bomcensus/bomcensus/internal/sign"
 )
 
-// ProbeName is the file name of the probe inside a release.
+// ProbeName is the file name of the probe inside a release. Windows
+// platforms carry it with the .exe suffix (see ProbeFile).
 const ProbeName = "bomcensus-probe"
+
+// ProbeFile is the file name of the probe of a platform inside a release.
+func ProbeFile(os string) string { return release.ExeName(os, ProbeName) }
 
 // MaxCheckIntervalMinutes bounds the update check interval (one week).
 const MaxCheckIntervalMinutes = 7 * 24 * 60
@@ -328,7 +332,7 @@ func (s *Service) Probe(ctx context.Context, os, arch string) ([]byte, string, e
 	if err != nil {
 		return nil, "", err
 	}
-	_, rc, err := s.st.OpenReleaseFile(ctx, version, os, arch, ProbeName)
+	_, rc, err := s.st.OpenReleaseFile(ctx, version, os, arch, ProbeFile(os))
 	if err != nil {
 		return nil, "", err
 	}
@@ -357,7 +361,7 @@ func (s *Service) probeVersion(ctx context.Context, os, arch string) (string, er
 		if err != nil {
 			return "", err
 		}
-		if hasFile(files, os, arch, ProbeName) {
+		if hasFile(files, os, arch, ProbeFile(os)) {
 			return set.TargetVersion, nil
 		}
 	}
@@ -374,7 +378,7 @@ func (s *Service) probeVersion(ctx context.Context, os, arch string) (string, er
 		if err != nil {
 			return "", err
 		}
-		if hasFile(files, os, arch, ProbeName) {
+		if hasFile(files, os, arch, ProbeFile(os)) {
 			return r.Version, nil
 		}
 	}

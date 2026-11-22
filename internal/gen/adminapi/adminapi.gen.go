@@ -1834,7 +1834,7 @@ type AssetList struct {
 type AssetOs struct {
 	Arch string `json:"arch"`
 
-	// Family `linux`.
+	// Family `linux` or `windows`.
 	Family  string  `json:"family"`
 	Kernel  *string `json:"kernel,omitempty"`
 	Name    string  `json:"name"`

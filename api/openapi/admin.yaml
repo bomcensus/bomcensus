@@ -1981,7 +1981,7 @@ components:
       required: [family, name, version, arch]
       properties:
         family:
-          description: "`linux`."
+          description: "`linux` or `windows`."
           type: string
         name:
           type: string

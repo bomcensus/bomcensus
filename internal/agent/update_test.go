@@ -2,6 +2,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-bomcensus-Commercial
 // Additional terms apply. See LICENSING.md.
 
+// These tests use the Linux install layout (a symlink named current) and an
+// agent that runs the updater itself. On Windows the updater service does
+// both; internal/updater covers that flow.
+
+//go:build !windows
+
 package agent
 
 import (

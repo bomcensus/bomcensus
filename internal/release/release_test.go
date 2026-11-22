@@ -279,3 +279,121 @@ func TestBundleCodeSignature(t *testing.T) {
 		t.Error("non-ELF accepted")
 	}
 }
+
+// TestBundleWindows covers Windows platforms: PE files with Authenticode
+// signatures next to Linux files in one bundle.
+func TestBundleWindows(t *testing.T) {
+	tr := signtest.Install(t)
+	now := time.Now()
+	m := &sign.Manifest{Version: "1.0.0", IssuedAt: now.Add(-time.Minute), ExpiresAt: now.Add(time.Hour)}
+	var files []File
+	add := func(goos, arch, name string, data []byte) {
+		files = append(files, File{OS: goos, Arch: arch, Name: name, Data: data})
+		m.Files = append(m.Files, signtest.FileEntry(goos, arch, name, data))
+	}
+	add("linux", "amd64", names[0], tr.SignELF(t, signtest.ELF(t, "amd64")))
+	for _, arch := range []string{"amd64", "arm64"} {
+		add("windows", arch, names[0]+".exe", tr.SignPE(t, signtest.PE(t, arch)))
+	}
+	mb, sig := tr.SignManifest(t, m)
+	var buf bytes.Buffer
+	if err := Write(context.Background(), &buf, mb, sig, files); err != nil {
+		t.Fatal(err)
+	}
+	b, err := Open(context.Background(), bytes.NewReader(buf.Bytes()), now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []Platform{{"linux", "amd64"}, {"windows", "amd64"}, {"windows", "arm64"}}
+	if got := b.Platforms(); len(got) != len(want) || got[0] != want[0] || got[1] != want[1] || got[2] != want[2] {
+		t.Fatalf("platforms %v", got)
+	}
+	var one bytes.Buffer
+	if err := b.WritePlatform(context.Background(), &one, "windows", "arm64"); err != nil {
+		t.Fatal(err)
+	}
+	if b, err = Open(context.Background(), &one, now); err != nil {
+		t.Fatal(err)
+	}
+	if got := b.Files("windows", "arm64"); len(got) != 1 || got[0].Name != names[0]+".exe" {
+		t.Fatalf("files %v", got)
+	}
+}
+
+func TestBundleWindowsCodeSignature(t *testing.T) {
+	tr := signtest.Install(t)
+	now := time.Now()
+	build := func(t *testing.T, arch string, data []byte) error {
+		m := &sign.Manifest{
+			Version: "1.0.0", IssuedAt: now.Add(-time.Minute), ExpiresAt: now.Add(time.Hour),
+			Files: []sign.File{signtest.FileEntry("windows", arch, "bomcensus-agent.exe", data)},
+		}
+		b, sig := tr.SignManifest(t, m)
+		var buf bytes.Buffer
+		if err := Write(context.Background(), &buf, b, sig, []File{{OS: "windows", Arch: arch, Name: "bomcensus-agent.exe", Data: data}}); err != nil {
+			t.Fatal(err)
+		}
+		_, err := Open(context.Background(), &buf, now)
+		return err
+	}
+	pe := signtest.PE(t, "amd64")
+	signed := tr.SignPE(t, pe)
+	if err := build(t, "amd64", signed); err != nil {
+		t.Fatalf("baseline: %v", err)
+	}
+	if err := build(t, "amd64", pe); err == nil {
+		t.Error("unsigned PE accepted")
+	}
+	tampered := bytes.Clone(signed)
+	tampered[0x200] ^= 1
+	if err := build(t, "amd64", tampered); err == nil {
+		t.Error("tampered PE accepted")
+	}
+	if err := build(t, "arm64", signed); err == nil {
+		t.Error("amd64 PE accepted as arm64")
+	}
+	if err := build(t, "amd64", signtest.NewTrust(t).SignPE(t, pe)); err == nil {
+		t.Error("PE signed by another root accepted")
+	}
+	if err := build(t, "amd64", tr.SignELF(t, signtest.ELF(t, "amd64"))); err == nil {
+		t.Error("ELF accepted on windows")
+	}
+	if err := build(t, "386", signed); err == nil {
+		t.Error("unsupported architecture accepted")
+	}
+}
+
+func TestExeName(t *testing.T) {
+	if got := ExeName("windows", "bomcensus-agent"); got != "bomcensus-agent.exe" {
+		t.Fatal(got)
+	}
+	if got := ExeName("linux", "bomcensus-agent"); got != "bomcensus-agent" {
+		t.Fatal(got)
+	}
+}
+
+func TestCheckMachine(t *testing.T) {
+	other := map[string]string{"amd64": "arm64", "arm64": "amd64"}
+	for _, arch := range []string{"amd64", "arm64"} {
+		for goos, data := range map[string][]byte{"linux": signtest.ELF(t, arch), "windows": signtest.PE(t, arch)} {
+			if err := CheckMachine(goos, data, arch); err != nil {
+				t.Fatalf("%s/%s: %v", goos, arch, err)
+			}
+			if err := CheckMachine(goos, data, other[arch]); err == nil {
+				t.Fatalf("%s/%s accepted as %s", goos, arch, other[arch])
+			}
+		}
+	}
+	if err := CheckMachine("windows", signtest.ELF(t, "amd64"), "amd64"); err == nil {
+		t.Fatal("ELF accepted as PE")
+	}
+	if err := CheckMachine("linux", signtest.PE(t, "amd64"), "amd64"); err == nil {
+		t.Fatal("PE accepted as ELF")
+	}
+	if err := CheckMachine("windows", signtest.PE(t, "amd64"), "riscv64"); err == nil {
+		t.Fatal("unknown architecture accepted")
+	}
+	if err := CheckMachine("darwin", signtest.ELF(t, "amd64"), "amd64"); err == nil {
+		t.Fatal("unknown os accepted")
+	}
+}

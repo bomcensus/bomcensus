@@ -345,13 +345,16 @@ func (e TargetArch) Valid() bool {
 
 // Defines values for TargetOs.
 const (
-	Linux TargetOs = "linux"
+	Linux   TargetOs = "linux"
+	Windows TargetOs = "windows"
 )
 
 // Valid indicates whether the value is a known member of the TargetOs enum.
 func (e TargetOs) Valid() bool {
 	switch e {
 	case Linux:
+		return true
+	case Windows:
 		return true
 	default:
 		return false

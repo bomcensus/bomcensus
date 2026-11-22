@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -50,6 +51,7 @@ func TestStyles(t *testing.T) {
 		{"a.ts", "export {}\n", "// Copyright"},
 		{"a.mjs", "export {}\n", "// Copyright"},
 		{"a.yaml", "a: 1\n", "# Copyright"},
+		{"a.ps1", "param()\n", "# Copyright"},
 		{"Makefile", "all:\n", "# Copyright"},
 		{"Dockerfile", "FROM x\n", "# Copyright"},
 		{"a.sql", "select 1;\n", "-- Copyright"},
@@ -84,7 +86,8 @@ func TestShebang(t *testing.T) {
 		if !strings.HasPrefix(got, "#!") || !strings.Contains(strings.SplitN(got, "\n", 3)[1], "# Copyright") {
 			t.Fatalf("%s:\n%s", f, got)
 		}
-		if st, _ := os.Stat(f); st.Mode().Perm() != 0o755 {
+		// Windows has no execute bit to keep.
+		if st, _ := os.Stat(f); runtime.GOOS != "windows" && st.Mode().Perm() != 0o755 {
 			t.Fatalf("mode changed: %v", st.Mode())
 		}
 	}

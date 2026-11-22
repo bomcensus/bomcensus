@@ -5,8 +5,9 @@
 // Package update is the agent side of automatic updates (ARCH 6.4,
 // SECURITY §5.2): it asks the server for the deployed version, downloads a
 // newer release bundle into the update spool for the updater, starts the
-// updater when no systemd unit does, confirms a pending version after the
-// first successful poll and re-executes the agent when the current link
+// updater when no service runs it (systemd units on Linux; on Windows the
+// bomcensus-updater service always does), confirms a pending version after
+// the first successful poll and re-executes the agent when the current link
 // points to another version. It never installs anything itself.
 package update
 
@@ -29,14 +30,18 @@ import (
 	"github.com/bomcensus/bomcensus/internal/agent/core"
 	"github.com/bomcensus/bomcensus/internal/agent/state"
 	"github.com/bomcensus/bomcensus/internal/gen/agentapi"
+	"github.com/bomcensus/bomcensus/internal/platform/paths"
 	"github.com/bomcensus/bomcensus/internal/sign"
 	"github.com/bomcensus/bomcensus/internal/updater"
 )
 
+// DefaultSpool is the default update spool directory of this system.
+var DefaultSpool = paths.UpdateSpoolDir()
+
 // Defaults.
 const (
-	DefaultSpool = "/var/lib/bomcensus/update-spool"
-	// UpdaterName is the updater executable inside a version directory.
+	// UpdaterName is the updater executable inside a version directory,
+	// without the ".exe" suffix it has on Windows.
 	UpdaterName = "bomcensus-updater"
 	// SystemdEnv is set by the systemd units when a path unit runs the
 	// updater and a unit before the agent runs boot-check.
@@ -62,7 +67,10 @@ type Options struct {
 	SpoolDir   string
 	// Version is the running version.
 	Version string
-	// Systemd is true when systemd units run the updater.
+	// Systemd is true when a service runs the updater: the systemd units
+	// on Linux. On Windows it is always treated as true, because there the
+	// bomcensus-updater service runs the updater and the agent's account
+	// cannot write the install directory.
 	Systemd bool
 	// Executable is the running binary (default os.Executable()).
 	Executable string
@@ -93,11 +101,21 @@ type Manager struct {
 	message   string
 }
 
-// DeriveInstallDir returns <install> when exe is <install>/versions/<v>/<name>.
+// DeriveInstallDir returns <install> when exe is <install>/versions/<v>/<name>
+// or, on Windows, <install>/current/<name>. The second form is how a Windows
+// service started through the current junction sees its executable, because
+// filepath.EvalSymlinks does not resolve junctions.
 func DeriveInstallDir(exe string) (string, bool) {
+	return deriveInstallDir(runtime.GOOS, exe)
+}
+
+func deriveInstallDir(goos, exe string) (string, bool) {
 	dir := filepath.Dir(exe)
 	v := filepath.Base(dir)
 	parent := filepath.Dir(dir)
+	if goos == "windows" && v == "current" && parent != dir {
+		return parent, true
+	}
 	if filepath.Base(parent) != "versions" || !sign.ValidVersion(v) {
 		return "", false
 	}
@@ -126,6 +144,9 @@ func New(o Options) (*Manager, error) {
 	}
 	if o.Now == nil {
 		o.Now = time.Now
+	}
+	if runtime.GOOS == "windows" {
+		o.Systemd = true
 	}
 	if o.Executable == "" {
 		exe, err := os.Executable()
@@ -206,7 +227,7 @@ func (m *Manager) Changed(ctx context.Context) *ReexecError {
 	if v == "" || v == m.o.Version || dir == filepath.Dir(m.o.Executable) {
 		return nil
 	}
-	return &ReexecError{Path: filepath.Join(dir, updater.AgentName), Version: v}
+	return &ReexecError{Path: filepath.Join(dir, updater.ExeName(updater.AgentName)), Version: v}
 }
 
 // Status describes the update state for the poll request.
@@ -342,7 +363,7 @@ func (m *Manager) apply(ctx context.Context) {
 // Check asks the server for the deployed version and downloads it when it
 // is newer than the running one.
 func (m *Manager) Check(ctx context.Context, rt *core.Runtime) error {
-	params := &agentapi.CheckUpdateParams{Os: agentapi.Linux, Arch: agentapi.TargetArch(runtime.GOARCH)}
+	params := &agentapi.CheckUpdateParams{Os: agentapi.TargetOs(runtime.GOOS), Arch: agentapi.TargetArch(runtime.GOARCH)}
 	resp, err := rt.Client().CheckUpdateWithResponse(ctx, params)
 	if err != nil {
 		return fmt.Errorf("update check: %w", err)
@@ -386,8 +407,8 @@ func (m *Manager) Check(ctx context.Context, rt *core.Runtime) error {
 	if man.Version != target {
 		return fmt.Errorf("update check: manifest is for %s, not %s", man.Version, target)
 	}
-	if len(man.FilesFor("linux", runtime.GOARCH)) == 0 {
-		return fmt.Errorf("update check: release %s has no files for linux/%s", target, runtime.GOARCH)
+	if len(man.FilesFor(runtime.GOOS, runtime.GOARCH)) == 0 {
+		return fmt.Errorf("update check: release %s has no files for %s/%s", target, runtime.GOOS, runtime.GOARCH)
 	}
 	name := updater.BundleName(target)
 	if _, err := os.Stat(filepath.Join(m.o.SpoolDir, name)); err != nil {
@@ -420,7 +441,7 @@ func (m *Manager) download(ctx context.Context, rt *core.Runtime, version string
 	if err := os.MkdirAll(m.o.SpoolDir, 0o750); err != nil {
 		return fmt.Errorf("update spool: %w", err)
 	}
-	params := &agentapi.DownloadUpdateBundleParams{Os: agentapi.Linux, Arch: agentapi.TargetArch(runtime.GOARCH)}
+	params := &agentapi.DownloadUpdateBundleParams{Os: agentapi.TargetOs(runtime.GOOS), Arch: agentapi.TargetArch(runtime.GOARCH)}
 	resp, err := rt.Client().DownloadUpdateBundle(ctx, version, params)
 	if err != nil {
 		return fmt.Errorf("download %s: %w", version, err)
@@ -481,7 +502,7 @@ func (m *Manager) execUpdater(ctx context.Context, args ...string) error {
 	if dir == "" {
 		return errors.New("no current version")
 	}
-	path := filepath.Join(dir, UpdaterName)
+	path := filepath.Join(dir, updater.ExeName(UpdaterName))
 	if _, err := os.Stat(path); errors.Is(err, fs.ErrNotExist) {
 		return fmt.Errorf("%s not found", path)
 	}

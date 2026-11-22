@@ -6,6 +6,10 @@
 // socket when it exists, otherwise by running bomcensus-probe as a child
 // process with low CPU and I/O priority. Either way the request is
 // report.Request as JSON and the answer is an encoded report.Report.
+//
+// On Windows there is no socket activation: the probe always runs as a
+// child, in a job object that kills it when the agent goes away, at below
+// normal priority (child_windows.go).
 package probeexec
 
 import (
@@ -22,19 +26,18 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"syscall"
+	"runtime"
 	"time"
 
-	"golang.org/x/sys/unix"
-
+	"github.com/bomcensus/bomcensus/internal/release"
 	"github.com/bomcensus/bomcensus/internal/report"
 )
 
 // Defaults.
 const (
-	DefaultSocket = "/run/bomcensus/probe.sock"
-	// ProbeName is the probe executable next to the agent's own.
-	ProbeName = "bomcensus-probe"
+	// DefaultSocket is the probe socket of the systemd units; empty on
+	// systems without one.
+	DefaultSocket = defaultSocket
 	// DefaultTimeout bounds a run when the policy sets no limit.
 	DefaultTimeout = 30 * time.Minute
 	// MaxOutput bounds the encoded report.
@@ -44,10 +47,13 @@ const (
 	killGrace = time.Minute
 )
 
+// ProbeName is the probe executable next to the agent's own.
+var ProbeName = release.ExeName(runtime.GOOS, "bomcensus-probe")
+
 // Invoker runs the probe.
 type Invoker struct {
 	// Socket is the probe socket; empty selects DefaultSocket. A socket
-	// that does not exist selects the child process.
+	// that does not exist, or no socket at all, selects the child process.
 	Socket string
 	// Path is the probe executable; empty selects ProbeName next to the
 	// running executable.
@@ -88,7 +94,7 @@ func (inv *Invoker) Collect(ctx context.Context, req *report.Request) (*report.R
 		sock = DefaultSocket
 	}
 	var out []byte
-	if fi, err := os.Stat(sock); err == nil && fi.Mode().Type() == fs.ModeSocket {
+	if fi, err := statSocket(sock); err == nil && fi.Mode().Type() == fs.ModeSocket {
 		out, err = inv.viaSocket(ctx, sock, in)
 		if err != nil {
 			return nil, err
@@ -155,13 +161,9 @@ func (inv *Invoker) viaChild(ctx context.Context, in []byte) ([]byte, error) {
 	cmd.Stdin = bytes.NewReader(in)
 	cmd.Env = inv.Env
 	if cmd.Env == nil {
-		cmd.Env = []string{"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", "LANG=C"}
+		cmd.Env = defaultEnv()
 	}
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	cmd.Cancel = func() error {
-		// The probe runs in its own process group; kill all of it.
-		return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
-	}
+	ch := prepareChild(cmd)
 	cmd.WaitDelay = 10 * time.Second
 	var stdout limitedBuffer
 	cmd.Stdout = &stdout
@@ -172,7 +174,8 @@ func (inv *Invoker) viaChild(ctx context.Context, in []byte) ([]byte, error) {
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("start probe: %w", err)
 	}
-	lowerPriority(cmd.Process.Pid, log)
+	release := ch.started(log)
+	defer release()
 	logDone := make(chan struct{})
 	go func() {
 		defer close(logDone)
@@ -195,23 +198,6 @@ func (inv *Invoker) viaChild(ctx context.Context, in []byte) ([]byte, error) {
 		return nil, fmt.Errorf("probe: %w", err)
 	}
 	return stdout.Bytes(), nil
-}
-
-// lowerPriority applies nice 10 and the idle I/O class, best effort. The
-// child may already have started work; its later threads inherit nothing,
-// but the process-wide settings apply from here on.
-func lowerPriority(pid int, log *slog.Logger) {
-	if err := unix.Setpriority(unix.PRIO_PROCESS, pid, 10); err != nil {
-		log.Debug("set probe CPU priority", "error", err)
-	}
-	const (
-		ioprioWhoProcess = 1
-		ioprioClassIdle  = 3
-		ioprioClassShift = 13
-	)
-	if _, _, e := unix.Syscall(unix.SYS_IOPRIO_SET, ioprioWhoProcess, uintptr(pid), ioprioClassIdle<<ioprioClassShift); e != 0 {
-		log.Debug("set probe I/O priority", "error", e)
-	}
 }
 
 func readLimited(r io.Reader) ([]byte, error) {

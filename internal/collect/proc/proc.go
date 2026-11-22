@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-bomcensus-Commercial
 // Additional terms apply. See LICENSING.md.
 
+//go:build linux
+
 // Package proc collects running processes from the proc file system: their
 // executables (including replaced, deleted and memfd ones), replaced or
 // deleted libraries, listening sockets and container membership. It only

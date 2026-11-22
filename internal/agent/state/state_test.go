@@ -31,10 +31,7 @@ func TestOpenLocksAndTightensMode(t *testing.T) {
 		t.Fatal(err)
 	}
 	d := open(t, dir)
-	fi, err := os.Stat(dir)
-	if err != nil || fi.Mode().Perm() != 0o700 {
-		t.Fatalf("mode %v, %v", fi.Mode(), err)
-	}
+	checkPrivateDir(t, dir)
 	if _, err := Open(dir); !errors.Is(err, ErrLocked) {
 		t.Fatalf("second Open: %v", err)
 	}
@@ -169,10 +166,7 @@ func TestIdentityRoundTrip(t *testing.T) {
 	if err != nil || !id.Key.Equal(key) || id.Cert != nil {
 		t.Fatalf("identity %+v, %v", id, err)
 	}
-	fi, err := os.Stat(filepath.Join(d.Path(), identityName))
-	if err != nil || fi.Mode().Perm() != 0o600 {
-		t.Fatalf("mode %v, %v", fi.Mode(), err)
-	}
+	checkPrivateFile(t, filepath.Join(d.Path(), identityName))
 	des, _ := os.ReadDir(d.Path())
 	for _, de := range des {
 		if de.Name()[0] == '.' {

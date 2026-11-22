@@ -90,8 +90,8 @@ func verifyELF(data []byte, rootCerts []*x509.Certificate, now time.Time) error 
 	return nil
 }
 
-// ELFSigner holds the key material for SignELF.
-type ELFSigner struct {
+// CodeSigner holds the key material for SignELF and SignPE.
+type CodeSigner struct {
 	Key         crypto.Signer
 	Certificate *x509.Certificate
 	// Intermediates are embedded so verifiers can build the chain.
@@ -101,9 +101,12 @@ type ELFSigner struct {
 	ProgramName  string
 }
 
+// ELFSigner is the former name of CodeSigner.
+type ELFSigner = CodeSigner
+
 // SignELF returns data with an AuthentiELF signature, replacing any existing
 // signatures. A TSA is contacted only when TimestampURL is set.
-func SignELF(ctx context.Context, data []byte, s *ELFSigner) ([]byte, error) {
+func SignELF(ctx context.Context, data []byte, s *CodeSigner) ([]byte, error) {
 	if s == nil || s.Key == nil || s.Certificate == nil {
 		return nil, errors.New("sign: signing key and certificate are required")
 	}

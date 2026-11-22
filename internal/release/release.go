@@ -6,7 +6,8 @@
 //
 // A bundle is an uncompressed tar file whose first two entries are
 // manifest.json and manifest.sig, followed by the files of the release at
-// <os>-<arch>/<name> (for example linux-amd64/bomcensus-agent).
+// <os>-<arch>/<name> (for example linux-amd64/bomcensus-agent or
+// windows-amd64/bomcensus-agent.exe).
 //
 // A bundle need not contain every file the manifest lists: a bundle cut
 // down to one platform keeps the signed manifest of the full release. Every
@@ -19,6 +20,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -198,8 +200,9 @@ func Write(ctx context.Context, w io.Writer, manifest, sig []byte, files []File)
 // now, the size and SHA-256 of every file, that every file is listed in the
 // manifest, that present platforms are complete, and the code signature of
 // every file. Linux files must be ELF executables for the platform's
-// architecture with a valid AuthentiELF signature; other operating systems
-// are rejected until a verifier for them exists.
+// architecture with a valid AuthentiELF signature, Windows files PE
+// executables for the platform's architecture with a valid Authenticode
+// signature; other operating systems are rejected.
 func Open(ctx context.Context, r io.Reader, now time.Time) (*Bundle, error) {
 	lr := &limitReader{r: r, n: maxBundleSize}
 	tr := tar.NewReader(lr)
@@ -307,16 +310,44 @@ func checkContent(e sign.File, data []byte) error {
 	return nil
 }
 
-func verifyCode(k fileKey, data []byte) error {
-	switch k.os {
+// ExeName returns the file name of executable name on operating system
+// goos: name plus ".exe" on Windows.
+func ExeName(goos, name string) string {
+	if goos == "windows" {
+		return name + ".exe"
+	}
+	return name
+}
+
+// CheckMachine checks that data is an executable of operating system goos
+// (ELF for linux, PE for windows) for architecture arch.
+func CheckMachine(goos string, data []byte, arch string) error {
+	switch goos {
 	case "linux":
-		if err := checkELFMachine(data, k.arch); err != nil {
-			return err
-		}
+		return checkELFMachine(data, arch)
+	case "windows":
+		return checkPEMachine(data, arch)
+	default:
+		return fmt.Errorf("unsupported os %q", goos)
+	}
+}
+
+// VerifyCode checks that data is an executable of goos and arch with a
+// valid code signature (AuthentiELF for linux, Authenticode for windows).
+func VerifyCode(goos string, data []byte, arch string) error {
+	if err := CheckMachine(goos, data, arch); err != nil {
+		return err
+	}
+	switch goos {
+	case "linux":
 		return sign.VerifyELF(data)
 	default:
-		return fmt.Errorf("no code signature verifier for os %q", k.os)
+		return sign.VerifyPE(data)
 	}
+}
+
+func verifyCode(k fileKey, data []byte) error {
+	return VerifyCode(k.os, data, k.arch)
 }
 
 // completePlatforms checks that every platform with at least one file
@@ -400,6 +431,30 @@ func checkELFMachine(data []byte, arch string) error {
 	}
 	if machine != want {
 		return fmt.Errorf("ELF machine %d does not match architecture %s", machine, arch)
+	}
+	return nil
+}
+
+// PE machine types for the supported architectures.
+var peMachines = map[string]uint16{
+	"amd64": 0x8664, // IMAGE_FILE_MACHINE_AMD64
+	"arm64": 0xaa64, // IMAGE_FILE_MACHINE_ARM64
+}
+
+func checkPEMachine(data []byte, arch string) error {
+	want, ok := peMachines[arch]
+	if !ok {
+		return fmt.Errorf("unsupported architecture %q", arch)
+	}
+	if !sign.IsPE(data) {
+		return errors.New("not a PE file")
+	}
+	off := int(binary.LittleEndian.Uint32(data[0x3c:])) + 4 // COFF header
+	if off+2 > len(data) {
+		return errors.New("truncated PE header")
+	}
+	if machine := binary.LittleEndian.Uint16(data[off:]); machine != want {
+		return fmt.Errorf("PE machine %#x does not match architecture %s", machine, arch)
 	}
 	return nil
 }

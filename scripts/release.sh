@@ -9,10 +9,12 @@
 #
 # Writes OUTDIR (default dist/release):
 #   assets/  files for the GitHub release
-#            bomcensus-VERSION.tar                        agent bundle (signed manifest)
-#            <command>_VERSION_linux_<arch>               every command, AuthentiELF-signed
-#            bomcensus-release_VERSION_windows_<arch>.exe Authenticode-signed
-#            bomcensus-systemd_VERSION.tar.gz             host agent units and installer
+#            bomcensus-VERSION.tar                  agent bundle (signed manifest), Linux
+#                                                   and Windows files
+#            <command>_VERSION_linux_<arch>         every command, AuthentiELF-signed
+#            <command>_VERSION_windows_<arch>.exe   every command, Authenticode-signed
+#            bomcensus-systemd_VERSION.tar.gz       Linux host agent units and installer
+#            bomcensus-windows_VERSION.zip          Windows installer scripts
 #            SHA256SUMS
 #   docker/  build context "dist" for deploy/docker/Dockerfile, with the same files
 #
@@ -33,8 +35,10 @@
 #   GOOGLE_OAUTH_ACCESS_TOKEN             access token for the gcp-kms:// keys
 # Tools:
 #   AUTHENTIELF      authentielf command (default: authentielf)
-#   JSIGN            jsign command (default: jsign); RELEASE_WINDOWS=0 skips Windows
-#   GO, node + pnpm (console), tar, gzip, sha256sum
+#   JSIGN            jsign command (default: jsign)
+#   PE_SIGNER        jsign (default), or go: sign Windows files with
+#                    "bomcensus-release sign-pe" (PEM key files only, for local builds)
+#   GO, node + pnpm (console), tar, gzip, sha256sum, zip (Windows)
 set -euo pipefail
 
 VERSION=${1:?usage: release.sh VERSION [OUTDIR]}
@@ -42,10 +46,8 @@ ROOT=$(cd "$(dirname "$0")/.." && pwd)
 OUT=$(realpath -m "${2:-$ROOT/dist/release}")
 GO=${GO:-go}
 read -ra authentielf <<<"${AUTHENTIELF:-authentielf}"
-RELEASE_WINDOWS=${RELEASE_WINDOWS:-1}
 ARCHES=(amd64 arm64)
 WINDOWS_ARCHES=(amd64 arm64)
-WINDOWS_COMMANDS=(bomcensus-release)
 # Commands packed into the agent bundle; the updater installs only the agent's.
 BUNDLED=(bomcensus-agent bomcensus-probe bomcensus-updater bomcensus-scanner)
 cd "$ROOT"
@@ -58,10 +60,19 @@ die() { log "$*"; exit 1; }
 for tool in tar gzip sha256sum pnpm "${authentielf[0]}"; do
 	command -v "$tool" >/dev/null || die "$tool is required"
 done
-if [ "$RELEASE_WINDOWS" != 0 ]; then
+PE_SIGNER=${PE_SIGNER:-jsign}
+case $PE_SIGNER in
+jsign)
 	read -ra jsign <<<"${JSIGN:-jsign}"
-	command -v "${jsign[0]}" >/dev/null || die "${jsign[0]} (\$JSIGN) is required for Windows; RELEASE_WINDOWS=0 skips it"
-fi
+	command -v "${jsign[0]}" >/dev/null || die "${jsign[0]} (\$JSIGN) is required for Windows"
+	;;
+go)
+	case ${SIGN_KEY_FILE:-} in gcp-kms://*) die "PE_SIGNER=go takes PEM keys only" ;; esac
+	;;
+*) die "PE_SIGNER must be jsign or go" ;;
+esac
+command -v zip >/dev/null || die "zip is required for Windows"
+[ -d deploy/windows ] || die "deploy/windows (Windows installer) is missing"
 [ -n "${SIGN_KEY_FILE:-}${SIGN_KEY:-}" ] || die "SIGN_KEY_FILE or SIGN_KEY is required"
 [ -n "${SIGN_CERT_FILE:-}${SIGN_CERT:-}" ] || die "SIGN_CERT_FILE or SIGN_CERT is required"
 [ -n "${SIGN_TSA:-}" ] || log "WARNING: SIGN_TSA is not set; signatures stop verifying when the signing certificate expires"
@@ -143,16 +154,14 @@ for arch in "${ARCHES[@]}"; do
 	done
 done
 pe=()
-if [ "$RELEASE_WINDOWS" != 0 ]; then
-	for arch in "${WINDOWS_ARCHES[@]}"; do
-		for c in "${WINDOWS_COMMANDS[@]}"; do
-			log "build $c windows/$arch"
-			CGO_ENABLED=0 GOOS=windows GOARCH=$arch "$GO" build -trimpath -buildvcs=false \
-				-ldflags "$ldflags" -o "$bin/windows-$arch/$c.exe" "./cmd/$c"
-			pe+=("$bin/windows-$arch/$c.exe")
-		done
+for arch in "${WINDOWS_ARCHES[@]}"; do
+	for c in "${commands[@]}"; do
+		log "build $c windows/$arch"
+		CGO_ENABLED=0 GOOS=windows GOARCH=$arch "$GO" build -trimpath -buildvcs=false \
+			-ldflags "$ldflags" -o "$bin/windows-$arch/$c.exe" "./cmd/$c"
+		pe+=("$bin/windows-$arch/$c.exe")
 	done
-fi
+done
 
 # ---- sign ------------------------------------------------------------------
 sign_elf=(sign -n bomcensus)
@@ -161,10 +170,24 @@ for f in "${elf[@]}"; do
 	log "sign ${f#"$bin"/}"
 	retry "${authentielf[@]}" "${sign_elf[@]}" "$f"
 done
-for f in "${pe[@]}"; do
-	log "sign ${f#"$bin"/}"
-	SIGN_NAME=$(basename "$f" .exe) retry "$ROOT/scripts/sign-pe.sh" "$f"
-done
+if [ "$PE_SIGNER" = go ]; then
+	pe_key=$(pem_source SIGN_KEY_FILE SIGN_KEY sign.key)
+	pe_cert=$work/sign-chain.pem
+	cat "$(pem_source SIGN_CERT_FILE SIGN_CERT sign.crt)" >"$pe_cert"
+	if [ -n "${SIGN_CHAIN_FILE:-}${SIGN_CHAIN:-}" ]; then cat "$(pem_source SIGN_CHAIN_FILE SIGN_CHAIN chain.pem)" >>"$pe_cert"; fi
+	pe_args=(sign-pe --key "$pe_key" --cert "$pe_cert")
+	if [ -n "${SIGN_TSA:-}" ]; then pe_args+=(--timestamp-url "$SIGN_TSA"); fi
+	log "sign ${#pe[@]} Windows files with bomcensus-release sign-pe"
+	retry "$host" "${pe_args[@]}" "${pe[@]}"
+else
+	# One jsign run per command (it starts a JVM each time).
+	for c in "${commands[@]}"; do
+		files=()
+		for arch in "${WINDOWS_ARCHES[@]}"; do files+=("$bin/windows-$arch/$c.exe"); done
+		log "sign $c.exe (${WINDOWS_ARCHES[*]})"
+		SIGN_NAME=$c retry "$ROOT/scripts/sign-pe.sh" "${files[@]}"
+	done
+fi
 for f in "${elf[@]}"; do
 	"${authentielf[@]}" verify -q -ca "$roots" "$f" || die "${f#"$bin"/}: signature does not verify"
 done
@@ -175,6 +198,12 @@ for arch in "${ARCHES[@]}"; do
 	mkdir -p "$bundle/linux-$arch"
 	for c in "${BUNDLED[@]}"; do
 		cp "$bin/linux-$arch/$c" "$bundle/linux-$arch/$c"
+	done
+done
+for arch in "${WINDOWS_ARCHES[@]}"; do
+	mkdir -p "$bundle/windows-$arch"
+	for c in "${BUNDLED[@]}"; do
+		cp "$bin/windows-$arch/$c.exe" "$bundle/windows-$arch/$c.exe"
 	done
 done
 tarball=bomcensus-$VERSION.tar
@@ -197,6 +226,13 @@ touch -d "@$SOURCE_DATE_EPOCH" "$work/$units" "$work/$units"/*
 tar -C "$work" --sort=name --owner=0 --group=0 --numeric-owner \
 	--mtime="@$SOURCE_DATE_EPOCH" -cf - "$units" | gzip -9n >"$OUT/assets/$units.tar.gz"
 
+win=bomcensus-windows_$VERSION
+mkdir -p "$work/$win"
+cp deploy/windows/* LICENSE LICENSING.md "$work/$win/"
+touch -d "@$SOURCE_DATE_EPOCH" "$work/$win" "$work/$win"/*
+# Members in sorted order; zip -r would follow directory order.
+(cd "$work" && LC_ALL=C find "$win" | LC_ALL=C sort | zip -qX -@ "$OUT/assets/$win.zip")
+
 (cd "$OUT/assets" && sha256sum -- * >SHA256SUMS)
 
 # ---- docker build context --------------------------------------------------
@@ -206,6 +242,9 @@ cp "$OUT/assets/$tarball" "$OUT/docker/release/"
 for arch in "${ARCHES[@]}"; do
 	cp "$bin/linux-$arch/bomcensus-server" "$OUT/docker/bomcensus-server-linux-$arch"
 done
-cp -R "$bundle" "$OUT/docker/bundle"
+for arch in "${ARCHES[@]}"; do
+	mkdir -p "$OUT/docker/bundle"
+	cp -R "$bundle/linux-$arch" "$OUT/docker/bundle/"
+done
 
 log "wrote $(find "$OUT/assets" -type f | wc -l) assets to $OUT/assets"

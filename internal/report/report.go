@@ -125,9 +125,10 @@ type HostSection struct {
 	Arch      string `json:"arch"`
 }
 
-// OS mirrors /etc/os-release.
+// OS mirrors /etc/os-release on Linux. For Windows see
+// internal/collect/hostinfo.
 type OS struct {
-	Family     string `json:"family"` // "linux"
+	Family     string `json:"family"` // "linux" or "windows"
 	ID         string `json:"id,omitempty"`
 	IDLike     string `json:"id_like,omitempty"`
 	Name       string `json:"name,omitempty"`

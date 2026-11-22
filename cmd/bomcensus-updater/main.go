@@ -5,6 +5,9 @@
 // Command bomcensus-updater installs verified releases from the update spool
 // and rolls back versions that do not come up. It has no network access.
 //
+// On Linux systemd units run "apply" and "boot-check". On Windows the
+// "service" command runs as the bomcensus-updater service and does both.
+//
 // Exit status: 0 when the work was done (rejected spool entries included),
 // 1 for operational failures, 2 for usage errors.
 package main
@@ -22,13 +25,14 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/bomcensus/bomcensus/internal/platform/paths"
 	"github.com/bomcensus/bomcensus/internal/updater"
 	"github.com/bomcensus/bomcensus/internal/version"
 )
 
-const (
-	defaultInstall = "/opt/bomcensus"
-	defaultSpool   = "/var/lib/bomcensus/update-spool"
+var (
+	defaultInstall = paths.InstallDir()
+	defaultSpool   = paths.UpdateSpoolDir()
 )
 
 // errUsage marks errors that exit with status 2.
@@ -43,6 +47,7 @@ type command struct {
 var commands = []command{
 	{"apply", "verify and install the releases in the spool, then exit", runApply},
 	{"boot-check", "count a start of the pending version and roll back when it fails", runBootCheck},
+	{"service", "run as the Windows service: boot check, then apply on spool changes", runServiceCmd},
 	{"status", "print the install state as JSON", runStatus},
 	{"version", "print the version", runVersion},
 }

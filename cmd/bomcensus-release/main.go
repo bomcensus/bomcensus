@@ -26,6 +26,7 @@ type command struct {
 var commands = []command{
 	{"keygen", "generate a manifest key pair and a code-signing CA and certificate", runKeygen},
 	{"sign-elf", "add an AuthentiELF signature to ELF files in place", runSignELF},
+	{"sign-pe", "add an Authenticode signature to PE files in place", runSignPE},
 	{"bundle", "build a signed release bundle from a binary directory", runBundle},
 	{"manifest-pub", "print the public key of a manifest key (PEM file or Cloud KMS)", runManifestPub},
 	{"print-ldflags", "print the -X linker flags that compile the trust into binaries", runPrintLDFlags},

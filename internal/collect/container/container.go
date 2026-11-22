@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-bomcensus-Commercial
 // Additional terms apply. See LICENSING.md.
 
+//go:build linux
+
 // Package container inventories the containers and images of a host from the
 // state that Docker and containerd keep on disk. It never connects to a
 // runtime socket and does not look inside containers; the probe scans a
