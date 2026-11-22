@@ -140,9 +140,15 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
   {{- if .Values.persistence.enabled }}
+  {{- /*
+    persistentVolumeClaimRetentionPolicy is beta (on by default) from 1.27;
+    older clusters drop or reject it. Retain/Retain is their behavior anyway.
+  */}}
+  {{- if semverCompare ">=1.27.0-0" .Capabilities.KubeVersion.Version }}
   persistentVolumeClaimRetentionPolicy:
     whenDeleted: Retain
     whenScaled: Retain
+  {{- end }}
   volumeClaimTemplates:
     - metadata:
         name: data
