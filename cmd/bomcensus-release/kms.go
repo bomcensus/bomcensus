@@ -59,7 +59,7 @@ func openManifestSigner(ctx context.Context, ref string) (crypto.Signer, error) 
 	if token == "" {
 		return nil, fmt.Errorf("%s: set %s (for example $(gcloud auth print-access-token))", ref, kmsTokenEnv)
 	}
-	s := &kmsSigner{client: &http.Client{Timeout: time.Minute}, token: token, name: name}
+	s := &kmsSigner{ctx: ctx, client: &http.Client{Timeout: time.Minute}, token: token, name: name}
 	if err := s.loadPublicKey(ctx); err != nil {
 		return nil, fmt.Errorf("%s: %w", ref, err)
 	}
@@ -67,6 +67,9 @@ func openManifestSigner(ctx context.Context, ref string) (crypto.Signer, error) 
 }
 
 type kmsSigner struct {
+	// ctx is the command's context: crypto.Signer.Sign takes none, and an
+	// interrupted command must not keep signing.
+	ctx    context.Context
 	client *http.Client
 	token  string
 	name   string
@@ -80,7 +83,7 @@ func (s *kmsSigner) Sign(_ io.Reader, message []byte, opts crypto.SignerOpts) ([
 	if opts != nil && opts.HashFunc() != 0 {
 		return nil, errors.New("kms: Ed25519 signs the message itself, not a digest")
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	ctx, cancel := context.WithTimeout(s.ctx, 2*time.Minute)
 	defer cancel()
 	req := struct {
 		Data       string `json:"data"`

@@ -206,3 +206,21 @@ func TestBundleWithKMS(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestKMSSignerStopsWithContext(t *testing.T) {
+	f := startKMS(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	s, err := openManifestSigner(ctx, kmsScheme+testKMSName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.failFirst.Store(100) // keep answering 503, so Sign would retry
+	cancel()
+	start := time.Now()
+	if _, err := s.Sign(nil, []byte("m"), crypto.Hash(0)); err == nil {
+		t.Fatal("signed after cancel")
+	}
+	if d := time.Since(start); d > time.Second {
+		t.Fatalf("Sign kept retrying for %v after cancel", d)
+	}
+}

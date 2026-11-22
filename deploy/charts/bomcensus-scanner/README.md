@@ -12,7 +12,7 @@ The chart can be installed on its own (scanner in another cluster than the serve
 ```sh
 kubectl create namespace bomcensus
 kubectl -n bomcensus create secret generic scanner-enrollment --from-literal=token='bc1.…'
-helm install scanner oci://ghcr.io/bomcensus/bomcensus/charts/bomcensus-scanner --version VERSION -n bomcensus \
+helm install scanner oci://ghcr.io/bomcensus/charts/bomcensus-scanner --version VERSION -n bomcensus \
   --set server.url=https://bomcensus.example.com:8443 \
   --set enrollment.existingSecret.name=scanner-enrollment
 ```

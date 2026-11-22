@@ -6,11 +6,11 @@
 
 # Releasing
 
-A release is published by pushing a tag `vMAJOR.MINOR.PATCH` (or `vMAJOR.MINOR.PATCH-PRERELEASE`, published as a pre-release). The workflow `.github/workflows/release.yml` first runs CI (`ci.yml`) and then builds, signs and publishes everything below. Nothing is published when a step fails before "Build and push images"; a re-run replaces the release assets.
+A release is published by pushing a tag `vMAJOR.MINOR.PATCH` (or `vMAJOR.MINOR.PATCH-PRERELEASE`, published as a pre-release). The workflow `.github/workflows/release.yml` first runs CI (`ci.yml`) and then builds, signs and publishes everything below. The GitHub release is created last, so it exists only when every step passed. Steps that fail after images, charts or attestations were pushed leave those on ghcr.io and GitHub without a release; a re-run of the same tag pushes them again and replaces the release assets.
 
 ## 1. What is published
 
-Image and chart names come from the GitHub repository (`OWNER/REPO`, lower case); below they are written for `bomcensus/bomcensus`.
+Images are named after the GitHub repository (`ghcr.io/OWNER/REPO/<image>`) and charts after its owner (`ghcr.io/OWNER/charts/<chart>`), in lower case; below they are written for `bomcensus/bomcensus`.
 
 | Artifact | Where | Code signature | Provenance |
 |---|---|---|---|
@@ -21,7 +21,7 @@ Image and chart names come from the GitHub repository (`OWNER/REPO`, lower case)
 | `bomcensus-{manager,scanner}-VERSION.tgz` | GitHub release | — | attestation |
 | `SHA256SUMS` of all of the above | GitHub release | — | — |
 | `ghcr.io/bomcensus/bomcensus/{server,scanner,agent}:VERSION` (and `:latest` for releases that are not pre-releases), linux/amd64 and linux/arm64 | GitHub Container Registry | cosign (keyless) | attestation, BuildKit provenance and SBOM |
-| `oci://ghcr.io/bomcensus/bomcensus/charts/bomcensus-{manager,scanner}` version `VERSION` | GitHub Container Registry | cosign (keyless) | attestation |
+| `oci://ghcr.io/bomcensus/charts/bomcensus-{manager,scanner}` version `VERSION` | GitHub Container Registry | cosign (keyless) | attestation |
 
 The images are not built from source again: they take the signed binaries and the bundle of the same run (build context `dist` of `deploy/docker/Dockerfile`). The charts are packaged by `scripts/package-charts.sh` with `version` and `appVersion` set to `VERSION` and the default images pointing to the images above.
 

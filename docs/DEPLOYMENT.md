@@ -232,7 +232,7 @@ cnpg:
 scanner:
   enabled: true
 EOV
-helm install bomcensus oci://ghcr.io/bomcensus/bomcensus/charts/bomcensus-manager --version VERSION \
+helm install bomcensus oci://ghcr.io/bomcensus/charts/bomcensus-manager --version VERSION \
     -n bomcensus --create-namespace -f values.local.yaml --wait --timeout 15m
 kubectl -n bomcensus port-forward svc/bomcensus-web 8080
 ```

@@ -54,7 +54,8 @@ jobs:
             echo "VERSION=${TAG#v}"
             if [[ $TAG == *-* ]]; then echo "PRERELEASE=true"; else echo "PRERELEASE=false"; fi
             echo "IMAGE_REPO=ghcr.io/$repo"
-            echo "CHART_REPO=ghcr.io/$repo/charts"
+            # ghcr.io/OWNER/charts/<chart>: one level below the owner, like the images.
+            echo "CHART_REPO=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/charts"
           } >>"$GITHUB_ENV"
 
       - uses: actions/setup-go@v7
@@ -192,7 +193,11 @@ jobs:
         run: |
           echo "$GH_TOKEN" | helm registry login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
           for c in scanner manager; do
-            out=$(helm push "dist/charts/bomcensus-$c-$VERSION.tgz" "oci://$CHART_REPO" 2>&1)
+            if ! out=$(helm push "dist/charts/bomcensus-$c-$VERSION.tgz" "oci://$CHART_REPO" 2>&1); then
+              echo "$out"
+              echo "::error::helm push of bomcensus-$c to oci://$CHART_REPO failed"
+              exit 1
+            fi
             echo "$out"
             d=$(awk '/^Digest:/ {print $2}' <<<"$out")
             [ -n "$d" ] || { echo "::error::no digest for bomcensus-$c"; exit 1; }

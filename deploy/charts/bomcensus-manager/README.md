@@ -20,7 +20,7 @@ scanner:
   enabled: true
 EOF
 
-helm install bomcensus oci://ghcr.io/bomcensus/bomcensus/charts/bomcensus-manager --version VERSION \
+helm install bomcensus oci://ghcr.io/bomcensus/charts/bomcensus-manager --version VERSION \
   -n bomcensus --create-namespace -f values.local.yaml --wait --timeout 15m
 # From a checkout instead: helm dependency build deploy/charts/bomcensus-manager, then
 # pass deploy/charts/bomcensus-manager as the chart (default images: local bomcensus/server).
