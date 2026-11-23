@@ -43,7 +43,8 @@ app.kubernetes.io/part-of: bomcensus
 {{- end }}
 
 {{- define "bomcensus-manager.image" -}}
-{{- printf "%s:%s" .Values.image.repository (default .Chart.AppVersion .Values.image.tag) }}
+{{- $default := ternary "latest" .Chart.AppVersion (eq .Chart.AppVersion "0.0.0-dev") }}
+{{- printf "%s:%s" .Values.image.repository (default $default .Values.image.tag) }}
 {{- end }}
 
 {{- define "bomcensus-manager.webService" -}}{{ include "bomcensus-manager.fullname" . }}-web{{- end }}

@@ -50,7 +50,8 @@ app.kubernetes.io/part-of: bomcensus
 {{- end }}
 
 {{- define "bomcensus-scanner.image" -}}
-{{- printf "%s:%s" .Values.image.repository (default .Chart.AppVersion .Values.image.tag) }}
+{{- $default := ternary "latest" .Chart.AppVersion (eq .Chart.AppVersion "0.0.0-dev") }}
+{{- printf "%s:%s" .Values.image.repository (default $default .Values.image.tag) }}
 {{- end }}
 
 {{/*

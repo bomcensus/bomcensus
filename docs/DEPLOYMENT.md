@@ -238,7 +238,7 @@ helm install bomcensus oci://ghcr.io/bomcensus/charts/bomcensus-manager --versio
 kubectl -n bomcensus port-forward svc/bomcensus-web 8080
 ```
 
-The published charts use the published images ([RELEASING.md](RELEASING.md)). To install from the checkout instead, run `helm dependency build deploy/charts/bomcensus-manager` and pass `deploy/charts/bomcensus-manager` as the chart; its default images are the local `bomcensus/server` and `bomcensus/scanner` of `make docker-build`.
+The published charts use the published images ([RELEASING.md](RELEASING.md)). To install from the checkout instead, run `helm dependency build deploy/charts/bomcensus-manager` and pass `deploy/charts/bomcensus-manager` as the chart; its default images are `ghcr.io/bomcensus/bomcensus/{server,scanner}:latest`; for a local `make docker-build` image, set `image.repository`, `image.tag` and `scanner.image.*`.
 
 Then open `https://localhost:8080/` and, under Kubernetes, register the cluster with the scanner and the in-cluster connection.
 

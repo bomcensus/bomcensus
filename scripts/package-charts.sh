@@ -39,8 +39,8 @@ for c in bomcensus-manager bomcensus-scanner; do
 done
 # The only dependency of the manager is the scanner chart.
 sed -i "/^dependencies:/,\$ s|^\(    version:\).*|\1 $VERSION|" "$work/bomcensus-manager/Chart.yaml"
-sed -i "s|^  repository: bomcensus/server$|  repository: $REPO/server|" "$work/bomcensus-manager/values.yaml"
-sed -i "s|^  repository: bomcensus/scanner$|  repository: $REPO/scanner|" "$work/bomcensus-scanner/values.yaml"
+sed -i "s|^  repository: ghcr.io/bomcensus/bomcensus/server$|  repository: $REPO/server|" "$work/bomcensus-manager/values.yaml"
+sed -i "s|^  repository: ghcr.io/bomcensus/bomcensus/scanner$|  repository: $REPO/scanner|" "$work/bomcensus-scanner/values.yaml"
 if ! grep -q "repository: $REPO/server$" "$work/bomcensus-manager/values.yaml" ||
 	! grep -q "repository: $REPO/scanner$" "$work/bomcensus-scanner/values.yaml"; then
 	echo "package-charts.sh: default image repositories not found in values.yaml" >&2

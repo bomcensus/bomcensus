@@ -46,8 +46,8 @@ With `networkPolicy.enabled=true` the pod accepts no connections and may only re
 
 | Key | Default | Description |
 |---|---|---|
-| `image.repository` | `bomcensus/scanner` | Image. Published charts: `ghcr.io/bomcensus/bomcensus/scanner` |
-| `image.tag` | `""` (appVersion) | Image tag |
+| `image.repository` | `ghcr.io/bomcensus/bomcensus/scanner` | Image. Published charts use the repository they were released from |
+| `image.tag` | `""` (appVersion; `latest` in the checkout) | Image tag |
 | `image.pullPolicy` | `IfNotPresent` | |
 | `imagePullSecrets` | `[]` | |
 | `nameOverride`, `fullnameOverride` | `""` | |

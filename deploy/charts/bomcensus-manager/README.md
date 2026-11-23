@@ -23,7 +23,7 @@ EOF
 helm install bomcensus oci://ghcr.io/bomcensus/charts/bomcensus-manager --version VERSION \
   -n bomcensus --create-namespace -f values.local.yaml --wait --timeout 15m
 # From a checkout instead: helm dependency build deploy/charts/bomcensus-manager, then
-# pass deploy/charts/bomcensus-manager as the chart (default images: local bomcensus/server).
+# pass deploy/charts/bomcensus-manager as the chart (default images: ghcr.io/bomcensus/bomcensus/{server,scanner}:latest).
 ```
 
 Pass the hash in a values file. With `--set` the commas in `m=65536,t=3,p=4` split the value; escape them (`\,`) if `--set-string` must be used.
@@ -98,8 +98,8 @@ After installation register the cluster in the console (Kubernetes) with the sca
 
 | Key | Default | Description |
 |---|---|---|
-| `image.repository` | `bomcensus/server` | Published charts: `ghcr.io/bomcensus/bomcensus/server` |
-| `image.tag` | `""` (appVersion) | |
+| `image.repository` | `ghcr.io/bomcensus/bomcensus/server` | Published charts use the repository they were released from |
+| `image.tag` | `""` (appVersion; `latest` in the checkout) | |
 | `image.pullPolicy` | `IfNotPresent` | |
 | `imagePullSecrets` | `[]` | |
 | `nameOverride` | `""` | |

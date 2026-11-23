@@ -3,7 +3,7 @@
 # Additional terms apply. See LICENSING.md.
 
 image:
-  repository: bomcensus/server
+  repository: ghcr.io/bomcensus/bomcensus/server
   # Defaults to the chart's appVersion.
   tag: ""
   pullPolicy: IfNotPresent
@@ -99,8 +99,8 @@ masterKey:
   # helm.sh/resource-policy: keep, so "helm uninstall" leaves it in place.
 
 # The single console user. The server only accepts an argon2id hash:
-#   echo -n 'password' | docker run --rm -i bomcensus/server hash-password
-#   kubectl run -i --rm hash --image=bomcensus/server --restart=Never -- hash-password
+#   echo -n 'password' | docker run --rm -i ghcr.io/bomcensus/bomcensus/server hash-password
+#   kubectl run -i --rm hash --image=ghcr.io/bomcensus/bomcensus/server --restart=Never -- hash-password
 admin:
   user: admin
   passwordHash: ""
