@@ -69,6 +69,7 @@ type fakeProcess struct {
 	cgroup         string
 	maps           string
 	netns          string
+	mntns          string
 	fds            map[int]string // fd -> link target
 }
 
@@ -90,6 +91,9 @@ func (f *fakeProc) add(p fakeProcess) string {
 	f.link(filepath.Join(dir, "root"), f.root)
 	if p.netns != "" {
 		f.link(filepath.Join(dir, "ns", "net"), p.netns)
+	}
+	if p.mntns != "" {
+		f.link(filepath.Join(dir, "ns", "mnt"), p.mntns)
 	}
 	if err := os.MkdirAll(filepath.Join(dir, "fd"), 0o755); err != nil {
 		f.t.Fatal(err)
@@ -144,6 +148,7 @@ func buildFixture(t *testing.T) (*fakeProc, map[string]string) {
 		exe:     filepath.Join(f.root, "usr", "bin", "app"),
 		cgroup:  "0::/init.scope\n",
 		netns:   hostNS,
+		mntns:   "mnt:[4026531841]",
 	})
 	// pid 2: kernel thread.
 	f.add(fakeProcess{pid: 2, comm: "kthreadd", flags: pfKthread, startTicks: 1})
@@ -197,6 +202,7 @@ func buildFixture(t *testing.T) (*fakeProc, map[string]string) {
 		exe:     "/memfd:payload (deleted)",
 		cgroup:  "0::/kubepods.slice/kubepods-burstable.slice/kubepods-burstable-pod1a2b.slice/cri-containerd-" + containerID + ".scope\n",
 		netns:   podNS,
+		mntns:   "mnt:[4026533001]",
 		fds:     map[int]string{3: "socket:[2001]"},
 	})
 	f.write(filepath.Join(dir300, "net", "tcp"), tcpHeader+
@@ -247,7 +253,7 @@ func TestCollectFixture(t *testing.T) {
 
 	p1 := findProc(sec, 1)
 	if p1.User != "root" || p1.ExeState != report.ExeNormal || p1.ExeSource != report.ExeFromProc ||
-		p1.SHA256 != want["app"] || p1.ContainerID != "" || len(p1.Listen) != 0 {
+		p1.SHA256 != want["app"] || p1.ContainerID != "" || len(p1.Listen) != 0 || p1.MountNS != 4026531841 {
 		t.Errorf("pid 1: %+v", p1)
 	}
 
@@ -294,11 +300,15 @@ func TestCollectFixture(t *testing.T) {
 
 	p300 := findProc(sec, 300)
 	if p300.ExeState != report.ExeMemfd || p300.Exe != "/memfd:payload" || p300.User != "33" ||
-		p300.ContainerID != want["container"] {
+		p300.ContainerID != want["container"] || p300.MountNS != 4026533001 {
 		t.Errorf("pid 300: %+v", p300)
 	}
 	if !slices.Equal(p300.Listen, []report.Listen{{Proto: "tcp", Address: "0.0.0.0", Port: 9000}}) {
 		t.Errorf("pid 300 listen %+v", p300.Listen)
+	}
+
+	if p := findProc(sec, 200); p.MountNS != 0 {
+		t.Errorf("pid 200 without a mount namespace link: %d", p.MountNS)
 	}
 
 	p400 := findProc(sec, 400)

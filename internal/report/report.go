@@ -284,6 +284,11 @@ type ProcessesSection struct {
 	// UnownedPorts are listening sockets whose owning process could not be
 	// determined (other users' processes without privileges).
 	UnownedPorts []UnownedPort `json:"unowned_ports,omitempty"`
+	// ProbeMountNS is the mount namespace of the probe itself, when it read
+	// its own /proc. Inside a container it identifies the container, so that
+	// processes of other containers sharing the PID namespace can be told
+	// apart by Process.MountNS.
+	ProbeMountNS uint64 `json:"probe_mount_ns,omitempty"`
 }
 
 type Process struct {
@@ -303,6 +308,8 @@ type Process struct {
 	Listen    []Listen    `json:"listen,omitempty"`
 	// ContainerID is the runtime container id taken from the cgroup path.
 	ContainerID string `json:"container_id,omitempty"`
+	// MountNS is the inode of the mount namespace, zero when unreadable.
+	MountNS uint64 `json:"mount_ns,omitempty"`
 }
 
 // MappedLib is an executable mapping whose file was replaced or deleted.

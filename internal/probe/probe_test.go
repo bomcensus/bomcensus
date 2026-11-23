@@ -49,6 +49,9 @@ func TestRunRealHost(t *testing.T) {
 			t.Error("the probe's own process is reported")
 		}
 	}
+	if self, err := os.Readlink("/proc/self/ns/mnt"); err == nil && rep.Processes.ProbeMountNS == 0 {
+		t.Errorf("probe mount namespace not reported, own is %s", self)
+	}
 	for name, m := range sectionMetas(rep) {
 		if m.Digest == "" || m.CollectedAt.IsZero() {
 			t.Errorf("%s: digest %q collected %v", name, m.Digest, m.CollectedAt)

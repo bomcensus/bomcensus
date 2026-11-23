@@ -365,6 +365,7 @@ func CollectContainer(ctx context.Context, c *Client, t ExecTarget, d Deps) (*re
 			ImageRef: ct.ImageRef, ImageDigest: ct.ImageDigest,
 		},
 	}
+	scopeProcesses(r.Processes, &pod.Spec)
 	cov, reason := coverageOf(r, sections)
 	log.Debug("container collected", "coverage", cov, "dir", out.Dir, "duration", time.Since(start))
 	return r, finish(cov, reason), nil

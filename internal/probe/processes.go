@@ -33,8 +33,9 @@ const (
 var jvmNames = map[string]bool{"java": true, "javaw": true, "jsvc": true}
 
 // dropSelf removes the probe's own process from the section. Its pid
-// changes with every run and would change the digest every time. The
-// digest is then recomputed over the remaining processes.
+// changes with every run and would change the digest every time. Its mount
+// namespace is kept as the section's ProbeMountNS. The digest is then
+// recomputed over the remaining processes.
 func dropSelf(sec *report.ProcessesSection, procDir string, log *slog.Logger) {
 	if procDir != "/proc" {
 		return
@@ -50,6 +51,7 @@ func dropSelf(sec *report.ProcessesSection, procDir string, log *slog.Logger) {
 	if idx < 0 {
 		return
 	}
+	sec.ProbeMountNS = sec.Processes[idx].MountNS
 	sec.Processes = append(sec.Processes[:idx:idx], sec.Processes[idx+1:]...)
 	if sec.Digest == "" {
 		return
@@ -75,19 +77,21 @@ type digestProcess struct {
 	Libs        []report.MappedLib `json:"libs"`
 	Listen      []report.Listen    `json:"listen"`
 	ContainerID string             `json:"container_id"`
+	MountNS     uint64             `json:"mount_ns"`
 }
 
 type processDigestBody struct {
-	Version   int                  `json:"v"`
-	Processes []digestProcess      `json:"processes"`
-	Unowned   []report.UnownedPort `json:"unowned_ports"`
+	Version      int                  `json:"v"`
+	Processes    []digestProcess      `json:"processes"`
+	Unowned      []report.UnownedPort `json:"unowned_ports"`
+	ProbeMountNS uint64               `json:"probe_mount_ns"`
 }
 
 // processDigest covers the same fields as the process collector's digest.
 // Start times are taken relative to the boot time, in clock ticks, so that
 // a drifting boot time estimate does not change the digest.
 func processDigest(sec *report.ProcessesSection, boot time.Time) (string, error) {
-	body := processDigestBody{Version: 1, Unowned: sec.UnownedPorts}
+	body := processDigestBody{Version: 2, Unowned: sec.UnownedPorts, ProbeMountNS: sec.ProbeMountNS}
 	body.Processes = make([]digestProcess, 0, len(sec.Processes))
 	for i := range sec.Processes {
 		p := &sec.Processes[i]
@@ -99,7 +103,7 @@ func processDigest(sec *report.ProcessesSection, boot time.Time) (string, error)
 			PID: p.PID, PPID: p.PPID, User: p.User, UID: p.UID,
 			Exe: p.Exe, ExeSource: p.ExeSource, ExeState: p.ExeState, SHA256: p.SHA256,
 			Start: start, HasCmdline: p.Cmdline != "",
-			Libs: p.Libs, Listen: p.Listen, ContainerID: p.ContainerID,
+			Libs: p.Libs, Listen: p.Listen, ContainerID: p.ContainerID, MountNS: p.MountNS,
 		})
 	}
 	return report.Digest(body)

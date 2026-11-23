@@ -225,6 +225,9 @@ func (c *collector) process(pid int) (*procInfo, bool) {
 	if data, err := readLimited(filepath.Join(dir, "cgroup"), maxSmallFile); err == nil {
 		p.ContainerID = containerIDFromCgroup(string(data))
 	}
+	if ns, err := os.Readlink(filepath.Join(dir, "ns", "mnt")); err == nil {
+		p.MountNS = nsInode(ns)
+	}
 	if ns, err := os.Readlink(filepath.Join(dir, "ns", "net")); err == nil {
 		info.netns = ns
 	} else if info.sockets {
@@ -234,6 +237,20 @@ func (c *collector) process(pid int) (*procInfo, bool) {
 		}
 	}
 	return info, true
+}
+
+// nsInode returns the inode of a namespace link target such as
+// "mnt:[4026531841]", or zero.
+func nsInode(link string) uint64 {
+	_, rest, ok := strings.Cut(link, ":[")
+	if !ok {
+		return 0
+	}
+	n, err := strconv.ParseUint(strings.TrimSuffix(rest, "]"), 10, 64)
+	if err != nil {
+		return 0
+	}
+	return n
 }
 
 func (c *collector) userName(uid int) string {
@@ -275,7 +292,7 @@ func (c *collector) reasons(total int) []string {
 
 // digestVersion changes whenever the digest body or the masking rules change,
 // so that a probe update re-sends the section.
-const digestVersion = 1
+const digestVersion = 2
 
 // digestProcess is the part of a process that goes into the section digest.
 //
@@ -304,6 +321,7 @@ type digestProcess struct {
 	Libs        []report.MappedLib `json:"libs"`
 	Listen      []report.Listen    `json:"listen"`
 	ContainerID string             `json:"container_id"`
+	MountNS     uint64             `json:"mount_ns"`
 }
 
 type digestBody struct {
@@ -322,7 +340,7 @@ func sectionDigest(collectCmdline bool, infos []*procInfo, unowned []report.Unow
 			PID: p.PID, PPID: p.PPID, User: p.User, UID: p.UID,
 			Exe: p.Exe, ExeSource: p.ExeSource, ExeState: p.ExeState, SHA256: p.SHA256,
 			StartTicks: info.startTicks, HasCmdline: p.Cmdline != "",
-			Libs: p.Libs, Listen: p.Listen, ContainerID: p.ContainerID,
+			Libs: p.Libs, Listen: p.Listen, ContainerID: p.ContainerID, MountNS: p.MountNS,
 		})
 	}
 	return report.Digest(body)
