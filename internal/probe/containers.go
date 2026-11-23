@@ -8,6 +8,8 @@ package probe
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -29,6 +31,14 @@ const (
 	defaultMaxContainers    = 32
 	defaultContainerTimeout = 3 * time.Minute
 	containerDigestVersion  = 1
+
+	// imageScanMaxAge is how long the content read for an image is reused
+	// by later runs. The containers section runs hourly by default; reading
+	// every image again each time costs a full file system walk per image.
+	// Content that is not part of the image (volumes seen through the
+	// container root) can be this old in the report.
+	imageScanMaxAge = 24 * time.Hour
+	imageScanKey    = "probe.image.v1."
 )
 
 // imageScan is the content read for one image digest.
@@ -37,6 +47,89 @@ type imageScan struct {
 	owner    *pkgdb.Index
 	coverage report.Coverage
 	reason   string
+	// reused is set when the content comes from the cache; owner is then
+	// built when a writable layer needs it.
+	reused bool
+}
+
+// storedImageScan is an image scan kept in the cache. The scope is stored
+// before the writable layer of its container is removed from it, since that
+// layer is read again by every run.
+type storedImageScan struct {
+	Scope    report.ImageScope `json:"s"`
+	Coverage report.Coverage   `json:"c"`
+	Reason   string            `json:"r,omitempty"`
+	// StartedAt identifies the run of the container the scope was read
+	// from; after a restart its root is read again.
+	StartedAt time.Time `json:"t"`
+	// Activity is rootActivity at the time of the scan. The artifacts
+	// depend on it (InUse, files of running packages).
+	Activity string `json:"a"`
+}
+
+// reuseImageScans fills scans with the stored image scans whose container
+// is still running, unchanged since the scan, with the same executables
+// running and the same archives open.
+func (r *runner) reuseImageScans(sec *report.ContainersSection, scans map[string]*imageScan, running []artifact.RunningExe, open openFileIndex) {
+	for i := range sec.Containers {
+		ct := &sec.Containers[i]
+		if !ct.Running || ct.InitPID <= 0 || ct.ImageDigest == "" || scans[ct.ImageDigest] != nil {
+			continue
+		}
+		var st storedImageScan
+		if !r.env.Cache.Value(imageScanKey+ct.ImageDigest, &st) ||
+			st.Scope.Digest != ct.ImageDigest || st.Scope.FromContainer != ct.ID || !st.StartedAt.Equal(ct.StartedAt) {
+			continue
+		}
+		if st.Activity != rootActivity(r.env.Proc, r.containerRoot(ct), running, open) {
+			continue
+		}
+		scans[ct.ImageDigest] = &imageScan{scope: st.Scope, coverage: st.Coverage, reason: st.Reason, reused: true}
+		sec.ImageScopes = append(sec.ImageScopes, st.Scope)
+	}
+}
+
+// storeImageScan keeps a complete image scan for later runs. activity is
+// rootActivity of the container root when the scan started.
+func (r *runner) storeImageScan(ct *report.Container, img *imageScan, activity string) {
+	if img.coverage == report.CoverageNone || activity == "" {
+		return
+	}
+	r.env.Cache.SetValue(imageScanKey+ct.ImageDigest, storedImageScan{
+		Scope: img.scope, Coverage: img.coverage, Reason: img.reason, StartedAt: ct.StartedAt, Activity: activity,
+	}, imageScanMaxAge)
+}
+
+func (r *runner) containerRoot(ct *report.Container) string {
+	return filepath.Join(r.env.Proc, strconv.Itoa(ct.InitPID), "root")
+}
+
+// rootActivity summarizes what the artifact collector takes from the
+// running processes for root: the executables of processes with that root
+// directory and the archives open there.
+func rootActivity(procDir, root string, running []artifact.RunningExe, open openFileIndex) string {
+	rootFI, err := os.Stat(root)
+	if err != nil {
+		return ""
+	}
+	var items []string
+	for _, p := range running {
+		fi, err := os.Stat(filepath.Join(procDir, strconv.Itoa(p.PID), "root"))
+		if err == nil && os.SameFile(fi, rootFI) {
+			items = append(items, "x\x00"+p.State+"\x00"+p.Path)
+		}
+	}
+	for p := range open.forRoot(root) {
+		items = append(items, "o\x00"+p)
+	}
+	slices.Sort(items)
+	items = slices.Compact(items)
+	h := sha256.New()
+	for _, it := range items {
+		h.Write([]byte(it))
+		h.Write([]byte{'\n'})
+	}
+	return hex.EncodeToString(h.Sum(nil))
 }
 
 func (r *runner) containers(scanContent bool, running []artifact.RunningExe, open openFileIndex) *report.ContainersSection {
@@ -120,6 +213,7 @@ func (r *runner) scanContainers(sec *report.ContainersSection, running []artifac
 	})
 
 	scans := map[string]*imageScan{}
+	r.reuseImageScans(sec, scans, running, open)
 	scanned := 0
 	interrupted := false
 	for _, i := range order {
@@ -151,12 +245,16 @@ func (r *runner) scanContainers(sec *report.ContainersSection, running []artifac
 		}
 
 		ctx, cancel := context.WithTimeout(r.ctx, perContainer)
-		root := filepath.Join(r.env.Proc, strconv.Itoa(ct.InitPID), "root")
+		root := r.containerRoot(ct)
 		if needImage {
+			activity := rootActivity(r.env.Proc, root, running, open)
 			img = r.scanImage(ctx, ct, root, running, open)
 			scans[ct.ImageDigest] = img
 			if img.coverage != report.CoverageNone {
 				sec.ImageScopes = append(sec.ImageScopes, img.scope)
+			}
+			if ctx.Err() == nil {
+				r.storeImageScan(ct, img, activity)
 			}
 		}
 		source := img != nil && img.scope.FromContainer == ct.ID
@@ -176,7 +274,7 @@ func (r *runner) scanContainers(sec *report.ContainersSection, running []artifac
 			reasons = appendReason(reasons, img.reason)
 		}
 		if needUpper {
-			upperCov, upperReason := r.scanUpper(ctx, ct, img)
+			upperCov, upperReason := r.scanUpper(ctx, ct, root, img)
 			if upperCov != report.CoverageFull {
 				reasons = append(reasons, "writable layer: "+upperReason)
 			}
@@ -250,11 +348,17 @@ func (r *runner) scanImage(ctx context.Context, ct *report.Container, root strin
 }
 
 // scanUpper reads the artifacts in the writable layer of a container. Paths
-// are relative to the container root.
-func (r *runner) scanUpper(ctx context.Context, ct *report.Container, img *imageScan) (report.Coverage, string) {
+// are relative to the container root, root is the container root as the
+// probe opens it.
+func (r *runner) scanUpper(ctx context.Context, ct *report.Container, root string, img *imageScan) (report.Coverage, string) {
 	dir := r.env.Path(ct.UpperDir)
 	if _, err := os.ReadDir(dir); err != nil {
 		return report.CoverageNone, "unreadable: " + errText(err)
+	}
+	if img != nil && img.reused && img.owner == nil {
+		// The package database of a reused image is read from this
+		// container; reading it is cheap next to walking the image.
+		_, img.owner = pkgdb.Collect(ctx, r.env.WithRoot(root))
 	}
 	env := r.env.WithRoot(dir)
 	var in artifact.Inputs

@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -22,6 +23,7 @@ import (
 	"time"
 
 	"github.com/bomcensus/bomcensus/internal/collect"
+	"github.com/bomcensus/bomcensus/internal/collect/artifact"
 	"github.com/bomcensus/bomcensus/internal/report"
 )
 
@@ -331,6 +333,79 @@ func TestUnverifiedImageDigest(t *testing.T) {
 	}
 	if c4.Coverage != report.CoverageNone || c4.Reason != note+"; container is not running" {
 		t.Errorf("stopped = %s (%s)", c4.Coverage, c4.Reason)
+	}
+}
+
+// TestImageScanReuse checks that the content of an image is read again
+// only when the container it was read from restarted or its processes
+// changed; the writable layer is read every time.
+func TestImageScanReuse(t *testing.T) {
+	f := newFixture(t, false)
+	ct1Root := filepath.Join(filepath.Dir(f.root), "ct1-rootfs")
+	t0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	scan := func(cache *collect.HashCache, running []artifact.RunningExe, started time.Time) report.ImageScope {
+		t.Helper()
+		env := &collect.Env{Root: f.root, Proc: f.proc, Policy: report.DefaultPolicy(), Cache: cache,
+			Log: slog.New(slog.DiscardHandler), Privileged: true}
+		r := &runner{env: env, log: env.Log, ctx: context.Background(), hardStop: time.Now().Add(time.Minute), limit: time.Minute}
+		sec := &report.ContainersSection{Containers: []report.Container{
+			{ID: ct1ID, Name: "app-1", Running: true, InitPID: ct1PID, UpperDir: upperDir, ImageDigest: digestA, StartedAt: started},
+		}}
+		if r.scanContainers(sec, running, nil) {
+			t.Fatal("interrupted")
+		}
+		if len(sec.ImageScopes) != 1 {
+			t.Fatalf("image scopes = %+v", sec.ImageScopes)
+		}
+		c := sec.Containers[0]
+		if c.Coverage != report.CoverageFull || len(c.RuntimeArtifacts) != 1 || c.RuntimeArtifacts[0].OwnerPackage != "" {
+			t.Fatalf("app-1 = %s (%s) %+v", c.Coverage, c.Reason, c.RuntimeArtifacts)
+		}
+		return sec.ImageScopes[0]
+	}
+	has := func(s report.ImageScope, p string) bool {
+		return slices.ContainsFunc(s.Artifacts, func(a report.Artifact) bool { return a.Path == p })
+	}
+
+	cache := collect.NewHashCache()
+	first := scan(cache, nil, t0)
+	if !has(first, "/app/image.jar") || has(first, "/app/runtime.jar") {
+		t.Fatalf("first scope = %+v", first.Artifacts)
+	}
+	write(t, filepath.Join(ct1Root, "app/new.jar"), jarBytes(t, "org.example", "new", "1.0"))
+
+	if got := scan(cache, nil, t0); !reflect.DeepEqual(got, first) {
+		t.Errorf("unchanged container read again:\n got %+v\nwant %+v", got, first)
+	}
+	raw, err := cache.Marshal()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cache = collect.LoadHashCache(raw)
+	if got := scan(cache, nil, t0); !reflect.DeepEqual(got, first) {
+		t.Errorf("stored scan not used after a round trip: %+v", got.Artifacts)
+	}
+
+	// A process started in the container.
+	pd := filepath.Join(f.proc, "5000")
+	if err := os.MkdirAll(pd, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(ct1Root, filepath.Join(pd, "root")); err != nil {
+		t.Fatal(err)
+	}
+	running := []artifact.RunningExe{{PID: 5000, Path: "/app/tool", State: report.ExeNormal}}
+	if got := scan(cache, running, t0); !has(got, "/app/new.jar") {
+		t.Errorf("not read again after a process started: %+v", got.Artifacts)
+	}
+
+	// The container restarted.
+	write(t, filepath.Join(ct1Root, "app/new2.jar"), jarBytes(t, "org.example", "new2", "1.0"))
+	if got := scan(cache, running, t0); has(got, "/app/new2.jar") {
+		t.Errorf("read again although nothing changed: %+v", got.Artifacts)
+	}
+	if got := scan(cache, running, t0.Add(time.Hour)); !has(got, "/app/new2.jar") {
+		t.Errorf("not read again after a restart: %+v", got.Artifacts)
 	}
 }
 
