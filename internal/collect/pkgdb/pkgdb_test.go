@@ -30,14 +30,13 @@ import (
 //	rpm-bdb     almalinux:8 Packages with nginx:1.22 module (rpm --rebuilddb)
 //	rpm-ndb     opensuse/leap:15.6 Packages.db (rpm --rebuilddb)
 //	apk         alpine:3.20 lib/apk/db/installed
+//
+// File names that Windows cannot check out are stored escaped ("%3A" for
+// ":") and restored by copyTree, so tests read fixtures through a copy.
 
 func fixtureEnv(t *testing.T, name string) *collect.Env {
 	t.Helper()
-	abs, err := filepath.Abs(filepath.Join("testdata", name))
-	if err != nil {
-		t.Fatal(err)
-	}
-	return collect.NewEnv().WithRoot(abs)
+	return collect.NewEnv().WithRoot(copyTree(t, name))
 }
 
 func collectRoot(t *testing.T, env *collect.Env) (*report.PackagesSection, *Index) {
@@ -296,7 +295,8 @@ func TestDigestStable(t *testing.T) {
 	}
 }
 
-// copyTree copies a fixture into a temporary root so that tests can damage it.
+// copyTree copies a fixture into a temporary root so that tests can damage
+// it, restoring escaped file names.
 func copyTree(t *testing.T, name string) string {
 	t.Helper()
 	dst := t.TempDir()
@@ -306,7 +306,7 @@ func copyTree(t *testing.T, name string) string {
 			return err
 		}
 		rel, _ := filepath.Rel(src, p)
-		out := filepath.Join(dst, rel)
+		out := filepath.Join(dst, strings.ReplaceAll(rel, "%3A", ":"))
 		switch {
 		case fi.Mode()&os.ModeSymlink != 0:
 			target, err := os.Readlink(p)
