@@ -114,3 +114,16 @@ func TestOpenKeepsProtectedDir(t *testing.T) {
 		t.Fatalf("owner %v, %v", owner, err)
 	}
 }
+
+func TestOpenAcceptsCopyWithoutLock(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, enrollmentName), []byte("{}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	d, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+	checkPrivateDir(t, dir)
+}

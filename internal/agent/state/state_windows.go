@@ -37,7 +37,7 @@ func securePrivateDir(dir string, _ os.FileInfo, service string, known bool) err
 		return nil
 	}
 	if !known {
-		return fmt.Errorf("state: %s is not empty and has no %s file; not replacing the ACL of a directory that may not be a state directory", dir, lockName)
+		return fmt.Errorf("state: %s is not empty and has neither %s nor %s; not replacing the ACL of a directory that may not be a state directory", dir, lockName, enrollmentName)
 	}
 	if err := winacl.ProtectDir(dir, extra...); err != nil {
 		return fmt.Errorf("state: restrict %s: %w", dir, err)

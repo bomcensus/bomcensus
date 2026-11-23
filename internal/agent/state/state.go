@@ -60,8 +60,8 @@ type Dir struct {
 // Open creates path if needed (mode 0700), takes an exclusive lock on it and
 // then tightens its mode. The lock is released by Close or when the process
 // exits or executes another program. On Windows a directory that needs a new
-// DACL is refused unless it was just created, is empty or already has the
-// lock file of an earlier Open.
+// DACL is refused unless it was just created, is empty, or already has the
+// lock file of an earlier Open or an enrollment.
 func Open(path string) (*Dir, error) { return OpenAs(path, "") }
 
 // OpenAs is Open for the state directory of a Windows service: on Windows
@@ -92,8 +92,13 @@ func OpenAs(path, service string) (*Dir, error) {
 	_, err = os.Lstat(lockPath)
 	hadLock := err == nil
 	// A directory is known to be a state directory when it was just
-	// created, was opened before (it has the lock file) or is empty.
+	// created, was opened before (it has the lock file), holds an
+	// enrollment (a copy or a restored backup) or is empty.
 	known := created || hadLock
+	if !known {
+		_, err := os.Lstat(filepath.Join(abs, enrollmentName))
+		known = err == nil
+	}
 	if !known {
 		if known, err = isEmptyDir(abs); err != nil {
 			return nil, fmt.Errorf("state: %w", err)
