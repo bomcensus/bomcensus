@@ -10,7 +10,6 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/hex"
-	"errors"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -67,19 +66,14 @@ func assertNoSecret(t *testing.T, h *harness) {
 			}
 		}
 	}
-	// The agent may still be running and replacing files.
+	// A running agent replaces files and holds the lock, which Windows does
+	// not let others read.
+	h.stopAll()
 	err := filepath.WalkDir(h.stateDir, func(p string, d fs.DirEntry, err error) error {
-		if errors.Is(err, fs.ErrNotExist) {
-			return nil
-		}
-		// The lock file is empty and, on Windows, unreadable while held.
-		if err != nil || d.IsDir() || d.Name() == "lock" {
+		if err != nil || d.IsDir() {
 			return err
 		}
 		b, err := os.ReadFile(p)
-		if errors.Is(err, fs.ErrNotExist) {
-			return nil
-		}
 		if err != nil {
 			return err
 		}

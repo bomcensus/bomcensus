@@ -93,6 +93,7 @@ type harness struct {
 	log      *slog.Logger
 	reqFile  string
 	variant  string
+	agents   []*running
 }
 
 func newHarness(t *testing.T, opts fakeserver.Options) *harness {
@@ -178,7 +179,18 @@ func (h *harness) start(mut func(*Options)) *running {
 	r := &running{cancel: cancel, done: make(chan error, 1)}
 	go func() { r.done <- Run(ctx, o) }()
 	h.t.Cleanup(func() { r.stop() })
+	h.agents = append(h.agents, r)
 	return r
+}
+
+// stopAll stops every agent started by start.
+func (h *harness) stopAll() {
+	h.t.Helper()
+	for _, r := range h.agents {
+		if err := r.stop(); err != nil {
+			h.t.Fatal(err)
+		}
+	}
 }
 
 func (r *running) stop() error {
