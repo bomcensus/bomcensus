@@ -411,7 +411,8 @@ func TestFixtureDigestsAndKnown(t *testing.T) {
 
 // TestFixtureCacheRoundTrip shows that a cache passed back in the request
 // is used instead of hashing again: the hash of the jar is replaced in the
-// cache, and the next run reports the replaced value.
+// cache, and a later run reports the replaced value, also after a run of
+// another section that did not look at the jar.
 func TestFixtureCacheRoundTrip(t *testing.T) {
 	f := newFixture(t, false)
 	req := report.Request{Sections: []string{report.SectionArtifacts}}
@@ -423,9 +424,13 @@ func TestFixtureCacheRoundTrip(t *testing.T) {
 	if err := syscall.Stat(f.fooJar, &st); err != nil {
 		t.Fatal(err)
 	}
+	var doc map[string]json.RawMessage
 	var entries []map[string]json.RawMessage
-	if err := json.Unmarshal(first.Cache, &entries); err != nil {
+	if err := json.Unmarshal(first.Cache, &doc); err != nil {
 		t.Fatalf("cache: %v", err)
+	}
+	if err := json.Unmarshal(doc["files"], &entries); err != nil {
+		t.Fatalf("cache files: %v", err)
 	}
 	const fake = "f00df00df00df00df00df00df00df00df00df00df00df00df00df00df00df00d"
 	replaced := false
@@ -441,9 +446,13 @@ func TestFixtureCacheRoundTrip(t *testing.T) {
 	if !replaced {
 		t.Fatalf("jar not in cache: %s", first.Cache)
 	}
-	cache, _ := json.Marshal(entries)
+	doc["files"], _ = json.Marshal(entries)
+	cache, _ := json.Marshal(doc)
 
-	req.Cache = cache
+	// A run of another section in between must not discard the entry.
+	between := f.run(t, report.Request{Sections: []string{report.SectionProcesses}, Cache: cache})
+
+	req.Cache = between.Cache
 	second := f.run(t, req)
 	var got string
 	for _, a := range second.Artifacts.Artifacts {
