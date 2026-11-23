@@ -177,6 +177,14 @@ func ownerOf(refs []metav1.OwnerReference) *metav1.OwnerReference {
 	return nil
 }
 
+// isNodeOwner reports whether ref names a core Node. The kubelet sets it on
+// the mirror pods of static pods (etcd, kube-apiserver, kube-proxy, ...).
+// A node is not a controller, so such a pod is a workload of its own rather
+// than one workload per node grouping every static pod on it.
+func isNodeOwner(ref *metav1.OwnerReference) bool {
+	return ref.Kind == "Node" && ref.APIVersion == "v1"
+}
+
 func replicasOf(p *int32, def int) *int {
 	n := def
 	if p != nil {
@@ -462,7 +470,7 @@ func Sync(ctx context.Context, c *Client, f Filter) (*Inventory, error) {
 		p := &pods[i]
 		var t top
 		ok := false
-		if ref := ownerOf(p.OwnerReferences); ref != nil {
+		if ref := ownerOf(p.OwnerReferences); ref != nil && !isNodeOwner(ref) {
 			t, ok = g.resolve(p.Namespace, ref)
 		}
 		if !ok {

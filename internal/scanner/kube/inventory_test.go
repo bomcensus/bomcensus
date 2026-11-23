@@ -125,7 +125,16 @@ func clusterObjects() []k8sruntime.Object {
 		runningPod("app", "ro-123-a", ctrl(KindReplicaSet, "ro-123", "rs-ro"), map[string]string{"app": "ro"}, "ro:1"),
 		runningPod("app", "ro-123-b", ctrl(KindReplicaSet, "ro-123", "rs-ro"), map[string]string{"app": "ro"}, "ro:1"),
 		runningPod("app", "vm-1", ctrl("VirtualMachineInstance", "vm", "crd-vm"), nil, "virt-launcher:1"),
+
+		// Static pods mirrored by the kubelet are owned by their node.
+		runningPod("kube-system", "etcd-n1", nodeOwner("n1"), map[string]string{"component": "etcd"}, "etcd:3.5"),
+		runningPod("kube-system", "kube-proxy-n1", nodeOwner("n1"), map[string]string{"component": "kube-proxy"}, "kube-proxy:1.31"),
 	}
+}
+
+func nodeOwner(name string) []metav1.OwnerReference {
+	yes := true
+	return []metav1.OwnerReference{{APIVersion: "v1", Kind: "Node", Name: name, UID: types.UID("node-" + name), Controller: &yes}}
 }
 
 func workloadIndex(inv *Inventory) map[string]Workload {
@@ -163,6 +172,8 @@ func TestSyncOwnerResolution(t *testing.T) {
 		"app/Pod/solo":                  1,
 		"app/Rollout/ro":                2,
 		"app/VirtualMachineInstance/vm": 1,
+		"kube-system/Pod/etcd-n1":       1,
+		"kube-system/Pod/kube-proxy-n1": 1,
 	}
 	if len(ws) != len(wantWorkloads) {
 		t.Errorf("workloads %v", slices.Sorted(maps.Keys(ws)))
@@ -184,21 +195,26 @@ func TestSyncOwnerResolution(t *testing.T) {
 		len(w.Containers) != 1 || w.Containers[0].Image != "nginx:1.27" {
 		t.Errorf("web workload %+v", w)
 	}
+	if w := ws["kube-system/Pod/etcd-n1"]; w.UID != "uid-etcd-n1" || w.Labels["component"] != "etcd" || len(w.Containers) != 1 || w.Containers[0].Image != "etcd:3.5" {
+		t.Errorf("static pod workload %+v", w)
+	}
 	if w := ws["app/Rollout/ro"]; w.UID != "crd-ro" || w.Labels["app"] != "ro" || len(w.Containers) != 1 || w.Containers[0].Image != "ro:1" {
 		t.Errorf("rollout workload %+v", w)
 	}
 
 	ps := podIndex(inv)
 	wantPods := map[string]string{
-		"app/web-abc-1":       "Deployment/web",
-		"app/web-abc-2":       "Deployment/web",
-		"app/nightly-1-x":     "CronJob/nightly",
-		"app/db-0":            "StatefulSet/db",
-		"kube-system/agent-x": "DaemonSet/agent",
-		"app/solo":            "Pod/solo",
-		"app/ro-123-a":        "Rollout/ro",
-		"app/ro-123-b":        "Rollout/ro",
-		"app/vm-1":            "VirtualMachineInstance/vm",
+		"app/web-abc-1":             "Deployment/web",
+		"app/web-abc-2":             "Deployment/web",
+		"app/nightly-1-x":           "CronJob/nightly",
+		"app/db-0":                  "StatefulSet/db",
+		"kube-system/agent-x":       "DaemonSet/agent",
+		"app/solo":                  "Pod/solo",
+		"app/ro-123-a":              "Rollout/ro",
+		"app/ro-123-b":              "Rollout/ro",
+		"app/vm-1":                  "VirtualMachineInstance/vm",
+		"kube-system/etcd-n1":       "Pod/etcd-n1",
+		"kube-system/kube-proxy-n1": "Pod/kube-proxy-n1",
 	}
 	if len(ps) != len(wantPods) {
 		t.Errorf("pods %v", slices.Sorted(maps.Keys(ps)))
