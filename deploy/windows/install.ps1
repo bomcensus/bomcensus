@@ -141,7 +141,9 @@ function Set-SecureDirectory([string] $Path, [string] $Sddl) {
     Invoke-Native $Icacls @($Path, '/setowner', '*S-1-5-32-544', '/q')
     $acl = New-Object System.Security.AccessControl.DirectorySecurity
     $acl.SetSecurityDescriptorSddlForm($Sddl, [System.Security.AccessControl.AccessControlSections]::Access)
-    [System.IO.Directory]::SetAccessControl($Path, $acl)
+    # Set-Acl works on both Windows PowerShell 5.1 and PowerShell 7, which
+    # lacks [System.IO.Directory]::SetAccessControl.
+    Set-Acl -LiteralPath $Path -AclObject $acl
 }
 
 function Get-Current {
