@@ -65,7 +65,8 @@ func (c *collector) visitFile(ctx context.Context, logical string, ent fs.DirEnt
 	if !isELF(f) {
 		return
 	}
-	c.inspectELF(ctx, elfInput{logical: logical, file: f, fi: fi, mayExec: true})
+	_, running := c.runningByPath[logical]
+	c.inspectELF(ctx, elfInput{logical: logical, file: f, fi: fi, mayExec: true, running: running})
 }
 
 // openFile opens a logical path without following a final symbolic link
@@ -151,6 +152,9 @@ type elfInput struct {
 	fi      os.FileInfo
 	// mayExec is false for deleted and memfd executables.
 	mayExec bool
+	// running is true when a process executes this file as it is on disk
+	// (report.ExeNormal), so that the file at the path is the one running.
+	running bool
 }
 
 // inspectELF reports Go build info and known software of an executable.
@@ -168,6 +172,7 @@ func (c *collector) inspectELF(ctx context.Context, in elfInput) {
 		}
 		return s256
 	}
+	first := len(c.out)
 	if gi != nil {
 		c.addGo(in.logical, gi, hash(), in.fi.Size())
 	}
@@ -177,6 +182,22 @@ func (c *collector) inspectELF(ctx context.Context, in elfInput) {
 		}
 		src := staticSource{logical: in.logical, file: in.file, size: in.fi.Size(), goInfo: gi}
 		c.addSoftware(ctx, d, src, in.fi, hash(), in.mayExec && gi == nil)
+	}
+	// A running executable that nothing above recognized is still reported
+	// when an OS package owns it: the server links the package to the
+	// process through this artifact's path and hash.
+	if len(c.out) == first && in.running && c.in.Owner != nil {
+		if pkg, ok := c.in.Owner(in.logical); ok {
+			c.add(report.Artifact{
+				Kind:         report.ArtifactPackageFile,
+				Path:         in.logical,
+				Name:         pkg,
+				Method:       report.MethodPackageDB,
+				SHA256:       hash(),
+				Size:         in.fi.Size(),
+				OwnerPackage: pkg,
+			})
+		}
 	}
 }
 
@@ -344,7 +365,7 @@ func (c *collector) inspectRunning(ctx context.Context, running []RunningExe) {
 		if err == nil && fi.Mode().IsRegular() && isELF(f) {
 			mayExec := r.State == report.ExeNormal || r.State == report.ExeReplaced
 			first := len(c.out)
-			c.inspectELF(ctx, elfInput{logical: r.Path, file: f, fi: fi, mayExec: mayExec})
+			c.inspectELF(ctx, elfInput{logical: r.Path, file: f, fi: fi, mayExec: mayExec, running: r.State == report.ExeNormal})
 			// The path may hold another file or none; what was found here
 			// is the binary in memory.
 			for i := first; i < len(c.out); i++ {

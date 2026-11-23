@@ -186,6 +186,10 @@ const (
 	ArtifactGoBinary = "go_binary" // executable with Go build info
 	ArtifactGoModule = "go_module" // a module listed in a Go binary's build info
 	ArtifactSoftware = "software"  // matched by a known-software detector
+	// ArtifactPackageFile is a running executable that nothing but its OS
+	// package accounts for. It only carries OwnerPackage, the hash and the
+	// in-use flag, so that the package can be linked to its processes.
+	ArtifactPackageFile = "package_file"
 )
 
 // Detection methods.
@@ -194,6 +198,7 @@ const (
 	MethodStatic    = "static"    // version extracted from file contents
 	MethodManifest  = "manifest"  // pom.properties, MANIFEST.MF and similar
 	MethodBuildInfo = "buildinfo" // Go build info
+	MethodPackageDB = "pkgdb"     // file list of the OS package database
 )
 
 // Layers of a container file system.

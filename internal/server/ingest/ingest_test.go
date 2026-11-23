@@ -31,10 +31,12 @@ const (
 	web2ID    = "bbbbbbbbbbbb0000000000000000000000000000000000000000000000000002"
 	appSHA    = "a11ce00000000000000000000000000000000000000000000000000000000000"
 	ctrdSHA   = "c0ffee0000000000000000000000000000000000000000000000000000000000"
+	sshdSHA   = "55dd000000000000000000000000000000000000000000000000000000000000"
 	bashPURL  = "pkg:deb/ubuntu/bash@5.2.21-2ubuntu4?arch=amd64&distro=ubuntu-24.04"
 	sslPURL   = "pkg:deb/ubuntu/openssl@3.0.13-0ubuntu3?arch=amd64&distro=ubuntu-24.04"
 	curlPURL  = "pkg:deb/ubuntu/curl@8.5.0-2ubuntu10?arch=amd64&distro=ubuntu-24.04"
 	ctrdPURL  = "pkg:deb/ubuntu/containerd@1.7.12-0ubuntu4?arch=amd64&distro=ubuntu-24.04"
+	sshPURL   = "pkg:deb/ubuntu/openssh-server@1:9.6p1-3ubuntu13?arch=amd64&distro=ubuntu-24.04"
 	appPURL   = "pkg:golang/example.com/app@v1.0.0"
 	log4jPURL = "pkg:maven/org.apache.logging.log4j/log4j-core@2.14.1"
 	muslPURL  = "pkg:apk/alpine/musl@1.2.4-r2?arch=x86_64&distro=alpine-3.19.1"
@@ -65,7 +67,7 @@ func pkg(name, version string) report.Package {
 
 func basePackages() []report.Package {
 	return []report.Package{pkg("bash", "5.2.21-2ubuntu4"), pkg("openssl", "3.0.13-0ubuntu3"),
-		pkg("containerd", "1.7.12-0ubuntu4")}
+		pkg("containerd", "1.7.12-0ubuntu4"), pkg("openssh-server", "1:9.6p1-3ubuntu13")}
 }
 
 func baseArtifacts() []report.Artifact {
@@ -78,6 +80,8 @@ func baseArtifacts() []report.Artifact {
 		{Kind: "go_module", Path: "/opt/app/app", Module: "golang.org/x/net", Version: "v0.20.0", Method: "buildinfo"},
 		{Kind: "jar", Path: "/opt/svc/log4j-core.jar", GroupID: "org.apache.logging.log4j", ArtifactID: "log4j-core",
 			Version: "2.14.1", Method: "manifest"},
+		{Kind: "package_file", Path: "/usr/sbin/sshd", Name: "openssh-server", SHA256: sshdSHA,
+			OwnerPackage: "openssh-server", InUse: true, Method: "pkgdb"},
 	}
 }
 
@@ -97,6 +101,8 @@ func hostReport(at time.Time) *report.Report {
 			{PID: 200, User: "app", Exe: "/opt/app/app", ExeSource: "proc", ExeState: "normal", SHA256: appSHA, StartedAt: t0,
 				Listen: []report.Listen{{Proto: "tcp", Address: "0.0.0.0", Port: 8080}}},
 			{PID: 300, User: "root", Exe: "/usr/bin/bash", ExeSource: "proc", ExeState: "normal", StartedAt: t0},
+			{PID: 500, User: "root", Exe: "/usr/sbin/sshd", ExeSource: "proc", ExeState: "normal", SHA256: sshdSHA,
+				StartedAt: t0, Listen: []report.Listen{{Proto: "tcp", Address: "0.0.0.0", Port: 22}}},
 			{PID: 400, User: "nginx", Exe: "/usr/sbin/nginx", ExeSource: "proc", ExeState: "normal", StartedAt: t0,
 				ContainerID: web1ID},
 		}},
@@ -203,6 +209,10 @@ func TestHostReportLifecycle(t *testing.T) {
 			t.Errorf("artifact %s: %+v", p, r)
 		}
 	}
+	ssh := self["||"+sshPURL]
+	if !reflect.DeepEqual(ssh.Locations, []string{"/usr/sbin/sshd"}) || !ssh.InUse {
+		t.Errorf("running package file not linked to its package: %+v", ssh)
+	}
 	if _, ok := self["||pkg:golang/github.com/containerd/containerd@v1.7.12"]; ok {
 		t.Error("package-owned go binary became a component")
 	}
@@ -236,6 +246,9 @@ func TestHostReportLifecycle(t *testing.T) {
 	}
 	if p := byPID[200]; p.ComponentID != self["||"+appPURL].Component.ID {
 		t.Errorf("app process component %q, want %q", p.ComponentID, self["||"+appPURL].Component.ID)
+	}
+	if p := byPID[500]; p.ComponentID != ssh.Component.ID {
+		t.Errorf("sshd process component %q, want %q", p.ComponentID, ssh.Component.ID)
 	}
 	if p := byPID[300]; p.ComponentID != "" {
 		t.Errorf("bash process linked to %q", p.ComponentID)

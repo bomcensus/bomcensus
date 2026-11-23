@@ -6,6 +6,8 @@
 
 // Package artifact finds software outside the package database: Java
 // archives, Go binaries and files recognized by a known-software detector.
+// Running executables that only an OS package accounts for are reported too,
+// with just their owner, so that the package can be linked to its processes.
 //
 // The file system is walked once. Java archives and Go binaries are only
 // parsed. Known software may have its version command run, in an isolated
