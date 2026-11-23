@@ -72,7 +72,8 @@ func assertNoSecret(t *testing.T, h *harness) {
 		if errors.Is(err, fs.ErrNotExist) {
 			return nil
 		}
-		if err != nil || d.IsDir() {
+		// The lock file is empty and, on Windows, unreadable while held.
+		if err != nil || d.IsDir() || d.Name() == "lock" {
 			return err
 		}
 		b, err := os.ReadFile(p)
