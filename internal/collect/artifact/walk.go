@@ -290,14 +290,13 @@ func (c *collector) walkDir(ctx context.Context, logical string, parentDev uint6
 	for {
 		ents, err := dir.ReadDir(readDirBatch)
 		for _, ent := range ents {
-			child := path.Join(logical, ent.Name())
 			switch t := ent.Type(); {
 			case t.IsDir():
-				if !c.excluded(child) {
+				if !c.excluded(path.Join(logical, ent.Name())) {
 					subdirs = append(subdirs, ent.Name())
 				}
 			case t.IsRegular():
-				c.visitFile(ctx, child, ent)
+				c.visitFile(ctx, fd, logical, ent.Name())
 			}
 		}
 		if err == io.EOF {

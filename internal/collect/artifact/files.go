@@ -14,13 +14,14 @@ import (
 	"encoding/hex"
 	"errors"
 	"io"
-	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
+
+	"golang.org/x/sys/unix"
 
 	"github.com/bomcensus/bomcensus/internal/collect"
 	"github.com/bomcensus/bomcensus/internal/report"
@@ -35,27 +36,36 @@ const (
 
 var elfMagic = []byte("\x7fELF")
 
-// visitFile inspects one regular file found by the walk.
-func (c *collector) visitFile(ctx context.Context, logical string, ent fs.DirEntry) {
-	isJar := isArchiveName(ent.Name())
-	info, err := ent.Info()
-	if err != nil {
+// visitFile inspects the regular file name in the directory dirfd, whose
+// logical path is dir. The file is looked up relative to dirfd: the walk
+// visits every file of the file system, and resolving each full path again
+// costs more than the rest of the visit for most files.
+func (c *collector) visitFile(ctx context.Context, dirfd int, dir, name string) {
+	isJar := isArchiveName(name)
+	var st unix.Stat_t
+	if err := unix.Fstatat(dirfd, name, &st, unix.AT_SYMLINK_NOFOLLOW); err != nil {
 		return
 	}
-	executable := info.Mode()&0o111 != 0
-	if !isJar && !executable || info.Size() < int64(len(elfMagic)) {
+	executable := st.Mode&0o111 != 0
+	if st.Mode&unix.S_IFMT != unix.S_IFREG || !isJar && !executable || st.Size < int64(len(elfMagic)) {
 		return
 	}
-	f, err := c.openFile(logical)
+	logical := path.Join(dir, name)
+	fd, err := unix.Openat(dirfd, name, unix.O_RDONLY|unix.O_NOFOLLOW|unix.O_NONBLOCK|unix.O_CLOEXEC, 0)
 	if err != nil {
-		if !errors.Is(err, fs.ErrNotExist) && !errors.Is(err, syscall.ELOOP) {
+		if !errors.Is(err, unix.ENOENT) && !errors.Is(err, unix.ELOOP) {
 			c.st.unreadableFiles++
 		}
 		return
 	}
+	f := os.NewFile(uintptr(fd), c.env.Path(logical))
 	defer f.Close()
 	fi, err := f.Stat()
-	if err != nil || !fi.Mode().IsRegular() || !os.SameFile(fi, info) {
+	if err != nil || !fi.Mode().IsRegular() {
+		return
+	}
+	// The file at the name must still be the one stat'ed above.
+	if now, ok := fi.Sys().(*syscall.Stat_t); !ok || uint64(now.Dev) != st.Dev || now.Ino != st.Ino {
 		return
 	}
 	if isJar {
@@ -67,17 +77,6 @@ func (c *collector) visitFile(ctx context.Context, logical string, ent fs.DirEnt
 	}
 	_, running := c.runningByPath[logical]
 	c.inspectELF(ctx, elfInput{logical: logical, file: f, fi: fi, mayExec: true, running: running})
-}
-
-// openFile opens a logical path without following a final symbolic link
-// and without blocking on special files.
-func (c *collector) openFile(logical string) (*os.File, error) {
-	real := c.env.Path(logical)
-	fd, err := syscall.Open(real, syscall.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK|syscall.O_CLOEXEC, 0)
-	if err != nil {
-		return nil, &fs.PathError{Op: "open", Path: real, Err: err}
-	}
-	return os.NewFile(uintptr(fd), real), nil
 }
 
 func isELF(f *os.File) bool {
