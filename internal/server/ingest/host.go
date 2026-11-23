@@ -255,7 +255,6 @@ func (s *Service) applyHostContainers(ctx context.Context, tx store.Store, asset
 	}
 	byID := map[string]report.Container{}
 	var obs []store.ContainerObservation
-	var tags []store.ImageObservation
 	for _, c := range sec.Containers {
 		byID[c.ID] = c
 		o := store.ContainerObservation{
@@ -267,18 +266,24 @@ func (s *Service) applyHostContainers(ctx context.Context, tx store.Store, asset
 			o.Instances = 1
 		}
 		obs = append(obs, o)
-		if o.ImageDigest != "" {
-			io := store.ImageObservation{Digest: o.ImageDigest}
-			if t := normalize.ImageTag(c.ImageRef); t != "" {
-				io.RepoTags = []string{t}
-			}
-			tags = append(tags, io)
-		}
 	}
 	if err := tx.ReplaceContainers(ctx, assetID, obs, store.ReplaceOptions{At: p.at, KeepMissing: p.keepMissing}); err != nil {
 		return nil, fmt.Errorf("ingest: replace containers: %w", err)
 	}
-	if err := tx.UpsertImages(ctx, append(imageObservations(sec.Images), tags...), p.at); err != nil {
+	// The tags of the host come from its runtime image list only. A
+	// container's image reference is the name it was created from, which
+	// may have moved to another digest since.
+	//
+	// They are replaced only when the inventory was read in full: a runtime
+	// that could not be read must not turn its tags into previous ones. A
+	// content scan cut short does not count.
+	invCov := sec.InventoryCoverage
+	if invCov == "" {
+		invCov = p.meta.Coverage
+	}
+	src := store.ImageSource{Kind: store.ImageSourceAsset, ID: assetID}
+	tagOpts := store.ReplaceOptions{At: p.at, KeepMissing: sectionCoverage(invCov) != store.CoverageFull}
+	if err := tx.UpsertImages(ctx, src, imageObservations(sec.Images), tagOpts); err != nil {
 		return nil, fmt.Errorf("ingest: upsert images: %w", err)
 	}
 

@@ -266,7 +266,7 @@ export const listListenPorts = <ThrowOnError extends boolean = false>(options?: 
 /**
  * Container images, aggregated by digest
  *
- * `q` matches digest and repo tags.
+ * `q` matches digest and current and previous tags. Sort `tag` uses the first current tag, else the most recently seen previous tag.
  */
 export const listImages = <ThrowOnError extends boolean = false>(options?: Options<ListImagesData, ThrowOnError>): RequestResult<ListImagesResponses, ListImagesErrors, ThrowOnError> => (options?.client ?? client).get<ListImagesResponses, ListImagesErrors, ThrowOnError>({
     security: [{

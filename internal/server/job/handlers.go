@@ -63,7 +63,8 @@ type CleanupStore interface {
 type Retention struct {
 	Reports       time.Duration
 	ProcessEvents time.Duration
-	// Gone is how long gone assets, containers, workloads and pods stay.
+	// Gone is how long gone assets, containers, workloads and pods stay, and
+	// how long an image no container uses stays after it was last seen.
 	Gone time.Duration
 	// AckedDirectives is how long acknowledged directives stay.
 	AckedDirectives time.Duration
@@ -127,6 +128,9 @@ func CleanupHandler(st CleanupStore, r Retention, log *slog.Logger, now func() t
 		if r.Gone > 0 {
 			res, err := st.PurgeGone(ctx, t.Add(-r.Gone))
 			count("gone inventory", res.Assets+res.Containers+res.Workloads+res.Pods, err)
+			if err == nil {
+				count("unused images", res.Images, nil)
+			}
 		}
 		return errors.Join(errs...)
 	}

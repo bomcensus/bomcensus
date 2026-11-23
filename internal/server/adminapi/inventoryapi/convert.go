@@ -187,7 +187,7 @@ func componentSummary(r store.ComponentRow) gen.ComponentSummary {
 	return gen.ComponentSummary{
 		Id: c.Id, Type: c.Type, Name: c.Name, Version: c.Version, Purl: c.Purl, Cpe: c.Cpe,
 		SourceName: c.SourceName, SourceVersion: c.SourceVersion, Distro: c.Distro, Arch: c.Arch,
-		Vendor: c.Vendor, Origin: c.Origin, AssetCount: r.Assets,
+		Vendor: c.Vendor, Origin: c.Origin, AssetCount: r.Assets, RunningAssetCount: r.RunningAssets,
 	}
 }
 

@@ -15,7 +15,14 @@ const digest = decodeURIComponent(String(route.params.digest))
 
 const { data: image, error, refresh } = useLoad(`image:${digest}`, () => getImage(digest))
 
-useHead({ title: computed(() => `${image.value?.repoTags[0] ?? '이미지'} · bomcensus`) })
+const title = computed(() => {
+  const i = image.value
+  if (!i) return '이미지'
+  if (i.currentTags[0]) return i.currentTags[0]
+  return i.previousTags[0] ? `${i.previousTags[0].tag} (이전)` : 'tag 없음'
+})
+
+useHead({ title: computed(() => `${image.value ? title.value : '이미지'} · bomcensus`) })
 
 const uses = computed(() => image.value?.uses ?? [])
 
@@ -41,7 +48,7 @@ const componentColumns: TableColumn<ImageComponent>[] = [
   <div>
     <template v-if="image">
       <PageHeader
-        :title="image.repoTags[0] ?? 'tag 없음'"
+        :title="title"
         :subtitle="shortHash(image.digest)"
         :back="{ to: '/images', label: '이미지' }"
       />
@@ -49,7 +56,18 @@ const componentColumns: TableColumn<ImageComponent>[] = [
       <Panel title="이미지">
         <dl class="kv">
           <dt>tag</dt>
-          <dd class="mono break-all">{{ image.repoTags.length ? image.repoTags.join(', ') : '—' }}</dd>
+          <dd class="mono break-all">{{ image.currentTags.length ? image.currentTags.join(', ') : '—' }}</dd>
+          <template v-if="image.previousTags.length">
+            <dt>이전 tag</dt>
+            <dd>
+              <ul class="space-y-0.5">
+                <li v-for="t in image.previousTags" :key="t.tag" class="flex flex-wrap items-baseline gap-x-2">
+                  <span class="mono break-all text-ink-3">{{ t.tag }}</span>
+                  <span class="whitespace-nowrap text-xs text-ink-3">최근 발견 {{ formatDateTime(t.lastSeen) }}</span>
+                </li>
+              </ul>
+            </dd>
+          </template>
           <dt>digest</dt>
           <dd><CopyField :value="image.digest" /></dd>
           <dt>OS</dt>

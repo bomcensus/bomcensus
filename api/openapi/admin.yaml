@@ -460,11 +460,23 @@ paths:
           in: query
           schema:
             $ref: "#/components/schemas/ComponentOrigin"
+        - name: installed
+          in: query
+          description: Only components installed on at least one asset now (`assetCount` > 0).
+          schema:
+            type: boolean
+            default: false
+        - name: running
+          in: query
+          description: Only components a running process uses now (`runningAssetCount` > 0).
+          schema:
+            type: boolean
+            default: false
         - name: sort
           in: query
           schema:
             type: string
-            enum: [name, "-name", version, "-version", type, "-type", origin, "-origin", assetCount, "-assetCount", purl, "-purl"]
+            enum: [name, "-name", version, "-version", type, "-type", origin, "-origin", assetCount, "-assetCount", runningAssetCount, "-runningAssetCount", purl, "-purl"]
             default: name
         - $ref: "#/components/parameters/QueryLimit"
         - $ref: "#/components/parameters/QueryOffset"
@@ -647,7 +659,7 @@ paths:
       tags: [images]
       operationId: listImages
       summary: Container images, aggregated by digest
-      description: "`q` matches digest and repo tags."
+      description: "`q` matches digest and current and previous tags. Sort `tag` uses the first current tag, else the most recently seen previous tag."
       parameters:
         - $ref: "#/components/parameters/QueryQ"
         - name: inUse
@@ -2258,7 +2270,7 @@ components:
           $ref: "#/components/schemas/ComponentOrigin"
     ComponentSummary:
       type: object
-      required: [id, type, name, version, purl, origin, assetCount]
+      required: [id, type, name, version, purl, origin, assetCount, runningAssetCount]
       properties:
         id:
           type: string
@@ -2286,6 +2298,11 @@ components:
           $ref: "#/components/schemas/ComponentOrigin"
         assetCount:
           description: Assets on which the component is currently installed.
+          type: integer
+        runningAssetCount:
+          description: |
+            Assets on which a running process executes or maps the component,
+            as of the asset's latest report.
           type: integer
     ComponentList:
       type: object
@@ -2541,20 +2558,45 @@ components:
           type: integer
         instances:
           type: integer
+    CurrentImageTags:
+      description: |
+        Tags that point to the digest now: a host or cluster that is not gone
+        lists the tag for this digest in its latest observation. Sorted.
+      type: array
+      items:
+        type: string
+    PreviousImageTag:
+      type: object
+      required: [tag, lastSeen]
+      properties:
+        tag:
+          type: string
+        lastSeen:
+          description: When a host or cluster last listed the tag for this digest.
+          type: string
+          format: date-time
+    PreviousImageTags:
+      description: |
+        Tags that pointed to the digest before and are not current, most
+        recently seen first.
+      type: array
+      items:
+        $ref: "#/components/schemas/PreviousImageTag"
     ContainerImage:
       description: |
         An image is not an asset. It aggregates the containers of all assets
         by image digest. An image that no container uses any more stays in the
-        list with zero usage.
+        list with zero usage until it has not been seen for the retention
+        period of gone inventory (30 days).
       type: object
-      required: [digest, repoTags, firstSeen, usage, contentKnown, componentCount]
+      required: [digest, currentTags, previousTags, firstSeen, usage, contentKnown, componentCount]
       properties:
         digest:
           type: string
-        repoTags:
-          type: array
-          items:
-            type: string
+        currentTags:
+          $ref: "#/components/schemas/CurrentImageTags"
+        previousTags:
+          $ref: "#/components/schemas/PreviousImageTags"
         os:
           type: string
         arch:
@@ -2608,14 +2650,14 @@ components:
           $ref: "#/components/schemas/DetectMethod"
     ContainerImageDetail:
       type: object
-      required: [digest, repoTags, firstSeen, usage, contentKnown, componentCount, uses, components]
+      required: [digest, currentTags, previousTags, firstSeen, usage, contentKnown, componentCount, uses, components]
       properties:
         digest:
           type: string
-        repoTags:
-          type: array
-          items:
-            type: string
+        currentTags:
+          $ref: "#/components/schemas/CurrentImageTags"
+        previousTags:
+          $ref: "#/components/schemas/PreviousImageTags"
         os:
           type: string
         arch:

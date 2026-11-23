@@ -15,6 +15,14 @@
 // as images built locally with the Docker graph driver store, are reported by
 // their config digest (the Docker image id). Containers and images use the
 // same value, so Container.ImageDigest always matches an Image.Digest.
+//
+// A Docker container records the id of the image it was created from. A
+// containerd container records only an image name, which follows the name
+// when it is pulled again, so its digest is checked against the container's
+// snapshot: the snapshot's parent is the chain id of the image's top layer.
+// When no image with that chain id is in the store, or the check cannot be
+// made, ImageDigest is left empty and Container.Reason says why. The probe
+// then credits nothing to an image.
 package container
 
 import (

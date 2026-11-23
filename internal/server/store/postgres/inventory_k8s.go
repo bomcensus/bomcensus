@@ -280,9 +280,8 @@ func (d *DB) ReplaceClusterInventory(ctx context.Context, clusterID string, inv 
 	}
 
 	err = d.ivAtomic(ctx, func(d *DB) error {
-		var one int
-		if err := d.q.QueryRow(ctx, `SELECT 1 FROM k8s_clusters WHERE id = $1 FOR NO KEY UPDATE`, clusterID).Scan(&one); err != nil {
-			return ivErr(op, err)
+		if err := d.ivLockCluster(ctx, op, clusterID); err != nil {
+			return err
 		}
 
 		// Workloads.

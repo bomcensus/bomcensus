@@ -80,6 +80,11 @@ func copyTree(t *testing.T, src, dst string) {
 
 func buildBolt(t *testing.T, jsonPath, dbPath string) {
 	t.Helper()
+	writeBolt(t, readBoltJSON(t, jsonPath), dbPath)
+}
+
+func readBoltJSON(t *testing.T, jsonPath string) map[string]any {
+	t.Helper()
 	data, err := os.ReadFile(jsonPath)
 	if err != nil {
 		t.Fatal(err)
@@ -88,6 +93,38 @@ func buildBolt(t *testing.T, jsonPath, dbPath string) {
 	if err := json.Unmarshal(data, &tree); err != nil {
 		t.Fatalf("%s: %v", jsonPath, err)
 	}
+	return tree
+}
+
+// editBolt rebuilds a database of a laid out fixture after edit has changed
+// its JSON form. logical is the database path under the fixture's root/.
+func editBolt(t *testing.T, fixtureName, root, logical string, edit func(tree map[string]any)) {
+	t.Helper()
+	tree := readBoltJSON(t, filepath.Join("testdata", fixtureName, "root", logical+boltJSONSuffix))
+	edit(tree)
+	dbPath := filepath.Join(root, logical)
+	if err := os.Remove(dbPath); err != nil {
+		t.Fatal(err)
+	}
+	writeBolt(t, tree, dbPath)
+}
+
+// boltDir returns the bucket at a path of a database's JSON form.
+func boltDir(t *testing.T, tree map[string]any, names ...string) map[string]any {
+	t.Helper()
+	b := tree
+	for _, n := range names {
+		next, ok := b[n].(map[string]any)
+		if !ok {
+			t.Fatalf("no bucket %s in %v", n, names)
+		}
+		b = next
+	}
+	return b
+}
+
+func writeBolt(t *testing.T, tree map[string]any, dbPath string) {
+	t.Helper()
 	db, err := bolt.Open(dbPath, 0o644, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -106,7 +143,7 @@ func buildBolt(t *testing.T, jsonPath, dbPath string) {
 		return nil
 	})
 	if err != nil {
-		t.Fatalf("%s: %v", jsonPath, err)
+		t.Fatalf("%s: %v", dbPath, err)
 	}
 }
 

@@ -1077,18 +1077,20 @@ func (e ListAssetProcessesParamsSort) Valid() bool {
 
 // Defines values for ListComponentsParamsSort.
 const (
-	ListComponentsParamsSortAssetCount      ListComponentsParamsSort = "assetCount"
-	ListComponentsParamsSortMinusAssetCount ListComponentsParamsSort = "-assetCount"
-	ListComponentsParamsSortMinusName       ListComponentsParamsSort = "-name"
-	ListComponentsParamsSortMinusOrigin     ListComponentsParamsSort = "-origin"
-	ListComponentsParamsSortMinusPurl       ListComponentsParamsSort = "-purl"
-	ListComponentsParamsSortMinusType       ListComponentsParamsSort = "-type"
-	ListComponentsParamsSortMinusVersion    ListComponentsParamsSort = "-version"
-	ListComponentsParamsSortName            ListComponentsParamsSort = "name"
-	ListComponentsParamsSortOrigin          ListComponentsParamsSort = "origin"
-	ListComponentsParamsSortPurl            ListComponentsParamsSort = "purl"
-	ListComponentsParamsSortType            ListComponentsParamsSort = "type"
-	ListComponentsParamsSortVersion         ListComponentsParamsSort = "version"
+	ListComponentsParamsSortAssetCount             ListComponentsParamsSort = "assetCount"
+	ListComponentsParamsSortMinusAssetCount        ListComponentsParamsSort = "-assetCount"
+	ListComponentsParamsSortMinusName              ListComponentsParamsSort = "-name"
+	ListComponentsParamsSortMinusOrigin            ListComponentsParamsSort = "-origin"
+	ListComponentsParamsSortMinusPurl              ListComponentsParamsSort = "-purl"
+	ListComponentsParamsSortMinusRunningAssetCount ListComponentsParamsSort = "-runningAssetCount"
+	ListComponentsParamsSortMinusType              ListComponentsParamsSort = "-type"
+	ListComponentsParamsSortMinusVersion           ListComponentsParamsSort = "-version"
+	ListComponentsParamsSortName                   ListComponentsParamsSort = "name"
+	ListComponentsParamsSortOrigin                 ListComponentsParamsSort = "origin"
+	ListComponentsParamsSortPurl                   ListComponentsParamsSort = "purl"
+	ListComponentsParamsSortRunningAssetCount      ListComponentsParamsSort = "runningAssetCount"
+	ListComponentsParamsSortType                   ListComponentsParamsSort = "type"
+	ListComponentsParamsSortVersion                ListComponentsParamsSort = "version"
 )
 
 // Valid indicates whether the value is a known member of the ListComponentsParamsSort enum.
@@ -1104,6 +1106,8 @@ func (e ListComponentsParamsSort) Valid() bool {
 		return true
 	case ListComponentsParamsSortMinusPurl:
 		return true
+	case ListComponentsParamsSortMinusRunningAssetCount:
+		return true
 	case ListComponentsParamsSortMinusType:
 		return true
 	case ListComponentsParamsSortMinusVersion:
@@ -1113,6 +1117,8 @@ func (e ListComponentsParamsSort) Valid() bool {
 	case ListComponentsParamsSortOrigin:
 		return true
 	case ListComponentsParamsSortPurl:
+		return true
+	case ListComponentsParamsSortRunningAssetCount:
 		return true
 	case ListComponentsParamsSortType:
 		return true
@@ -1946,13 +1952,17 @@ type ComponentSummary struct {
 	Name       string  `json:"name"`
 
 	// Origin `distro`: distribution package. `third_party`: package from a third-party repository. `upstream`: software that is not a package.
-	Origin        ComponentOrigin `json:"origin"`
-	Purl          string          `json:"purl"`
-	SourceName    *string         `json:"sourceName,omitempty"`
-	SourceVersion *string         `json:"sourceVersion,omitempty"`
-	Type          ComponentType   `json:"type"`
-	Vendor        *string         `json:"vendor,omitempty"`
-	Version       string          `json:"version"`
+	Origin ComponentOrigin `json:"origin"`
+	Purl   string          `json:"purl"`
+
+	// RunningAssetCount Assets on which a running process executes or maps the component,
+	// as of the asset's latest report.
+	RunningAssetCount int           `json:"runningAssetCount"`
+	SourceName        *string       `json:"sourceName,omitempty"`
+	SourceVersion     *string       `json:"sourceVersion,omitempty"`
+	Type              ComponentType `json:"type"`
+	Vendor            *string       `json:"vendor,omitempty"`
+	Version           string        `json:"version"`
 }
 
 // ComponentType defines model for ComponentType.
@@ -1963,7 +1973,8 @@ type ConnMode string
 
 // ContainerImage An image is not an asset. It aggregates the containers of all assets
 // by image digest. An image that no container uses any more stays in the
-// list with zero usage.
+// list with zero usage until it has not been seen for the retention
+// period of gone inventory (30 days).
 type ContainerImage struct {
 	Arch *string `json:"arch,omitempty"`
 
@@ -1971,14 +1982,21 @@ type ContainerImage struct {
 	ComponentCount int `json:"componentCount"`
 
 	// ContentKnown The content of the image (its `image` layer) has been collected from at least one container.
-	ContentKnown bool       `json:"contentKnown"`
-	Digest       string     `json:"digest"`
-	FirstSeen    time.Time  `json:"firstSeen"`
-	LastSeen     *time.Time `json:"lastSeen,omitempty"`
-	Os           *string    `json:"os,omitempty"`
-	RepoTags     []string   `json:"repoTags"`
-	SizeBytes    *int64     `json:"sizeBytes,omitempty"`
-	Usage        ImageUsage `json:"usage"`
+	ContentKnown bool `json:"contentKnown"`
+
+	// CurrentTags Tags that point to the digest now: a host or cluster that is not gone
+	// lists the tag for this digest in its latest observation. Sorted.
+	CurrentTags CurrentImageTags `json:"currentTags"`
+	Digest      string           `json:"digest"`
+	FirstSeen   time.Time        `json:"firstSeen"`
+	LastSeen    *time.Time       `json:"lastSeen,omitempty"`
+	Os          *string          `json:"os,omitempty"`
+
+	// PreviousTags Tags that pointed to the digest before and are not current, most
+	// recently seen first.
+	PreviousTags PreviousImageTags `json:"previousTags"`
+	SizeBytes    *int64            `json:"sizeBytes,omitempty"`
+	Usage        ImageUsage        `json:"usage"`
 }
 
 // ContainerImageDetail defines model for ContainerImageDetail.
@@ -1989,13 +2007,20 @@ type ContainerImageDetail struct {
 	// Components Components in the `image` layer. Components added at runtime are not included.
 	Components   []ImageComponent `json:"components"`
 	ContentKnown bool             `json:"contentKnown"`
-	Digest       string           `json:"digest"`
-	FirstSeen    time.Time        `json:"firstSeen"`
-	LastSeen     *time.Time       `json:"lastSeen,omitempty"`
-	Os           *string          `json:"os,omitempty"`
-	RepoTags     []string         `json:"repoTags"`
-	SizeBytes    *int64           `json:"sizeBytes,omitempty"`
-	Usage        ImageUsage       `json:"usage"`
+
+	// CurrentTags Tags that point to the digest now: a host or cluster that is not gone
+	// lists the tag for this digest in its latest observation. Sorted.
+	CurrentTags CurrentImageTags `json:"currentTags"`
+	Digest      string           `json:"digest"`
+	FirstSeen   time.Time        `json:"firstSeen"`
+	LastSeen    *time.Time       `json:"lastSeen,omitempty"`
+	Os          *string          `json:"os,omitempty"`
+
+	// PreviousTags Tags that pointed to the digest before and are not current, most
+	// recently seen first.
+	PreviousTags PreviousImageTags `json:"previousTags"`
+	SizeBytes    *int64            `json:"sizeBytes,omitempty"`
+	Usage        ImageUsage        `json:"usage"`
 
 	// Uses Containers (of hosts and workloads) that run this image.
 	Uses []ImageUse `json:"uses"`
@@ -2077,6 +2102,10 @@ type CredentialSecretUpdate struct {
 	PrivateKey *string `json:"privateKey,omitempty"`
 	Username   *string `json:"username,omitempty"`
 }
+
+// CurrentImageTags Tags that point to the digest now: a host or cluster that is not gone
+// lists the tag for this digest in its latest observation. Sorted.
+type CurrentImageTags = []string
 
 // Dashboard defines model for Dashboard.
 type Dashboard struct {
@@ -2435,6 +2464,17 @@ type PendingAnchor struct {
 	// UnsyncedAgents Non-revoked agents that have not picked up the bundle containing this anchor.
 	UnsyncedAgents int `json:"unsyncedAgents"`
 }
+
+// PreviousImageTag defines model for PreviousImageTag.
+type PreviousImageTag struct {
+	// LastSeen When a host or cluster last listed the tag for this digest.
+	LastSeen time.Time `json:"lastSeen"`
+	Tag      string    `json:"tag"`
+}
+
+// PreviousImageTags Tags that pointed to the digest before and are not current, most
+// recently seen first.
+type PreviousImageTags = []PreviousImageTag
 
 // Principal defines model for Principal.
 type Principal struct {
@@ -2915,12 +2955,18 @@ type ListAssetProcessesParamsSort string
 // ListComponentsParams defines parameters for ListComponents.
 type ListComponentsParams struct {
 	// Q Free-text search, case-insensitive substring match.
-	Q      *QueryQ                   `form:"q,omitempty" json:"q,omitempty"`
-	Type   *ComponentType            `form:"type,omitempty" json:"type,omitempty"`
-	Origin *ComponentOrigin          `form:"origin,omitempty" json:"origin,omitempty"`
-	Sort   *ListComponentsParamsSort `form:"sort,omitempty" json:"sort,omitempty"`
-	Limit  *QueryLimit               `form:"limit,omitempty" json:"limit,omitempty"`
-	Offset *QueryOffset              `form:"offset,omitempty" json:"offset,omitempty"`
+	Q      *QueryQ          `form:"q,omitempty" json:"q,omitempty"`
+	Type   *ComponentType   `form:"type,omitempty" json:"type,omitempty"`
+	Origin *ComponentOrigin `form:"origin,omitempty" json:"origin,omitempty"`
+
+	// Installed Only components installed on at least one asset now (`assetCount` > 0).
+	Installed *bool `form:"installed,omitempty" json:"installed,omitempty"`
+
+	// Running Only components a running process uses now (`runningAssetCount` > 0).
+	Running *bool                     `form:"running,omitempty" json:"running,omitempty"`
+	Sort    *ListComponentsParamsSort `form:"sort,omitempty" json:"sort,omitempty"`
+	Limit   *QueryLimit               `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset  *QueryOffset              `form:"offset,omitempty" json:"offset,omitempty"`
 }
 
 // ListComponentsParamsSort defines parameters for ListComponents.
@@ -3407,7 +3453,7 @@ type ClientInterface interface {
 
 	// ListImages Container images, aggregated by digest
 	//
-	// `q` matches digest and repo tags.
+	// `q` matches digest and current and previous tags. Sort `tag` uses the first current tag, else the most recently seen previous tag.
 	//
 	// Corresponds with GET /images (the `ListImages` operationId).
 	ListImages(ctx context.Context, params *ListImagesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -4224,7 +4270,7 @@ func (c *Client) GetDashboard(ctx context.Context, reqEditors ...RequestEditorFn
 
 // ListImages Container images, aggregated by digest
 //
-// `q` matches digest and repo tags.
+// `q` matches digest and current and previous tags. Sort `tag` uses the first current tag, else the most recently seen previous tag.
 //
 // Corresponds with GET /images (the `ListImages` operationId).
 func (c *Client) ListImages(ctx context.Context, params *ListImagesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -6214,6 +6260,30 @@ func NewListComponentsRequest(server string, params *ListComponentsParams) (*htt
 		if params.Origin != nil {
 
 			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "origin", *params.Origin, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Installed != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "installed", *params.Installed, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "boolean", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Running != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "running", *params.Running, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "boolean", Format: ""}); err != nil {
 				return nil, err
 			} else {
 				for _, qp := range strings.Split(queryFrag, "&") {
@@ -8959,7 +9029,7 @@ type ClientWithResponsesInterface interface {
 
 	// ListImagesWithResponse Container images, aggregated by digest
 	//
-	// `q` matches digest and repo tags.
+	// `q` matches digest and current and previous tags. Sort `tag` uses the first current tag, else the most recently seen previous tag.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -13369,7 +13439,7 @@ func (c *ClientWithResponses) GetDashboardWithResponse(ctx context.Context, reqE
 
 // ListImagesWithResponse Container images, aggregated by digest
 //
-// `q` matches digest and repo tags.
+// `q` matches digest and current and previous tags. Sort `tag` uses the first current tag, else the most recently seen previous tag.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -18370,6 +18440,32 @@ func (siw *ServerInterfaceWrapper) ListComponents(w http.ResponseWriter, r *http
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "origin"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "origin", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "installed" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "installed", r.URL.Query(), &params.Installed, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "installed"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "installed", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "running" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "running", r.URL.Query(), &params.Running, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "running"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "running", Err: err})
 		}
 		return
 	}

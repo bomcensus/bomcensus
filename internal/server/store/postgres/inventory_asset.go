@@ -546,6 +546,18 @@ func (d *DB) PurgeGone(ctx context.Context, before time.Time) (store.PurgeResult
 			{`DELETE FROM k8s_workloads WHERE gone_at < $1`, &out.Workloads},
 			{`DELETE FROM asset_containers WHERE gone_at < $1`, &out.Containers},
 			{`DELETE FROM assets WHERE gone_at < $1`, &out.Assets},
+			// Images that no container row refers to, gone or not, and that
+			// were not seen since the cutoff. Rows are locked in digest
+			// order like ingest does, and last_seen is re-checked on the
+			// locked row: an ingest that touched the image first keeps it,
+			// one that comes after re-creates the row. image_components and
+			// image_tags go with the delete.
+			{`DELETE FROM images WHERE digest IN (
+				SELECT i.digest FROM images i WHERE i.last_seen < $1
+				AND NOT EXISTS (SELECT 1 FROM asset_containers ct WHERE ct.image_digest = i.digest)
+				AND NOT EXISTS (SELECT 1 FROM asset_containers ct WHERE ct.previous_digest = i.digest)
+				AND NOT EXISTS (SELECT 1 FROM k8s_pod_containers pc WHERE pc.image_digest = i.digest)
+				ORDER BY i.digest FOR UPDATE OF i)`, &out.Images},
 		} {
 			tag, err := d.q.Exec(ctx, s.sql, before.UTC())
 			if err != nil {

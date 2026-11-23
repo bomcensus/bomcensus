@@ -16,12 +16,16 @@ const { data: components, pending, error, refresh } = useLoad('components', () =
 const q = ref('')
 const type = ref('')
 const origin = ref('')
+const installedOnly = ref(false)
+const runningOnly = ref(false)
 
 const rows = computed(() => {
   const needle = q.value.trim().toLowerCase()
   return components.value.filter((c) => {
     if (type.value && c.type !== type.value) return false
     if (origin.value && c.origin !== origin.value) return false
+    if (installedOnly.value && c.assetCount === 0) return false
+    if (runningOnly.value && c.runningAssetCount === 0) return false
     if (!needle) return true
     return c.name.toLowerCase().includes(needle) || c.purl.toLowerCase().includes(needle)
   })
@@ -33,6 +37,7 @@ const columns: TableColumn<ComponentSummary>[] = [
   { key: 'type', label: '종류', sortValue: (c) => c.type, hideBelow: 'sm' },
   { key: 'origin', label: '출처', sortValue: (c) => c.origin, hideBelow: 'md' },
   { key: 'installs', label: '설치 자산', align: 'right', sortValue: (c) => c.assetCount },
+  { key: 'running', label: '실행 자산', align: 'right', sortValue: (c) => c.runningAssetCount, hideBelow: 'sm' },
   { key: 'purl', label: 'purl', hideBelow: 'lg', sortValue: (c) => c.purl },
 ]
 
@@ -48,6 +53,12 @@ const originOptions = (Object.keys(originLabel) as ComponentOrigin[]).map((value
       <SearchInput v-model="q" placeholder="이름, purl" />
       <SelectFilter v-model="type" label="종류" :options="typeOptions" />
       <SelectFilter v-model="origin" label="출처" :options="originOptions" />
+      <label class="inline-flex items-center gap-1.5 text-sm">
+        <input v-model="installedOnly" type="checkbox" class="accent-(--accent)" /> 설치된 것만
+      </label>
+      <label class="inline-flex items-center gap-1.5 text-sm">
+        <input v-model="runningOnly" type="checkbox" class="accent-(--accent)" /> 실행 중인 것만
+      </label>
     </FilterBar>
 
     <Panel flush>
@@ -68,6 +79,9 @@ const originOptions = (Object.keys(originLabel) as ComponentOrigin[]).map((value
         <template #cell-type="{ row }">{{ componentTypeLabel[row.type] }}</template>
         <template #cell-origin="{ row }">{{ originLabel[row.origin] }}</template>
         <template #cell-installs="{ row }"><span class="mono whitespace-nowrap">{{ row.assetCount }}</span></template>
+        <template #cell-running="{ row }">
+          <span class="mono whitespace-nowrap" :class="row.runningAssetCount ? '' : 'text-ink-3'">{{ row.runningAssetCount }}</span>
+        </template>
         <template #cell-purl="{ row }"><span class="mono break-all text-xs text-ink-2">{{ row.purl }}</span></template>
       </DataTable>
     </Panel>

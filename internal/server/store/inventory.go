@@ -109,9 +109,11 @@ type ContainerIngest interface {
 	ReplaceContainers(ctx context.Context, assetID string, cs []ContainerObservation, opts ReplaceOptions) error
 	// SetContainerCoverage records how much of one container was collected.
 	SetContainerCoverage(ctx context.Context, assetID, name string, coverage Coverage, reason string) error
-	// UpsertImages records images seen on hosts or clusters. Repo tags are
-	// merged with the stored ones.
-	UpsertImages(ctx context.Context, images []ImageObservation, at time.Time) error
+	// UpsertImages records the images src observed at opts.At. Their repo
+	// tags become the tag set of src: a tag src listed before and does not
+	// list now stops being current, unless opts.KeepMissing is set. An empty
+	// images still replaces the tag set.
+	UpsertImages(ctx context.Context, src ImageSource, images []ImageObservation, opts ReplaceOptions) error
 }
 
 // ProcessIngest records running processes.
@@ -232,7 +234,8 @@ type InventoryQuery interface {
 // InventoryRetention deletes old inventory data.
 type InventoryRetention interface {
 	// PurgeGone deletes assets, containers, workloads and pods that have been
-	// gone since before t.
+	// gone since before t, then the images that no container or pod
+	// container refers to and that were last seen before t.
 	PurgeGone(ctx context.Context, before time.Time) (PurgeResult, error)
 	// DeleteProcessEventsBefore removes process events older than t.
 	DeleteProcessEventsBefore(ctx context.Context, t time.Time) (int64, error)
@@ -289,4 +292,5 @@ type PurgeResult struct {
 	Containers int64
 	Workloads  int64
 	Pods       int64
+	Images     int64
 }

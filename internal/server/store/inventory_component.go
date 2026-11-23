@@ -157,6 +157,9 @@ type AssetComponentFilter struct {
 type ComponentRow struct {
 	Component
 	Assets int
+	// RunningAssets counts the assets on which a running process executes
+	// or maps the component now.
+	RunningAssets int
 }
 
 // ComponentFilter narrows ListComponents. Zero fields do not filter.
@@ -167,6 +170,8 @@ type ComponentFilter struct {
 	Source ComponentSource
 	// InstalledOnly drops components that are installed nowhere now.
 	InstalledOnly bool
+	// RunningOnly drops components that no running process uses now.
+	RunningOnly bool
 	// Q matches name or purl.
 	Q    string
 	Sort string

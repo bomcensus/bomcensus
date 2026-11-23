@@ -8,10 +8,12 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/url"
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -171,8 +173,9 @@ func seed(t *testing.T) *fixture {
 		{Name: "nginx", ImageRef: "nginx:1.27", ImageDigest: digestNginx, Runtime: store.RuntimeDocker, Instances: 1,
 			Coverage: store.CoverageFull},
 	}, store.ReplaceOptions{At: t0}))
-	must(t, db.UpsertImages(ctx, []store.ImageObservation{{Digest: digestNginx, RepoTags: []string{"nginx:1.27"},
-		OS: "linux", Arch: "amd64", Size: 1000}}, t0))
+	must(t, db.UpsertImages(ctx, store.ImageSource{Kind: store.ImageSourceAsset, ID: f.web},
+		[]store.ImageObservation{{Digest: digestNginx, RepoTags: []string{"nginx:1.27", "nginx:latest"},
+			OS: "linux", Arch: "amd64", Size: 1000}}, store.ReplaceOptions{At: t0}))
 	_, err = db.PutImageContent(ctx, store.ImageContent{Digest: digestNginx, Coverage: store.CoverageFull, CollectedAt: t0,
 		Packages: []store.ComponentObservation{deb("nginx", "1.27.0"), deb("libc6", "2.39")}})
 	must(t, err)
@@ -458,6 +461,19 @@ func TestComponents(t *testing.T) {
 		t.Fatalf("components: %+v", cl.Items)
 	}
 	openssl := cl.Items[0].Id
+	if cl.Items[0].RunningAssetCount != 0 {
+		t.Fatalf("openssl running: %+v", cl.Items[0])
+	}
+	r, err = h.ListComponents(ctx, gen.ListComponentsRequestObject{Params: gen.ListComponentsParams{Running: ptr(true)}})
+	must(t, err)
+	if rl := r.(gen.ListComponents200JSONResponse); rl.Total != 1 || rl.Items[0].Name != "tool" || rl.Items[0].RunningAssetCount != 1 {
+		t.Fatalf("running components: %+v", rl.Items)
+	}
+	r, err = h.ListComponents(ctx, gen.ListComponentsRequestObject{Params: gen.ListComponentsParams{Installed: ptr(true)}})
+	must(t, err)
+	if il := r.(gen.ListComponents200JSONResponse); il.Total != 5 {
+		t.Fatalf("installed components: %+v", il.Items)
+	}
 
 	g, err := h.GetComponent(ctx, gen.GetComponentRequestObject{Id: openssl})
 	must(t, err)
@@ -600,6 +616,40 @@ func TestImages(t *testing.T) {
 	}
 	if u := img.Uses[0].Asset; u.Group != "prod" || u.ContainerCount != 1 || u.Images == nil || len(*u.Images) != 1 {
 		t.Fatalf("image use asset: %+v", u)
+	}
+	if !reflect.DeepEqual(img.CurrentTags, gen.CurrentImageTags{"nginx:1.27", "nginx:latest"}) || len(img.PreviousTags) != 0 {
+		t.Fatalf("tags: %+v %+v", img.CurrentTags, img.PreviousTags)
+	}
+
+	// nginx:latest moves away from the digest on the next full listing.
+	t1 := t0.Add(time.Hour)
+	must(t, f.db.UpsertImages(ctx, store.ImageSource{Kind: store.ImageSourceAsset, ID: f.web},
+		[]store.ImageObservation{{Digest: digestNginx, RepoTags: []string{"nginx:1.27"}}}, store.ReplaceOptions{At: t1}))
+	d, err = h.GetImage(ctx, gen.GetImageRequestObject{Digest: digestNginx})
+	must(t, err)
+	img = d.(gen.GetImage200JSONResponse)
+	if !reflect.DeepEqual(img.CurrentTags, gen.CurrentImageTags{"nginx:1.27"}) ||
+		!reflect.DeepEqual(img.PreviousTags, gen.PreviousImageTags{{Tag: "nginx:latest", LastSeen: t0}}) {
+		t.Fatalf("tags after move: %+v %+v", img.CurrentTags, img.PreviousTags)
+	}
+	raw, err := json.Marshal(img)
+	must(t, err)
+	if !strings.Contains(string(raw), `"currentTags":["nginx:1.27"]`) ||
+		!strings.Contains(string(raw), `"previousTags":[{"lastSeen":"`+t0.Format(time.RFC3339)+`","tag":"nginx:latest"}]`) {
+		t.Fatalf("image json: %s", raw)
+	}
+	r, err = h.ListImages(ctx, gen.ListImagesRequestObject{Params: gen.ListImagesParams{Q: ptr("latest")}})
+	must(t, err)
+	il = r.(gen.ListImages200JSONResponse)
+	if il.Total != 1 || il.Items[0].Digest != digestNginx || len(il.Items[0].PreviousTags) != 1 || il.Items[0].CurrentTags == nil {
+		t.Fatalf("q on previous tag: %+v", il.Items)
+	}
+	// The cluster image has no tags; it sorts before nginx:1.27.
+	r, err = h.ListImages(ctx, gen.ListImagesRequestObject{Params: gen.ListImagesParams{Sort: ptr(gen.ListImagesParamsSortTag)}})
+	must(t, err)
+	il = r.(gen.ListImages200JSONResponse)
+	if il.Total != 2 || il.Items[1].Digest != digestNginx || len(il.Items[0].CurrentTags) != 0 || il.Items[0].PreviousTags == nil {
+		t.Fatalf("sort by tag: %+v", il.Items)
 	}
 	_, err = h.GetImage(ctx, gen.GetImageRequestObject{Digest: "sha256:abc"})
 	wantStatus(t, "bad digest", err, http.StatusBadRequest)

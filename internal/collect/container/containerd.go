@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"runtime"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -72,6 +73,8 @@ type cdRoot struct {
 	snapIDs map[string]map[string]string
 	// platforms caches image details by target digest.
 	platforms map[string]imageDetails
+	// chains caches the top chain ids of an image target.
+	chains map[string]imageChains
 }
 
 type cdMeta struct {
@@ -83,6 +86,8 @@ type cdNamespace struct {
 	containers []cdContainer
 	// snapshots maps snapshotter → snapshot key → backend name.
 	snapshots map[string]map[string]string
+	// parents maps snapshotter → snapshot key → parent snapshot key.
+	parents map[string]map[string]string
 }
 
 type cdContainer struct {
@@ -186,7 +191,9 @@ func (c *collector) readContainerd(r *cdRoot) {
 }
 
 // readMeta reads the parts of containerd's metadata database the inventory
-// needs. Layout: v1/<namespace>/{images,containers,snapshots}.
+// needs. Layout: v1/<namespace>/{images,containers,snapshots}. A snapshot is
+// v1/<namespace>/snapshots/<snapshotter>/<key> with "name" (the backend
+// name) and "parent" (the key of the parent snapshot).
 func (c *collector) readMeta(logical string) (*cdMeta, error) {
 	db, err := openBoltCopy(c.env.Path(logical))
 	if err != nil {
@@ -202,7 +209,11 @@ func (c *collector) readMeta(logical string) (*cdMeta, error) {
 		}
 		return v1.ForEachBucket(func(name []byte) error {
 			nsb := v1.Bucket(name)
-			ns := &cdNamespace{images: map[string]string{}, snapshots: map[string]map[string]string{}}
+			ns := &cdNamespace{
+				images:    map[string]string{},
+				snapshots: map[string]map[string]string{},
+				parents:   map[string]map[string]string{},
+			}
 			meta.namespaces[string(name)] = ns
 
 			if ib := nsb.Bucket([]byte("images")); ib != nil {
@@ -229,15 +240,20 @@ func (c *collector) readMeta(logical string) (*cdMeta, error) {
 			}
 			if sb := nsb.Bucket([]byte("snapshots")); sb != nil {
 				_ = sb.ForEachBucket(func(sn []byte) error {
-					keys := map[string]string{}
+					keys, parents := map[string]string{}, map[string]string{}
 					snb := sb.Bucket(sn)
 					_ = snb.ForEachBucket(func(k []byte) error {
-						if n := bucketString(snb.Bucket(k), "name"); n != "" {
+						kb := snb.Bucket(k)
+						if n := bucketString(kb, "name"); n != "" {
 							keys[string(k)] = n
+						}
+						if p := bucketString(kb, "parent"); p != "" {
+							parents[string(k)] = p
 						}
 						return nil
 					})
 					ns.snapshots[string(sn)] = keys
+					ns.parents[string(sn)] = parents
 					return nil
 				})
 			}
@@ -301,10 +317,7 @@ func (c *collector) containerdContainers(r *cdRoot) {
 				Runtime:  RuntimeContainerd,
 				ImageRef: normalizeRef(mc.image),
 			}
-			ct.ImageDigest = ns.images[mc.image]
-			if ct.ImageDigest == "" && ct.ImageRef != mc.image {
-				ct.ImageDigest = ns.images[ct.ImageRef]
-			}
+			ct.ImageDigest, ct.Reason = c.containerImage(r, ns, mc, ct.ImageRef)
 			c.taskState(r, nsName, &ct)
 			if mc.labels[labelCRIKind] != "" {
 				c.criStatus(r, &ct)
@@ -318,6 +331,96 @@ func (c *collector) containerdContainers(r *cdRoot) {
 			c.containers = append(c.containers, ct)
 		}
 	}
+}
+
+// unverified starts the reason given for a container whose image digest is
+// left empty.
+const unverified = "image digest could not be verified: "
+
+// containerImage returns the digest of the image a container runs, or an
+// empty digest and the reason.
+//
+// The container record names its image, and the image table maps the name to
+// the image's current target. When the name was pulled again after the
+// container was created, it points at an image the container does not run,
+// and that image would be credited with the container's root. So the name is
+// checked against the container's snapshot: containerd prepares it on top of
+// the committed snapshot of the image's top layer, whose key is the chain id
+// of the image's layers (client.WithNewSnapshot; WithRemappedSnapshot puts
+// one more committed snapshot in between). The parent is recorded in the
+// metadata database whatever the snapshotter is.
+//
+// When the named image does not match, another image of the namespace that
+// does is used: CRI keeps "repo@sha256:…" and "sha256:<config>" names, so the
+// image is often still there under another name. When nothing matches the
+// digest stays empty, and the probe then reads only the writable layer and
+// credits no image. This includes the cases where a match can be neither
+// shown nor ruled out: a container without a snapshot, and images whose
+// manifest or config is not in the content store.
+func (c *collector) containerImage(r *cdRoot, ns *cdNamespace, mc cdContainer, ref string) (digest, reason string) {
+	named := ns.images[mc.image]
+	if named == "" && ref != mc.image {
+		named = ns.images[ref]
+	}
+	top, why := snapshotParent(ns, mc)
+	if why != "" {
+		return "", unverified + why
+	}
+	readable := false
+	if named != "" {
+		ch := c.imageChains(r, named)
+		if slices.Contains(ch.tops, top) {
+			return named, ""
+		}
+		readable = ch.readable
+	}
+	targets := map[string]bool{}
+	for _, t := range ns.images {
+		if t != named {
+			targets[t] = true
+		}
+	}
+	// Images with the same top chain id have the same root file system; the
+	// lowest digest is taken so that the result is stable. Every image
+	// without layers has the empty top, so for those only the named image
+	// is taken.
+	if top == "" {
+		clear(targets)
+	}
+	for _, t := range sortedKeys(targets) {
+		if c.done() {
+			return "", unverified + "collection interrupted"
+		}
+		if slices.Contains(c.imageChains(r, t).tops, top) {
+			return t, ""
+		}
+	}
+	switch {
+	case named == "":
+		return "", unverified + "the image of the container is not in the image store"
+	case !readable:
+		return "", unverified + "the image config of " + named + " could not be read"
+	}
+	return "", unverified + "the container's layers are not those of " + named + " or of any other image"
+}
+
+// snapshotParent returns the parent of a container's snapshot: the chain id
+// of the top layer of its image, or "" for an image without layers. When the
+// parent cannot be found it returns why.
+func snapshotParent(ns *cdNamespace, mc cdContainer) (top, why string) {
+	if _, ok := ns.snapshots[mc.snapshotter][mc.snapshotKey]; !ok || mc.snapshotKey == "" {
+		return "", "the container has no snapshot"
+	}
+	parents := ns.parents[mc.snapshotter]
+	p := parents[mc.snapshotKey]
+	if p != "" && !validDigest(p) {
+		// A remapped snapshot for user namespaces ("<chain id>-<uid>-<gid>"),
+		// committed on top of the image's snapshot.
+		if p = parents[p]; p == "" {
+			return "", "the remapped snapshot of the container has no parent"
+		}
+	}
+	return p, ""
 }
 
 // containerName is "<pod namespace>/<pod>/<container>" for Kubernetes
@@ -578,13 +681,7 @@ func (c *collector) imageDetails(r *cdRoot, target string) imageDetails {
 func (c *collector) pickManifest(r *cdRoot, list []ociDescriptor) string {
 	first := ""
 	for _, m := range list {
-		if !validDigest(m.Digest) {
-			continue
-		}
-		if m.Platform != nil && (m.Platform.OS == "unknown" || m.Platform.Architecture == "unknown") {
-			continue // attestation manifests
-		}
-		if !c.exists(c.blobPath(r, m.Digest)) {
+		if !c.usableManifest(r, m) {
 			continue
 		}
 		if m.Platform != nil && m.Platform.OS == "linux" && m.Platform.Architecture == runtime.GOARCH {
@@ -595,6 +692,101 @@ func (c *collector) pickManifest(r *cdRoot, list []ociDescriptor) string {
 		}
 	}
 	return first
+}
+
+// usableManifest skips invalid digests, attestation manifests and the
+// platforms that were not pulled.
+func (c *collector) usableManifest(r *cdRoot, m ociDescriptor) bool {
+	if !validDigest(m.Digest) {
+		return false
+	}
+	if m.Platform != nil && (m.Platform.OS == "unknown" || m.Platform.Architecture == "unknown") {
+		return false
+	}
+	return c.exists(c.blobPath(r, m.Digest))
+}
+
+// maxChainBlobs bounds the blobs read for the chain ids of one image target.
+const maxChainBlobs = 64
+
+// imageChains holds the top chain id of every platform of an image target
+// whose config could be read.
+type imageChains struct {
+	tops     []string
+	readable bool
+}
+
+// imageChains follows an image target to the config of every platform that
+// is in the content store. All of them are taken, not only the host
+// platform's: a container may run another platform, and an index may have
+// several platforms pulled.
+func (c *collector) imageChains(r *cdRoot, target string) imageChains {
+	if ch, ok := r.chains[target]; ok {
+		return ch
+	}
+	if r.chains == nil {
+		r.chains = map[string]imageChains{}
+	}
+	var ch imageChains
+	queue, reads := []string{target}, 0
+	for range 3 { // index → (nested index) → manifest
+		var next []string
+		for _, d := range queue {
+			if reads >= maxChainBlobs || c.done() {
+				break
+			}
+			reads++
+			data, err := c.readBlob(r, d)
+			if err != nil {
+				continue
+			}
+			var blob ociBlob
+			if json.Unmarshal(data, &blob) != nil {
+				continue
+			}
+			if blob.Config == nil {
+				for _, m := range blob.Manifests {
+					if c.usableManifest(r, m) {
+						next = append(next, m.Digest)
+					}
+				}
+				continue
+			}
+			reads++
+			if top, ok := c.configChain(r, blob.Config.Digest); ok {
+				ch.tops = append(ch.tops, top)
+				ch.readable = true
+			}
+		}
+		queue = next
+	}
+	r.chains[target] = ch
+	return ch
+}
+
+// configChain returns the chain id of the top layer of an image config, ""
+// for an image without layers.
+func (c *collector) configChain(r *cdRoot, digest string) (string, bool) {
+	data, err := c.readBlob(r, digest)
+	if err != nil {
+		return "", false
+	}
+	var cfg struct {
+		RootFS struct {
+			DiffIDs []string `json:"diff_ids"`
+		} `json:"rootfs"`
+	}
+	if json.Unmarshal(data, &cfg) != nil {
+		return "", false
+	}
+	if len(cfg.RootFS.DiffIDs) == 0 {
+		return "", true
+	}
+	ids := chainIDs(cfg.RootFS.DiffIDs)
+	if ids == nil {
+		return "", false
+	}
+	return ids[len(ids)-1], true
 }
 
 func (c *collector) blobPath(r *cdRoot, digest string) string {

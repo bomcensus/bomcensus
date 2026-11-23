@@ -364,7 +364,8 @@ func (d *DB) PutImageContent(ctx context.Context, c store.ImageContent) (bool, e
 	err := d.ivAtomic(ctx, func(d *DB) error {
 		if _, err := d.q.Exec(ctx, `
 			INSERT INTO images (digest, first_seen, last_seen) VALUES ($1, $2, $2)
-			ON CONFLICT (digest) DO NOTHING`, c.Digest, at); err != nil {
+			ON CONFLICT (digest) DO UPDATE SET last_seen = GREATEST(images.last_seen, EXCLUDED.last_seen)`,
+			c.Digest, at); err != nil {
 			return ivErr(op, err)
 		}
 		var known *time.Time
@@ -603,6 +604,21 @@ const ivInstalledAssets = `(SELECT count(*) FROM (
 		JOIN assets aa ON aa.id = ct.asset_id AND aa.gone_at IS NULL
 		WHERE ic.component_id = c.id) s)`
 
+// ivRunningAssets counts the assets where a running process uses component
+// c.id now: an installation marked in use, or an in-use component of the
+// image of a running container. The in-use marks of a container stay when
+// it stops, so a container's rows count only while it runs.
+const ivRunningAssets = `(SELECT count(*) FROM (
+		SELECT ac.asset_id FROM asset_components ac JOIN assets aa ON aa.id = ac.asset_id
+		WHERE ac.component_id = c.id AND ac.in_use AND ac.removed_at IS NULL AND aa.gone_at IS NULL
+		  AND (ac.container = '' OR EXISTS (SELECT 1 FROM asset_containers ct
+			WHERE ct.asset_id = ac.asset_id AND ct.name = ac.container AND ct.gone_at IS NULL AND ct.instances > 0))
+		UNION
+		SELECT ct.asset_id FROM image_components ic
+		JOIN asset_containers ct ON ct.image_digest = ic.digest AND ct.gone_at IS NULL AND ct.instances > 0
+		JOIN assets aa ON aa.id = ct.asset_id AND aa.gone_at IS NULL
+		WHERE ic.component_id = c.id AND ic.in_use) s)`
+
 // ListComponents implements store.InventoryQuery.
 func (d *DB) ListComponents(ctx context.Context, f store.ComponentFilter, p store.Page) ([]store.ComponentRow, int, error) {
 	const op = "list components"
@@ -613,6 +629,7 @@ func (d *DB) ListComponents(ctx context.Context, f store.ComponentFilter, p stor
 		"origin":  "c.origin",
 		"purl":    "c.purl",
 		"assets":  "c.assets",
+		"running": "c.running",
 	}, "c.name, c.version, c.id")
 	if err != nil {
 		return nil, 0, err
@@ -632,14 +649,17 @@ func (d *DB) ListComponents(ctx context.Context, f store.ComponentFilter, p stor
 	if f.InstalledOnly {
 		q.where("c.assets > 0")
 	}
+	if f.RunningOnly {
+		q.where("c.running > 0")
+	}
 	if f.Q != "" {
 		q.where("(c.name ILIKE %[1]s OR c.purl ILIKE %[1]s)", ivLike(f.Q))
 	}
-	from := `FROM (SELECT c.*, ` + ivInstalledAssets + ` AS assets FROM components c) c` + q.whereSQL()
+	from := `FROM (SELECT c.*, ` + ivInstalledAssets + ` AS assets, ` + ivRunningAssets + ` AS running FROM components c) c` + q.whereSQL()
 	var out []store.ComponentRow
-	total, err := ivPage(ctx, d, op, q, ivComponentCols+", c.assets", from, order, p, func(rows pgx.Rows) error {
+	total, err := ivPage(ctx, d, op, q, ivComponentCols+", c.assets, c.running", from, order, p, func(rows pgx.Rows) error {
 		var r store.ComponentRow
-		if err := rows.Scan(append(ivComponentDest(&r.Component), &r.Assets)...); err != nil {
+		if err := rows.Scan(append(ivComponentDest(&r.Component), &r.Assets, &r.RunningAssets)...); err != nil {
 			return err
 		}
 		out = append(out, r)
@@ -655,8 +675,8 @@ func (d *DB) GetComponent(ctx context.Context, id string) (store.ComponentRow, e
 	if !ivValidID(id) {
 		return r, ivNotFound(op)
 	}
-	err := d.q.QueryRow(ctx, `SELECT `+ivComponentCols+`, `+ivInstalledAssets+` FROM components c WHERE c.id = $1`, id).
-		Scan(append(ivComponentDest(&r.Component), &r.Assets)...)
+	err := d.q.QueryRow(ctx, `SELECT `+ivComponentCols+`, `+ivInstalledAssets+`, `+ivRunningAssets+` FROM components c WHERE c.id = $1`, id).
+		Scan(append(ivComponentDest(&r.Component), &r.Assets, &r.RunningAssets)...)
 	return r, ivErr(op, err)
 }
 

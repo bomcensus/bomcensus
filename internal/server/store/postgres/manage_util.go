@@ -52,10 +52,11 @@ func mgErr(op string, err error) error {
 }
 
 // mgDeleteErr is mgErr for deletes, where a foreign key violation means the
-// row is still referenced.
+// row is still referenced. PostgreSQL 18 reports ON DELETE RESTRICT as
+// restrict_violation (23001), earlier versions as foreign_key_violation.
 func mgDeleteErr(op string, err error) error {
 	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) && pgErr.Code == "23503" {
+	if errors.As(err, &pgErr) && (pgErr.Code == "23503" || pgErr.Code == "23001") {
 		return fmt.Errorf("postgres: %s: %w", op, store.ErrInUse)
 	}
 	return mgErr(op, err)

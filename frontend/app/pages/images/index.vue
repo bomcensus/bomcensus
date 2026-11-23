@@ -21,12 +21,12 @@ const rows = computed(() => {
   return images.value.filter((i) => {
     if (inUseOnly.value && i.usage.containers === 0) return false
     if (!needle) return true
-    return [i.digest, ...i.repoTags].some((v) => v.toLowerCase().includes(needle))
+    return [i.digest, ...i.currentTags, ...i.previousTags.map((t) => t.tag)].some((v) => v.toLowerCase().includes(needle))
   })
 })
 
 const columns: TableColumn<ContainerImage>[] = [
-  { key: 'tag', label: 'tag', sortValue: (i) => i.repoTags[0] ?? '' },
+  { key: 'tag', label: 'tag', sortValue: (i) => i.currentTags[0] ?? i.previousTags[0]?.tag ?? '' },
   { key: 'digest', label: 'digest', sortValue: (i) => i.digest, hideBelow: 'sm' },
   { key: 'os', label: 'OS', sortValue: (i) => i.os ?? '', hideBelow: 'lg' },
   { key: 'arch', label: '아키텍처', sortValue: (i) => i.arch, hideBelow: 'lg' },
@@ -59,10 +59,20 @@ const columns: TableColumn<ContainerImage>[] = [
         :loading="pending"
       >
         <template #cell-tag="{ row }">
-          <NuxtLink :to="`/images/${encodeURIComponent(row.digest)}`" class="mono font-medium hover:underline">
-            {{ row.repoTags[0] ?? 'tag 없음' }}
-          </NuxtLink>
-          <span v-if="row.repoTags.length > 1" class="whitespace-nowrap text-xs text-ink-3"> 외 {{ row.repoTags.length - 1 }}</span>
+          <template v-if="row.currentTags.length">
+            <NuxtLink :to="`/images/${encodeURIComponent(row.digest)}`" class="mono font-medium hover:underline">
+              {{ row.currentTags[0] }}
+            </NuxtLink>
+            <span v-if="row.currentTags.length > 1" class="whitespace-nowrap text-xs text-ink-3"> 외 {{ row.currentTags.length - 1 }}</span>
+            <span v-if="row.previousTags.length" class="whitespace-nowrap text-xs text-ink-3"> · 이전 {{ row.previousTags.length }}</span>
+          </template>
+          <template v-else-if="row.previousTags.length">
+            <NuxtLink :to="`/images/${encodeURIComponent(row.digest)}`" class="mono text-ink-3 hover:underline">
+              {{ row.previousTags[0]?.tag }}
+            </NuxtLink>
+            <span class="whitespace-nowrap text-xs text-ink-3"> 이전<template v-if="row.previousTags.length > 1"> 외 {{ row.previousTags.length - 1 }}</template></span>
+          </template>
+          <NuxtLink v-else :to="`/images/${encodeURIComponent(row.digest)}`" class="mono font-medium hover:underline">tag 없음</NuxtLink>
         </template>
         <template #cell-digest="{ row }"><span class="mono whitespace-nowrap">{{ shortHash(row.digest) }}</span></template>
         <template #cell-os="{ row }">{{ row.os ?? '—' }}</template>

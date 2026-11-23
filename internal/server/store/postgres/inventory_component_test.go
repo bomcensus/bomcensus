@@ -160,6 +160,31 @@ func TestComponentsDeduplicatedAcrossAssets(t *testing.T) {
 		t.Fatalf("merged observation: %+v", placed)
 	}
 
+	if mav[0].RunningAssets != 1 || comps[0].RunningAssets != 0 {
+		t.Fatalf("running assets: %d %d", mav[0].RunningAssets, comps[0].RunningAssets)
+	}
+	running, total, err := db.ListComponents(ctx, store.ComponentFilter{RunningOnly: true, Sort: "-running"}, store.Page{})
+	ivMust(t, err)
+	if total != 1 || running[0].ID != mav[0].ID {
+		t.Fatalf("running only: %+v", running)
+	}
+
+	// A component that is no longer installed anywhere is dropped by
+	// InstalledOnly and no longer counts as running.
+	_, err = db.ReplaceAssetComponents(ctx, store.ComponentScope{AssetID: a1, Source: store.SourceArtifacts},
+		nil, store.ReplaceOptions{At: ivT0.Add(time.Hour)})
+	ivMust(t, err)
+	_, total, err = db.ListComponents(ctx, store.ComponentFilter{}, store.Page{})
+	ivMust(t, err)
+	installed, installedTotal, err := db.ListComponents(ctx, store.ComponentFilter{InstalledOnly: true}, store.Page{})
+	ivMust(t, err)
+	if total != 3 || installedTotal != 2 {
+		t.Fatalf("installed only: all %d, installed %d %+v", total, installedTotal, installed)
+	}
+	if _, total, err = db.ListComponents(ctx, store.ComponentFilter{RunningOnly: true}, store.Page{}); err != nil || total != 0 {
+		t.Fatalf("running after removal: %d %v", total, err)
+	}
+
 	if _, _, err := db.ListComponents(ctx, store.ComponentFilter{Sort: "bogus"}, store.Page{}); !errors.Is(err, store.ErrInvalid) {
 		t.Fatalf("bad sort: %v", err)
 	}
@@ -185,6 +210,8 @@ func TestImageContentSharedByDigest(t *testing.T) {
 		ivMust(t, db.ReplaceContainers(ctx, h, []store.ContainerObservation{{
 			Name: "nginx", ImageRef: "nginx:1.25-alpine", ImageDigest: digest, Runtime: store.RuntimeDocker, Instances: 1,
 		}}, store.ReplaceOptions{At: ivT0}))
+		ivMust(t, db.UpsertImages(ctx, store.ImageSource{Kind: store.ImageSourceAsset, ID: h},
+			[]store.ImageObservation{{Digest: digest, RepoTags: []string{"nginx:1.25-alpine"}}}, store.ReplaceOptions{At: ivT0}))
 	}
 	known, err := db.KnownImageContent(ctx, []string{digest})
 	ivMust(t, err)
@@ -194,7 +221,7 @@ func TestImageContentSharedByDigest(t *testing.T) {
 	imgs, _, err := db.ListImages(ctx, store.ImageFilter{}, store.Page{})
 	ivMust(t, err)
 	if len(imgs) != 1 || imgs[0].ContentKnown() || imgs[0].Assets != 2 || imgs[0].Instances != 2 ||
-		len(imgs[0].RepoTags) != 1 || imgs[0].RepoTags[0] != "nginx:1.25-alpine" {
+		len(imgs[0].Tags) != 1 || imgs[0].Tags[0] != "nginx:1.25-alpine" {
 		t.Fatalf("image before content: %+v", imgs)
 	}
 
@@ -298,5 +325,44 @@ func TestReplaceAssetComponentsLarge(t *testing.T) {
 	ivMust(t, err)
 	if total != 2990 || len(page) != 10 || page[0].Component.Name != "pkg2979" {
 		t.Fatalf("page: %d %d %s", total, len(page), page[0].Component.Name)
+	}
+}
+
+// A component counts as running only through containers that run: in-use
+// marks are kept per digest and stay on a container's rows after it stops.
+func TestRunningAssetsNeedRunningContainer(t *testing.T) {
+	db := newTestDB(t)
+	ctx := ivCtx(t)
+	up, down := ivHost(t, db, "up"), ivHost(t, db, "down")
+	const digest = "sha256:3333"
+	musl := store.Component{Type: "apk", Name: "musl", Version: "1.2.4-r2", Distro: "alpine-3.19", PURL: "pkg:apk/alpine/musl@1.2.4-r2"}
+	tool := store.Component{Type: "generic", Name: "tool", Version: "1.0", PURL: "pkg:generic/tool@1.0"}
+	for _, h := range []struct {
+		id        string
+		instances int
+	}{{up, 1}, {down, 0}} {
+		ivMust(t, db.ReplaceContainers(ctx, h.id, []store.ContainerObservation{{
+			Name: "app", ImageRef: "app:1", ImageDigest: digest, Runtime: store.RuntimeDocker, Instances: h.instances,
+		}}, store.ReplaceOptions{At: ivT0}))
+		_, err := db.ReplaceAssetComponents(ctx, store.ComponentScope{AssetID: h.id, Container: "app", Source: store.SourceArtifacts,
+			Layer: store.LayerRuntime}, []store.ComponentObservation{{Component: tool, InUse: true}}, store.ReplaceOptions{At: ivT0})
+		ivMust(t, err)
+	}
+	obs := ivPkgObs(musl)
+	obs[0].InUse = true
+	_, err := db.PutImageContent(ctx, store.ImageContent{Digest: digest, Coverage: store.CoverageFull, CollectedAt: ivT0, Packages: obs})
+	ivMust(t, err)
+
+	for _, name := range []string{"musl", "tool"} {
+		rows, _, err := db.ListComponents(ctx, store.ComponentFilter{Q: name}, store.Page{})
+		ivMust(t, err)
+		if len(rows) != 1 || rows[0].Assets != 2 || rows[0].RunningAssets != 1 {
+			t.Fatalf("%s: %+v", name, rows)
+		}
+		one, err := db.GetComponent(ctx, rows[0].ID)
+		ivMust(t, err)
+		if one.RunningAssets != 1 {
+			t.Fatalf("%s detail: running %d", name, one.RunningAssets)
+		}
 	}
 }

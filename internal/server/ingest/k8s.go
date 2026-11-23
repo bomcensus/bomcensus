@@ -419,7 +419,8 @@ func (s *Service) IngestK8sInventory(ctx context.Context, sender Sender, cluster
 			}
 			return fmt.Errorf("ingest: replace cluster inventory: %w", err)
 		}
-		if err := tx.UpsertImages(ctx, images, at); err != nil {
+		src := store.ImageSource{Kind: store.ImageSourceCluster, ID: clusterID}
+		if err := tx.UpsertImages(ctx, src, images, store.ReplaceOptions{At: at}); err != nil {
 			return fmt.Errorf("ingest: upsert images: %w", err)
 		}
 		s.log.Debug("cluster inventory stored", "cluster", clusterID, "workloads", len(res.Workloads), "gone", res.GoneWorkloads)

@@ -7,6 +7,7 @@ package postgres
 import (
 	"context"
 	"sort"
+	"strconv"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -108,20 +109,16 @@ func (d *DB) ivReplaceContainers(ctx context.Context, assetIDs []string, rows []
 }
 
 // ivEnsureImages creates an images row for every digest in the container
-// rows js and adds tag-form image references as repo tags.
+// rows js. Tags are recorded by UpsertImages for the source of the
+// observation.
 func (d *DB) ivEnsureImages(ctx context.Context, js string, at time.Time) error {
 	_, err := d.q.Exec(ctx, `
-		INSERT INTO images (digest, repo_tags, first_seen, last_seen)
-		SELECT x.image_digest,
-			COALESCE(array_agg(DISTINCT x.image_ref ORDER BY x.image_ref)
-				FILTER (WHERE x.image_ref <> '' AND strpos(x.image_ref, '@') = 0), '{}'),
-			$2, $2
-		FROM jsonb_to_recordset($1::jsonb) AS x(image_digest text, image_ref text)
+		INSERT INTO images (digest, first_seen, last_seen)
+		SELECT DISTINCT x.image_digest, $2::timestamptz, $2::timestamptz
+		FROM jsonb_to_recordset($1::jsonb) AS x(image_digest text)
 		WHERE x.image_digest <> ''
-		GROUP BY x.image_digest
 		ORDER BY x.image_digest
 		ON CONFLICT (digest) DO UPDATE SET
-			repo_tags = ARRAY(SELECT DISTINCT t FROM unnest(images.repo_tags || EXCLUDED.repo_tags) t ORDER BY t),
 			last_seen = GREATEST(images.last_seen, EXCLUDED.last_seen)`, js, at)
 	return err
 }
@@ -144,7 +141,7 @@ func (d *DB) SetContainerCoverage(ctx context.Context, assetID, name string, cov
 }
 
 // UpsertImages implements store.ContainerIngest.
-func (d *DB) UpsertImages(ctx context.Context, images []store.ImageObservation, at time.Time) error {
+func (d *DB) UpsertImages(ctx context.Context, src store.ImageSource, images []store.ImageObservation, opts store.ReplaceOptions) error {
 	const op = "upsert images"
 	type row struct {
 		Digest   string   `json:"digest"`
@@ -152,6 +149,19 @@ func (d *DB) UpsertImages(ctx context.Context, images []store.ImageObservation, 
 		OS       string   `json:"os"`
 		Arch     string   `json:"arch"`
 		Size     int64    `json:"size"`
+	}
+	// The source row lock orders replaces of the same source.
+	var lock func(d *DB) error
+	switch src.Kind {
+	case store.ImageSourceAsset:
+		lock = func(d *DB) error { return d.ivLockAsset(ctx, op, src.ID) }
+	case store.ImageSourceCluster:
+		lock = func(d *DB) error { return d.ivLockCluster(ctx, op, src.ID) }
+	default:
+		return ivInvalid(op, "unknown image source kind "+strconv.Quote(string(src.Kind)))
+	}
+	if !ivValidID(src.ID) {
+		return ivNotFound(op)
 	}
 	byDigest := map[string]*row{}
 	for _, im := range images {
@@ -163,7 +173,11 @@ func (d *DB) UpsertImages(ctx context.Context, images []store.ImageObservation, 
 			r = &row{Digest: im.Digest}
 			byDigest[im.Digest] = r
 		}
-		r.RepoTags = append(r.RepoTags, im.RepoTags...)
+		for _, t := range im.RepoTags {
+			if t != "" {
+				r.RepoTags = append(r.RepoTags, t)
+			}
+		}
 		if im.OS != "" {
 			r.OS = im.OS
 		}
@@ -173,9 +187,6 @@ func (d *DB) UpsertImages(ctx context.Context, images []store.ImageObservation, 
 		if im.Size > 0 {
 			r.Size = im.Size
 		}
-	}
-	if len(byDigest) == 0 {
-		return nil
 	}
 	rows := make([]row, 0, len(byDigest))
 	for _, r := range byDigest {
@@ -187,18 +198,47 @@ func (d *DB) UpsertImages(ctx context.Context, images []store.ImageObservation, 
 	if err != nil {
 		return err
 	}
-	_, err = d.q.Exec(ctx, `
-		INSERT INTO images (digest, repo_tags, os, arch, size, first_seen, last_seen)
-		SELECT x.digest, x.repo_tags, x.os, x.arch, x.size, $2, $2
-		FROM jsonb_to_recordset($1::jsonb) AS x(digest text, repo_tags text[], os text, arch text, size bigint)
-		ON CONFLICT (digest) DO UPDATE SET
-			repo_tags = ARRAY(SELECT DISTINCT t FROM unnest(images.repo_tags || EXCLUDED.repo_tags) t ORDER BY t),
-			os = COALESCE(NULLIF(EXCLUDED.os, ''), images.os),
-			arch = COALESCE(NULLIF(EXCLUDED.arch, ''), images.arch),
-			size = CASE WHEN EXCLUDED.size > 0 THEN EXCLUDED.size ELSE images.size END,
-			first_seen = LEAST(images.first_seen, EXCLUDED.first_seen),
-			last_seen = GREATEST(images.last_seen, EXCLUDED.last_seen)`, js, ivAt(at))
-	return ivErr(op, err)
+	at := ivAt(opts.At)
+	const obs = `jsonb_to_recordset($1::jsonb) AS x(digest text, repo_tags text[], os text, arch text, size bigint)`
+	return d.ivAtomic(ctx, func(d *DB) error {
+		if err := lock(d); err != nil {
+			return err
+		}
+		if _, err := d.q.Exec(ctx, `
+			INSERT INTO images (digest, os, arch, size, first_seen, last_seen)
+			SELECT x.digest, x.os, x.arch, x.size, $2, $2
+			FROM `+obs+`
+			ORDER BY x.digest
+			ON CONFLICT (digest) DO UPDATE SET
+				os = COALESCE(NULLIF(EXCLUDED.os, ''), images.os),
+				arch = COALESCE(NULLIF(EXCLUDED.arch, ''), images.arch),
+				size = CASE WHEN EXCLUDED.size > 0 THEN EXCLUDED.size ELSE images.size END,
+				first_seen = LEAST(images.first_seen, EXCLUDED.first_seen),
+				last_seen = GREATEST(images.last_seen, EXCLUDED.last_seen)`, js, at); err != nil {
+			return ivErr(op, err)
+		}
+		if _, err := d.q.Exec(ctx, `
+			INSERT INTO image_tags (digest, tag, source_kind, source_id, first_seen, last_seen)
+			SELECT x.digest, t.tag, $2, $3, $4, $4
+			FROM `+obs+` CROSS JOIN LATERAL unnest(x.repo_tags) AS t(tag)
+			ORDER BY x.digest, t.tag
+			ON CONFLICT (digest, tag, source_kind, source_id) DO UPDATE SET
+				last_seen = GREATEST(image_tags.last_seen, EXCLUDED.last_seen),
+				gone_at = NULL`, js, string(src.Kind), src.ID, at); err != nil {
+			return ivErr(op, err)
+		}
+		if opts.KeepMissing {
+			return nil
+		}
+		_, err := d.q.Exec(ctx, `
+			WITH seen AS MATERIALIZED (
+				SELECT x.digest, t.tag FROM `+obs+` CROSS JOIN LATERAL unnest(x.repo_tags) AS t(tag))
+			UPDATE image_tags it SET gone_at = $4
+			WHERE it.source_kind = $2 AND it.source_id = $3 AND it.gone_at IS NULL
+			  AND NOT EXISTS (SELECT 1 FROM seen s WHERE s.digest = it.digest AND s.tag = it.tag)`,
+			js, string(src.Kind), src.ID, at)
+		return ivErr(op, err)
+	})
 }
 
 const ivContainerCols = `ct.name, ct.runtime_id, ct.image_ref, ct.image_digest, ct.runtime, ct.instances,
@@ -240,36 +280,68 @@ func (d *DB) ivContainers(ctx context.Context, cond string, args ...any) ([]stor
 	return out, rows.Err()
 }
 
+// ivTagLive is true for an image_tags row (alias it) that a live source
+// lists in its latest observation.
+const ivTagLive = `(it.gone_at IS NULL AND (
+		(it.source_kind = 'asset' AND EXISTS (SELECT 1 FROM assets a WHERE a.id = it.source_id AND a.gone_at IS NULL))
+		OR (it.source_kind = 'cluster' AND EXISTS (SELECT 1 FROM k8s_clusters k WHERE k.id = it.source_id))))`
+
+// ivImageFrom adds usage by current containers and the current and previous
+// tags to the images rows.
 const ivImageFrom = `FROM (SELECT i.*, COALESCE(u.assets, 0) AS assets, COALESCE(u.containers, 0) AS containers,
-		COALESCE(u.instances, 0) AS instances
+		COALESCE(u.instances, 0) AS instances, COALESCE(tg.tags, '{}') AS tags,
+		COALESCE(tg.prev_tags, '{}') AS prev_tags, COALESCE(tg.prev_seen, '{}') AS prev_seen
 		FROM images i LEFT JOIN (
 			SELECT ct.image_digest, count(DISTINCT ct.asset_id) AS assets, count(*) AS containers,
 				sum(ct.instances) AS instances
 			FROM asset_containers ct JOIN assets a ON a.id = ct.asset_id AND a.gone_at IS NULL
 			WHERE ct.gone_at IS NULL AND ct.image_digest <> ''
-			GROUP BY ct.image_digest) u ON u.image_digest = i.digest) i`
+			GROUP BY ct.image_digest) u ON u.image_digest = i.digest
+		LEFT JOIN LATERAL (
+			SELECT array_agg(s.tag ORDER BY s.tag) FILTER (WHERE s.live) AS tags,
+				array_agg(s.tag ORDER BY s.last_seen DESC, s.tag) FILTER (WHERE NOT s.live) AS prev_tags,
+				array_agg(s.last_seen ORDER BY s.last_seen DESC, s.tag) FILTER (WHERE NOT s.live) AS prev_seen
+			FROM (SELECT it.tag, bool_or(` + ivTagLive + `) AS live, max(it.last_seen) AS last_seen
+				FROM image_tags it WHERE it.digest = i.digest GROUP BY it.tag) s) tg ON true) i`
 
-const ivImageCols = `i.digest, i.repo_tags, i.os, i.arch, i.size, i.first_seen, i.last_seen,
+const ivImageCols = `i.digest, i.tags, i.prev_tags, i.prev_seen, i.os, i.arch, i.size, i.first_seen, i.last_seen,
 	i.content_collected_at, i.content_coverage, i.assets, i.containers, i.instances,
 	(SELECT count(*) FROM image_components ic WHERE ic.digest = i.digest)`
 
-func ivImageDest(r *store.ImageRow) []any {
-	return []any{&r.Digest, &r.RepoTags, &r.OS, &r.Arch, &r.Size, &r.FirstSeen, &r.LastSeen,
-		&r.ContentCollectedAt, &r.ContentCoverage, &r.Assets, &r.Containers, &r.Instances, &r.Components}
+type ivImageScan struct {
+	row      store.ImageRow
+	prevTags []string
+	prevSeen []time.Time
 }
 
-func ivFixImage(r *store.ImageRow) {
+func ivImageDest(r *ivImageScan) []any {
+	return []any{&r.row.Digest, &r.row.Tags, &r.prevTags, &r.prevSeen, &r.row.OS, &r.row.Arch, &r.row.Size,
+		&r.row.FirstSeen, &r.row.LastSeen, &r.row.ContentCollectedAt, &r.row.ContentCoverage,
+		&r.row.Assets, &r.row.Containers, &r.row.Instances, &r.row.Components}
+}
+
+func ivFixImage(s *ivImageScan) store.ImageRow {
+	r := s.row
 	r.FirstSeen = r.FirstSeen.UTC()
 	r.LastSeen = r.LastSeen.UTC()
 	r.ContentCollectedAt = ivUTC(r.ContentCollectedAt)
-	r.RepoTags = ivStrings(r.RepoTags)
+	r.Tags = ivStrings(r.Tags)
+	r.PreviousTags = make([]store.PreviousTag, 0, len(s.prevTags))
+	for i, t := range s.prevTags {
+		p := store.PreviousTag{Tag: t}
+		if i < len(s.prevSeen) {
+			p.LastSeen = s.prevSeen[i].UTC()
+		}
+		r.PreviousTags = append(r.PreviousTags, p)
+	}
+	return r
 }
 
 // ListImages implements store.InventoryQuery.
 func (d *DB) ListImages(ctx context.Context, f store.ImageFilter, p store.Page) ([]store.ImageRow, int, error) {
 	const op = "list images"
 	order, err := ivOrder(op, f.Sort, "tag", map[string]string{
-		"tag":        "COALESCE(i.repo_tags[1], '')",
+		"tag":        "COALESCE(i.tags[1], i.prev_tags[1], '')",
 		"digest":     "i.digest",
 		"os":         "i.os",
 		"arch":       "i.arch",
@@ -294,16 +366,15 @@ func (d *DB) ListImages(ctx context.Context, f store.ImageFilter, p store.Page) 
 		}
 	}
 	if f.Q != "" {
-		q.where("(i.digest ILIKE %[1]s OR array_to_string(i.repo_tags, ' ') ILIKE %[1]s)", ivLike(f.Q))
+		q.where("(i.digest ILIKE %[1]s OR EXISTS (SELECT 1 FROM image_tags it WHERE it.digest = i.digest AND it.tag ILIKE %[1]s))", ivLike(f.Q))
 	}
 	var out []store.ImageRow
 	total, err := ivPage(ctx, d, op, q, ivImageCols, ivImageFrom+q.whereSQL(), order, p, func(rows pgx.Rows) error {
-		var r store.ImageRow
+		var r ivImageScan
 		if err := rows.Scan(ivImageDest(&r)...); err != nil {
 			return err
 		}
-		ivFixImage(&r)
-		out = append(out, r)
+		out = append(out, ivFixImage(&r))
 		return nil
 	})
 	return out, total, err
@@ -313,12 +384,13 @@ func (d *DB) ListImages(ctx context.Context, f store.ImageFilter, p store.Page) 
 func (d *DB) GetImage(ctx context.Context, digest string) (store.ImageDetail, error) {
 	const op = "get image"
 	var out store.ImageDetail
+	var r ivImageScan
 	err := d.q.QueryRow(ctx, `SELECT `+ivImageCols+` `+ivImageFrom+` WHERE i.digest = $1`, digest).
-		Scan(ivImageDest(&out.ImageRow)...)
+		Scan(ivImageDest(&r)...)
 	if err != nil {
 		return out, ivErr(op, err)
 	}
-	ivFixImage(&out.ImageRow)
+	out.ImageRow = ivFixImage(&r)
 	rows, err := d.q.Query(ctx, `
 		SELECT `+ivAssetRowCols+`, `+ivContainerCols+`
 		FROM asset_containers ct JOIN assets a ON a.id = ct.asset_id

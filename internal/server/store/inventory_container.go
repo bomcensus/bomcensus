@@ -62,15 +62,44 @@ type ImageObservation struct {
 	Size     int64
 }
 
+// ImageSourceKind is what observed the tags of an image.
+type ImageSourceKind string
+
+// Image sources.
+const (
+	// ImageSourceAsset is a host asset: its runtime image list and the image
+	// references of its containers.
+	ImageSourceAsset ImageSourceKind = "asset"
+	// ImageSourceCluster is a Kubernetes cluster: the image references of
+	// its pod containers.
+	ImageSourceCluster ImageSourceKind = "cluster"
+)
+
+// ImageSource identifies an observer of image tags.
+type ImageSource struct {
+	Kind ImageSourceKind
+	ID   string
+}
+
+// PreviousTag is a tag that pointed to an image digest and no longer does.
+type PreviousTag struct {
+	Tag      string
+	LastSeen time.Time
+}
+
 // Image is the inventory record of an image digest. Images are not assets.
 type Image struct {
-	Digest    string
-	RepoTags  []string
-	OS        string
-	Arch      string
-	Size      int64
-	FirstSeen time.Time
-	LastSeen  time.Time
+	Digest string
+	// Tags point to the digest now: a live source (an asset or cluster that
+	// is not gone) lists them for the digest in its latest observation.
+	Tags []string
+	// PreviousTags pointed to the digest before, most recently seen first.
+	PreviousTags []PreviousTag
+	OS           string
+	Arch         string
+	Size         int64
+	FirstSeen    time.Time
+	LastSeen     time.Time
 	// ContentCollectedAt is set when the content of the digest is known.
 	ContentCollectedAt *time.Time
 	ContentCoverage    Coverage
@@ -108,7 +137,7 @@ type ImageFilter struct {
 	// ContentKnown keeps images whose content is (true) or is not (false)
 	// known.
 	ContentKnown *bool
-	// Q matches digest or a repo tag.
+	// Q matches digest or a current or previous tag.
 	Q    string
 	Sort string
 }

@@ -8,9 +8,12 @@ package container
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -267,6 +270,156 @@ func TestContainerdTaskFallback(t *testing.T) {
 	}
 }
 
+// TestContainerdImageVerified covers containers whose image name no longer
+// points at the image they run, as after the tag was pulled again. The digest
+// must come from the container's snapshot, or stay empty.
+func TestContainerdImageVerified(t *testing.T) {
+	const (
+		k3sRoot     = "var/lib/rancher/k3s/agent/containerd"
+		metaDB      = k3sRoot + "/" + cdMetaDB
+		alpineChain = "sha256:08bc4e534116aa76b16015484b82eac51f9a593416feae9296c8a2d4bb7aa4a2"
+		// busyboxConfig is the config of the only busybox manifest.
+		busyboxConfig = "b116e155074440ffd9e449559433feb4cd2341eb3554b1da1c638c976e56451d"
+		demo          = "default/demo/demo"
+		oneshot       = "default/oneshot/oneshot"
+		coredns       = "kube-system/coredns-7896679cc-bqqv5/coredns"
+	)
+	repoint := func(tree map[string]any, ns, name, digest string) {
+		boltDir(t, tree, "v1", ns, "images", name, "target")["digest"] = digest
+	}
+	// layerless adds the content of an image without layers, such as a wasm
+	// image, under the name wasm:1 of the default namespace.
+	blobs := filepath.Join(k3sRoot, cdBlobs, "sha256")
+	cfg := []byte(`{"architecture":"wasm","os":"wasip1","rootfs":{"type":"layers","diff_ids":[]}}`)
+	cfgDigest := sha256Digest(cfg)
+	manifest := []byte(`{"schemaVersion":2,"mediaType":"application/vnd.oci.image.manifest.v1+json",` +
+		`"config":{"mediaType":"application/vnd.oci.image.config.v1+json","digest":"` + cfgDigest + `","size":` +
+		strconv.Itoa(len(cfg)) + `},"layers":[]}`)
+	wasmDigest := sha256Digest(manifest)
+	layerless := func(t *testing.T, root string) {
+		for d, data := range map[string][]byte{cfgDigest: cfg, wasmDigest: manifest} {
+			if err := os.WriteFile(filepath.Join(root, blobs, strings.TrimPrefix(d, "sha256:")), data, 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	addLayerless := func(tree map[string]any) {
+		boltDir(t, tree, "v1", "default", "images")["wasm:1"] = map[string]any{"target": map[string]any{
+			"digest": wasmDigest, "mediatype": "application/vnd.oci.image.manifest.v1+json"}}
+	}
+	type want struct{ digest, reason string }
+	tests := []struct {
+		name   string
+		edit   func(tree map[string]any)
+		prep   func(t *testing.T, root string)
+		blobRm string
+		want   map[string]want
+	}{{
+		name: "tag moved, old image kept under its CRI names",
+		edit: func(tree map[string]any) {
+			repoint(tree, "k8s.io", "docker.io/library/alpine:3.20", busyboxDigest)
+		},
+		want: map[string]want{demo: {alpineDigest, ""}, oneshot: {busyboxDigest, ""}, "plain": {alpineDigest, ""}},
+	}, {
+		name: "tag moved, old image gone",
+		edit: func(tree map[string]any) {
+			images := boltDir(t, tree, "v1", "k8s.io", "images")
+			repoint(tree, "k8s.io", "docker.io/library/alpine:3.20", busyboxDigest)
+			delete(images, "docker.io/library/alpine@"+alpineDigest)
+			delete(images, "sha256:bf8527eb54c3680e728d5b4b383a8ba730d72dae7236fbc8dff97ed6b224a731")
+		},
+		want: map[string]want{
+			demo:    {"", unverified + "the container's layers are not those of " + busyboxDigest + " or of any other image"},
+			oneshot: {busyboxDigest, ""},
+			// The image of the other namespace is not used.
+			"plain": {alpineDigest, ""},
+		},
+	}, {
+		name:   "image config missing",
+		blobRm: busyboxConfig,
+		want:   map[string]want{oneshot: {"", unverified + "the image config of " + busyboxDigest + " could not be read"}, demo: {alpineDigest, ""}},
+	}, {
+		name: "image name gone",
+		edit: func(tree map[string]any) {
+			images := boltDir(t, tree, "v1", "k8s.io", "images")
+			delete(images, "docker.io/library/busybox:1.36")
+			delete(images, "docker.io/library/busybox@"+busyboxDigest)
+		},
+		// Still there as "sha256:<config>".
+		want: map[string]want{oneshot: {busyboxDigest, ""}},
+	}, {
+		name: "no snapshot",
+		edit: func(tree map[string]any) {
+			delete(boltDir(t, tree, "v1", "k8s.io", "snapshots", "overlayfs"), "2a76ed4f1e98d1ab3b852d34ea92fdc192199425becf352f40131877d2f545fb")
+		},
+		want: map[string]want{coredns: {"", unverified + "the container has no snapshot"}},
+	}, {
+		name: "remapped snapshot",
+		edit: func(tree map[string]any) {
+			snaps := boltDir(t, tree, "v1", "default", "snapshots", "overlayfs")
+			remap := alpineChain + "-1000-1000"
+			snaps[remap] = map[string]any{"name": "default/2/" + remap, "parent": alpineChain}
+			snaps["plain"].(map[string]any)["parent"] = remap
+		},
+		want: map[string]want{"plain": {alpineDigest, ""}},
+	}, {
+		name: "remapped snapshot without parent",
+		edit: func(tree map[string]any) {
+			snaps := boltDir(t, tree, "v1", "default", "snapshots", "overlayfs")
+			remap := alpineChain + "-1000-1000"
+			snaps[remap] = map[string]any{"name": "default/2/" + remap}
+			snaps["plain"].(map[string]any)["parent"] = remap
+		},
+		want: map[string]want{"plain": {"", unverified + "the remapped snapshot of the container has no parent"}},
+	}, {
+		name: "snapshot without parent is not any image without layers",
+		edit: func(tree map[string]any) {
+			addLayerless(tree)
+			delete(boltDir(t, tree, "v1", "default", "snapshots", "overlayfs", "plain"), "parent")
+		},
+		prep: layerless,
+		want: map[string]want{"plain": {"", unverified + "the container's layers are not those of " + alpineDigest + " or of any other image"}},
+	}, {
+		name: "named image without layers",
+		edit: func(tree map[string]any) {
+			addLayerless(tree)
+			delete(boltDir(t, tree, "v1", "default", "snapshots", "overlayfs", "plain"), "parent")
+			boltDir(t, tree, "v1", "default", "containers", "plain")["image"] = "wasm:1"
+		},
+		prep: layerless,
+		want: map[string]want{"plain": {wasmDigest, ""}},
+	}}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			root, proc := fixture(t, "k3s")
+			if tt.edit != nil {
+				editBolt(t, "k3s", root, metaDB, tt.edit)
+			}
+			if tt.prep != nil {
+				tt.prep(t, root)
+			}
+			if tt.blobRm != "" {
+				if err := os.Remove(filepath.Join(root, k3sRoot, cdBlobs, "sha256", tt.blobRm)); err != nil {
+					t.Fatal(err)
+				}
+			}
+			sec := Collect(context.Background(), testEnv(root, proc))
+			checkCoverage(t, sec, report.CoverageFull)
+			checkImagesKnown(t, sec)
+			got := byName(t, sec)
+			for name, w := range tt.want {
+				c, ok := got[name]
+				if !ok {
+					t.Fatalf("%s missing: %+v", name, sec.Containers)
+				}
+				if c.ImageDigest != w.digest || c.Reason != w.reason {
+					t.Errorf("%s: digest %q reason %q, want %q %q", name, c.ImageDigest, c.Reason, w.digest, w.reason)
+				}
+			}
+		})
+	}
+}
+
 func TestUnreadable(t *testing.T) {
 	if os.Geteuid() == 0 {
 		t.Skip("permissions do not apply to root")
@@ -442,4 +595,9 @@ func TestChainIDs(t *testing.T) {
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("chain ids = %v", got)
 	}
+}
+
+func sha256Digest(data []byte) string {
+	sum := sha256.Sum256(data)
+	return "sha256:" + hex.EncodeToString(sum[:])
 }

@@ -11,6 +11,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -18,7 +19,9 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+	"time"
 
+	"github.com/bomcensus/bomcensus/internal/collect"
 	"github.com/bomcensus/bomcensus/internal/report"
 )
 
@@ -232,6 +235,9 @@ func TestFixtureContainers(t *testing.T) {
 	if sec == nil {
 		t.Fatal("no containers section")
 	}
+	if sec.InventoryCoverage != report.CoverageFull {
+		t.Errorf("inventory coverage = %q", sec.InventoryCoverage)
+	}
 	if len(sec.ImageScopes) != 1 {
 		t.Fatalf("image scopes = %+v", sec.ImageScopes)
 	}
@@ -294,6 +300,37 @@ func TestFixtureContainers(t *testing.T) {
 		if c.Coverage != report.CoverageNone || c.Reason == "" {
 			t.Errorf("unprivileged %s = %s (%s)", c.Name, c.Coverage, c.Reason)
 		}
+	}
+}
+
+// TestUnverifiedImageDigest checks a container whose image digest the
+// inventory could not verify: only its writable layer is read, nothing is
+// stored as image content, and the inventory's reason is kept.
+func TestUnverifiedImageDigest(t *testing.T) {
+	f := newFixture(t, false)
+	env := &collect.Env{Root: f.root, Proc: f.proc, Policy: report.DefaultPolicy(), Cache: collect.NewHashCache(),
+		Log: slog.New(slog.DiscardHandler), Privileged: true}
+	r := &runner{env: env, log: env.Log, ctx: context.Background(), hardStop: time.Now().Add(time.Minute), limit: time.Minute}
+	const note = "image digest could not be verified: test"
+	sec := &report.ContainersSection{Containers: []report.Container{
+		{ID: ct1ID, Name: "app-1", Running: true, InitPID: ct1PID, UpperDir: upperDir, Reason: note},
+		{ID: ct4ID, Name: "stopped", Reason: note},
+	}}
+	if r.scanContainers(sec, nil, nil) {
+		t.Fatal("interrupted")
+	}
+	if len(sec.ImageScopes) != 0 {
+		t.Errorf("image scopes = %+v", sec.ImageScopes)
+	}
+	c1, c4 := sec.Containers[0], sec.Containers[1]
+	if c1.Coverage != report.CoveragePartial || c1.Reason != note+"; image content not scanned" {
+		t.Errorf("app-1 = %s (%s)", c1.Coverage, c1.Reason)
+	}
+	if len(c1.RuntimeArtifacts) != 1 || c1.RuntimeArtifacts[0].Path != "/app/runtime.jar" {
+		t.Errorf("app-1 runtime artifacts = %+v", c1.RuntimeArtifacts)
+	}
+	if c4.Coverage != report.CoverageNone || c4.Reason != note+"; container is not running" {
+		t.Errorf("stopped = %s (%s)", c4.Coverage, c4.Reason)
 	}
 }
 

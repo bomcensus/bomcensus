@@ -69,9 +69,9 @@ func TestContainersGoneAndReturn(t *testing.T) {
 	}
 
 	// Image usage counts current containers only.
-	ivMust(t, db.UpsertImages(ctx, []store.ImageObservation{
+	ivMust(t, db.UpsertImages(ctx, store.ImageSource{Kind: store.ImageSourceAsset, ID: asset}, []store.ImageObservation{
 		{Digest: "sha256:a1", RepoTags: []string{"app:1", "app:latest"}, OS: "linux", Arch: "amd64", Size: 100},
-	}, t1))
+	}, store.ReplaceOptions{At: t1}))
 	imgs, total, err := db.ListImages(ctx, store.ImageFilter{InUseOnly: true, Sort: "digest"}, store.Page{})
 	ivMust(t, err)
 	if total != 2 || imgs[0].Digest != "sha256:a2" || imgs[1].Digest != "sha256:d1" {
@@ -79,7 +79,7 @@ func TestContainersGoneAndReturn(t *testing.T) {
 	}
 	all, total, err := db.ListImages(ctx, store.ImageFilter{Q: "latest"}, store.Page{})
 	ivMust(t, err)
-	if total != 1 || all[0].Size != 100 || len(all[0].RepoTags) != 2 || all[0].Containers != 0 {
+	if total != 1 || all[0].Size != 100 || len(all[0].Tags) != 2 || all[0].Containers != 0 {
 		t.Fatalf("unused image: %+v", all)
 	}
 }

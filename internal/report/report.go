@@ -334,9 +334,13 @@ type UnownedPort struct {
 
 type ContainersSection struct {
 	SectionMeta
-	Runtimes   []string    `json:"runtimes,omitempty"` // "docker", "containerd"
-	Containers []Container `json:"containers,omitempty"`
-	Images     []Image     `json:"images,omitempty"`
+	// InventoryCoverage is the coverage of the container and image lists
+	// alone. Coverage is lower than it when the content scan fell short.
+	// Empty means the same as Coverage.
+	InventoryCoverage Coverage    `json:"inventory_coverage,omitempty"`
+	Runtimes          []string    `json:"runtimes,omitempty"` // "docker", "containerd"
+	Containers        []Container `json:"containers,omitempty"`
+	Images            []Image     `json:"images,omitempty"`
 	// ImageScopes holds the content of running containers, once per image
 	// digest. Filled by the probe, not by the container collector.
 	ImageScopes []ImageScope `json:"image_scopes,omitempty"`

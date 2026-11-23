@@ -50,6 +50,7 @@ func (r *runner) containers(scanContent bool, running []artifact.RunningExe, ope
 	if sec == nil {
 		return nil
 	}
+	sec.InventoryCoverage = sec.Coverage
 
 	notScanned := ""
 	switch {
@@ -163,6 +164,10 @@ func (r *runner) scanContainers(sec *report.ContainersSection, running []artifac
 		var cov report.Coverage
 		var reasons []string
 		switch {
+		case img == nil && ct.Reason != "":
+			// The inventory says why the digest is unknown.
+			cov = report.CoverageNone
+			reasons = append(reasons, "image content not scanned")
 		case img == nil:
 			cov = report.CoverageNone
 			reasons = append(reasons, "image digest unknown; image content not scanned")
@@ -288,9 +293,17 @@ func dropRuntimeFromScope(sec *report.ContainersSection, img *imageScan, runtime
 	}
 }
 
+// setCoverage sets the content coverage of a container. A reason the
+// inventory gave (such as an image digest that could not be verified) is
+// kept in front. It is called once per container.
 func setCoverage(ct *report.Container, c report.Coverage, reason string) {
 	ct.Coverage = c
-	ct.Reason = reason
+	switch {
+	case ct.Reason == "":
+		ct.Reason = reason
+	case reason != "":
+		ct.Reason += "; " + reason
+	}
 	if c == report.CoverageFull {
 		ct.Reason = ""
 	}

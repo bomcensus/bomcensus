@@ -33,9 +33,11 @@ func (h *Handlers) ListComponents(ctx context.Context, req gen.ListComponentsReq
 		return nil, err
 	}
 	f.Origin = store.ComponentOrigin(origin)
+	f.InstalledOnly = prm.Installed != nil && *prm.Installed
+	f.RunningOnly = prm.Running != nil && *prm.Running
 	if f.Sort, err = sortKey(prm.Sort, map[string]string{
 		"name": "name", "version": "version", "type": "type", "origin": "origin",
-		"assetCount": "assets", "purl": "purl",
+		"assetCount": "assets", "runningAssetCount": "running", "purl": "purl",
 	}); err != nil {
 		return nil, err
 	}
@@ -207,9 +209,14 @@ func containerImage(r store.ImageRow, components int) gen.ContainerImage {
 	if r.Size > 0 {
 		size = ptr(r.Size)
 	}
+	prev := make(gen.PreviousImageTags, 0, len(r.PreviousTags))
+	for _, t := range r.PreviousTags {
+		prev = append(prev, gen.PreviousImageTag{Tag: t.Tag, LastSeen: t.LastSeen})
+	}
 	return gen.ContainerImage{
 		Digest:         r.Digest,
-		RepoTags:       strs(r.RepoTags),
+		CurrentTags:    strs(r.Tags),
+		PreviousTags:   prev,
 		Os:             str(r.OS),
 		Arch:           str(r.Arch),
 		SizeBytes:      size,
@@ -291,7 +298,7 @@ func (h *Handlers) GetImage(ctx context.Context, req gen.GetImageRequestObject) 
 		uses = append(uses, gen.ImageUse{Asset: rowSummary(u.Asset), Container: assetContainer(u.Container)})
 	}
 	return gen.GetImage200JSONResponse{
-		Digest: img.Digest, RepoTags: img.RepoTags, Os: img.Os, Arch: img.Arch, SizeBytes: img.SizeBytes,
+		Digest: img.Digest, CurrentTags: img.CurrentTags, PreviousTags: img.PreviousTags, Os: img.Os, Arch: img.Arch, SizeBytes: img.SizeBytes,
 		FirstSeen: img.FirstSeen, LastSeen: img.LastSeen, Usage: img.Usage, ContentKnown: img.ContentKnown,
 		ComponentCount: img.ComponentCount, Uses: uses, Components: comps,
 	}, nil

@@ -67,6 +67,16 @@ func (d *DB) ivLockAsset(ctx context.Context, op, assetID string) error {
 	return ivErr(op, err)
 }
 
+// ivLockCluster is ivLockAsset for a cluster row.
+func (d *DB) ivLockCluster(ctx context.Context, op, clusterID string) error {
+	if !ivValidID(clusterID) {
+		return ivNotFound(op)
+	}
+	var one int
+	err := d.q.QueryRow(ctx, `SELECT 1 FROM k8s_clusters WHERE id = $1 FOR NO KEY UPDATE`, clusterID).Scan(&one)
+	return ivErr(op, err)
+}
+
 func ivErr(op string, err error) error {
 	if err == nil {
 		return nil

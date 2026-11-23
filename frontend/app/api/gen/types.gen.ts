@@ -303,6 +303,12 @@ export type ComponentSummary = {
      * Assets on which the component is currently installed.
      */
     assetCount: number;
+    /**
+     * Assets on which a running process executes or maps the component,
+     * as of the asset's latest report.
+     *
+     */
+    runningAssetCount: number;
 };
 
 export type ComponentList = {
@@ -464,14 +470,38 @@ export type ImageUsage = {
 };
 
 /**
+ * Tags that point to the digest now: a host or cluster that is not gone
+ * lists the tag for this digest in its latest observation. Sorted.
+ *
+ */
+export type CurrentImageTags = Array<string>;
+
+export type PreviousImageTag = {
+    tag: string;
+    /**
+     * When a host or cluster last listed the tag for this digest.
+     */
+    lastSeen: string;
+};
+
+/**
+ * Tags that pointed to the digest before and are not current, most
+ * recently seen first.
+ *
+ */
+export type PreviousImageTags = Array<PreviousImageTag>;
+
+/**
  * An image is not an asset. It aggregates the containers of all assets
  * by image digest. An image that no container uses any more stays in the
- * list with zero usage.
+ * list with zero usage until it has not been seen for the retention
+ * period of gone inventory (30 days).
  *
  */
 export type ContainerImage = {
     digest: string;
-    repoTags: Array<string>;
+    currentTags: CurrentImageTags;
+    previousTags: PreviousImageTags;
     os?: string;
     arch?: string;
     sizeBytes?: number;
@@ -506,7 +536,8 @@ export type ImageComponent = {
 
 export type ContainerImageDetail = {
     digest: string;
-    repoTags: Array<string>;
+    currentTags: CurrentImageTags;
+    previousTags: PreviousImageTags;
     os?: string;
     arch?: string;
     sizeBytes?: number;
@@ -1662,7 +1693,15 @@ export type ListComponentsData = {
         q?: string;
         type?: ComponentType;
         origin?: ComponentOrigin;
-        sort?: 'name' | '-name' | 'version' | '-version' | 'type' | '-type' | 'origin' | '-origin' | 'assetCount' | '-assetCount' | 'purl' | '-purl';
+        /**
+         * Only components installed on at least one asset now (`assetCount` > 0).
+         */
+        installed?: boolean;
+        /**
+         * Only components a running process uses now (`runningAssetCount` > 0).
+         */
+        running?: boolean;
+        sort?: 'name' | '-name' | 'version' | '-version' | 'type' | '-type' | 'origin' | '-origin' | 'assetCount' | '-assetCount' | 'runningAssetCount' | '-runningAssetCount' | 'purl' | '-purl';
         limit?: number;
         offset?: number;
     };
