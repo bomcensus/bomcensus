@@ -124,3 +124,26 @@ func TestChildFailure(t *testing.T) {
 		t.Fatal("failed probe accepted")
 	}
 }
+
+func TestRequireSocket(t *testing.T) {
+	dir := t.TempDir()
+	marker := filepath.Join(dir, "ran")
+	script := filepath.Join(dir, ProbeName)
+	if err := os.WriteFile(script, []byte("#!/bin/sh\ntouch "+marker+"\nexit 1\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	notSocket := filepath.Join(dir, "file.sock")
+	if err := os.WriteFile(notSocket, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, sock := range []string{filepath.Join(dir, "absent.sock"), notSocket} {
+		inv := &Invoker{Socket: sock, Path: script, RequireSocket: true}
+		_, err := inv.Collect(context.Background(), &report.Request{})
+		if err == nil || !strings.Contains(err.Error(), "probe socket required") {
+			t.Errorf("%s: %v", sock, err)
+		}
+	}
+	if _, err := os.Stat(marker); err == nil {
+		t.Error("the probe ran as a child although the socket is required")
+	}
+}

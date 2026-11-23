@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-bomcensus-Commercial
 # Additional terms apply. See LICENSING.md.
 
-# docker-build builds the server, scanner and agent images as
-# $(DOCKER_REPO)/{server,scanner,agent}:$(VERSION) in one BuildKit session
+# docker-build builds the server, scanner, node-agent and agent images as
+# $(DOCKER_REPO)/{server,scanner,node-agent,agent}:$(VERSION) in one BuildKit session
 # (deploy/docker/docker-bake.hcl), so that they share one Go build and one
 # set of keys. RELEASE_KEYS is a tar of a key directory written by
 # `bomcensus-release keygen`; without it the build uses throwaway keys.
@@ -17,7 +17,7 @@
 
 DOCKER          ?= docker
 DOCKER_REPO     ?= bomcensus
-DOCKER_TARGETS  ?= server scanner agent
+DOCKER_TARGETS  ?= server scanner node-agent agent
 DOCKER_PLATFORM ?=
 DOCKER_OUTPUT   ?= --load
 RELEASE_KEYS    ?=

@@ -131,6 +131,58 @@
         }
       },
       "additionalProperties": false
+    },
+    "nodeAgent": {
+      "type": "object",
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "image": {
+          "type": "object",
+          "properties": {
+            "repository": {"type": "string", "minLength": 1},
+            "tag": {"type": "string"},
+            "pullPolicy": {"type": "string", "enum": ["Always", "IfNotPresent", "Never"]}
+          },
+          "required": ["repository"],
+          "additionalProperties": false
+        },
+        "enrollment": {
+          "type": "object",
+          "properties": {
+            "token": {"type": "string", "pattern": "^(|\\s*bc1\\..+)$"},
+            "existingSecret": {
+              "type": "object",
+              "properties": {"name": {"type": "string"}, "key": {"type": "string"}},
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
+        "stateHostPath": {"type": "string", "pattern": "^/.*[^/]$"},
+        "runAsUser": {"type": "integer", "minimum": 1},
+        "runAsGroup": {"type": "integer", "minimum": 1},
+        "logLevel": {"type": "string", "enum": ["", "debug", "info", "warn", "error"]},
+        "extraArgs": {"$ref": "#/definitions/stringList"},
+        "extraEnv": {"type": "array"},
+        "probe": {
+          "type": "object",
+          "properties": {
+            "maxRuntime": {"type": "string", "pattern": "^([0-9]+(\\.[0-9]+)?(ms|s|m|h))+$"},
+            "seLinuxOptions": {"type": "object"},
+            "resources": {"type": "object"}
+          },
+          "additionalProperties": false
+        },
+        "resources": {"type": "object"},
+        "updateStrategy": {"type": "object"},
+        "podAnnotations": {"$ref": "#/definitions/stringMap"},
+        "podLabels": {"$ref": "#/definitions/stringMap"},
+        "priorityClassName": {"type": "string"},
+        "nodeSelector": {"$ref": "#/definitions/stringMap"},
+        "tolerations": {"type": "array"},
+        "affinity": {"type": "object"}
+      },
+      "additionalProperties": false
     }
   },
   "additionalProperties": false

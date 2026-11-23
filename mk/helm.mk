@@ -5,8 +5,8 @@
 # Helm charts in deploy/charts.
 #
 #   helm-lint     helm lint both charts, then render the manager chart with
-#                 every database mode, with and without ingress and scanner,
-#                 and the scanner chart on its own
+#                 every database mode, with and without ingress, scanner and
+#                 node agent, and the scanner chart on its own
 #   helm-package  package both charts into $(HELM_DIST)
 
 HELM           ?= helm
@@ -32,6 +32,7 @@ HELM_CASES := \
 	"--set cnpg.database.create=true --set cnpg.database.cluster=pg --set cnpg.database.createRole=false" \
 	"--set database.url=postgres://u:p@db/b --set ingress.enabled=true --set scanner.enabled=true --set scanner.rbac.exec=true" \
 	"--set database.url=postgres://u:p@db/b --set scanner.enabled=true --set scanner.enrollment.existingSecret.name=tok" \
+	"--set database.url=postgres://u:p@db/b --set scanner.enabled=true --set scanner.nodeAgent.enabled=true --set scanner.nodeAgent.enrollment.existingSecret.name=natok" \
 	"--set database.url=postgres://u:p@db/b --set replicaCount=3 --set podDisruptionBudget.enabled=true --set agent.service.type=LoadBalancer --set agent.extraServerNames={bomcensus.example.com}"
 
 .PHONY: helm-deps helm-lint helm-package
@@ -48,6 +49,13 @@ helm-lint: helm-deps
 		--set networkPolicy.enabled=true --set 'networkPolicy.server.cidrs={10.0.0.1/32}' \
 		--set 'networkPolicy.apiServer.cidrs={10.0.0.2/32}' >/dev/null; \
 	echo "template bomcensus-scanner: ok"; \
+	for kv in 1.29.0 1.30.0 1.31.0; do \
+		$(HELM) template t $(HELM_SCANNER) --kube-version $$kv --set server.url=https://bomcensus.example:8443 \
+			--set enrollment.existingSecret.name=tok --set nodeAgent.enabled=true \
+			--set nodeAgent.enrollment.token=bc1.x --set nodeAgent.probe.seLinuxOptions.type=spc_t \
+			--set 'nodeAgent.tolerations[0].operator=Exists' >/dev/null; \
+		echo "template bomcensus-scanner nodeAgent (Kubernetes $$kv): ok"; \
+	done; \
 	for c in $(HELM_CASES); do \
 		$(HELM) template t $(HELM_MANAGER) $(HELM_BASE) $(HELM_CNPG_APIS) $$c >/dev/null; \
 		echo "template bomcensus-manager $$c: ok"; \
@@ -57,6 +65,14 @@ helm-lint: helm-deps
 	fi; \
 	if $(HELM) template t $(HELM_MANAGER) $(HELM_BASE) >/dev/null 2>&1; then \
 		echo "rendering without a database must fail" >&2; exit 1; \
+	fi; \
+	if $(HELM) template t $(HELM_SCANNER) --set server.url=https://bomcensus.example:8443 --set enrollment.token=bc1.x \
+		--set nodeAgent.enabled=true >/dev/null 2>&1; then \
+		echo "nodeAgent without an enrollment string must fail" >&2; exit 1; \
+	fi; \
+	if $(HELM) template t $(HELM_SCANNER) --kube-version 1.28.0 --set server.url=https://bomcensus.example:8443 \
+		--set enrollment.token=bc1.x --set nodeAgent.enabled=true --set nodeAgent.enrollment.token=bc1.y >/dev/null 2>&1; then \
+		echo "nodeAgent before Kubernetes 1.29 must fail" >&2; exit 1; \
 	fi; \
 	echo "negative cases: ok"
 

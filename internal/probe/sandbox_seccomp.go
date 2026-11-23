@@ -45,6 +45,7 @@ package probe
 
 import (
 	"fmt"
+	"slices"
 	"unsafe"
 
 	"golang.org/x/sys/unix"
@@ -185,9 +186,18 @@ func buildFilter(rules []rule) ([]unix.SockFilter, error) {
 	return prog, nil
 }
 
-func applySeccomp() SandboxStep {
+// listenerSeccompRules are the rules of the serve listener: those of the
+// probe without the chroot denial. Every collect child inherits the
+// listener's filter and, in host root mode, still has to change its root
+// before it installs the full filter itself.
+func listenerSeccompRules() []rule {
+	return slices.DeleteFunc(seccompRules(), func(r rule) bool { return r.nr == unix.SYS_CHROOT })
+}
+
+func applySeccomp() SandboxStep { return applySeccompRules(seccompRules()) }
+
+func applySeccompRules(rules []rule) SandboxStep {
 	step := SandboxStep{Name: "seccomp"}
-	rules := seccompRules()
 	prog, err := buildFilter(rules)
 	if err != nil {
 		step.Status = StepFailed

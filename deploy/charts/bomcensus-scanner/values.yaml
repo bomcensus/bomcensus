@@ -141,3 +141,72 @@ networkPolicy:
     podSelector:
       matchLabels:
         k8s-app: kube-dns
+
+# Node agent: a DaemonSet that runs the host agent on every selected node
+# and collects the node the way the systemd agent does (OS packages,
+# processes and listening ports, files, the node's containers). Every node
+# enrolls as an agent of its own. Needs Kubernetes 1.29 or later and a
+# namespace that admits privileged pods (Pod Security level "privileged"):
+# the probe container runs as root with read capabilities and the node's
+# root file system mounted read-only. See docs/SECURITY.md.
+nodeAgent:
+  enabled: false
+  image:
+    repository: ghcr.io/bomcensus/bomcensus/node-agent
+    # Defaults to the chart's appVersion.
+    tag: ""
+    pullPolicy: IfNotPresent
+  enrollment:
+    # Enrollment string (bc1.…) of a Register Key of kind agent with at
+    # least as many uses as there are nodes. Prefer existingSecret.
+    token: ""
+    existingSecret:
+      name: ""
+      key: token
+  # Directory on each node that holds the node's agent identity. It is kept
+  # when the pod or the release is deleted, so that a node keeps its
+  # identity; remove it on the node to enroll again.
+  stateHostPath: /var/lib/bomcensus/node-agent
+  # User of the agent container. The probe accepts connections from this
+  # uid only.
+  runAsUser: 65532
+  runAsGroup: 65532
+  # Log level of the agent and the probe; empty uses logLevel.
+  logLevel: ""
+  # Additional arguments of "bomcensus-agent run".
+  extraArgs: []
+  extraEnv: []
+  probe:
+    # A collection is killed after this time.
+    maxRuntime: 20m
+    # SELinux label of the probe container. On nodes that enforce SELinux
+    # the default container type cannot read host files; spc_t can:
+    #   seLinuxOptions:
+    #     type: spc_t
+    seLinuxOptions: {}
+    resources:
+      requests:
+        cpu: 20m
+        memory: 64Mi
+      limits:
+        cpu: 500m
+        memory: 1Gi
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      memory: 256Mi
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+  podAnnotations: {}
+  podLabels: {}
+  priorityClassName: ""
+  nodeSelector:
+    kubernetes.io/os: linux
+  # Nodes with taints (control plane nodes, for example) are left out
+  # unless tolerated here. "- operator: Exists" covers every node.
+  tolerations: []
+  affinity: {}

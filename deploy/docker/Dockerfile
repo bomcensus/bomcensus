@@ -6,7 +6,7 @@
 #
 #   docker buildx build -f deploy/docker/Dockerfile --target server .
 #
-# Targets: server, scanner, agent. The console and Go stages run on the
+# Targets: server, scanner, node-agent, agent. The console and Go stages run on the
 # build platform and cross-compile, so --platform linux/arm64 on an amd64
 # host needs no emulation for them (the agent target runs a few shell
 # commands in its own stage and does).
@@ -150,6 +150,28 @@ USER nonroot:nonroot
 # Mount a volume here: it holds the identity and the HPKE key.
 WORKDIR /var/lib/bomcensus/scanner
 ENTRYPOINT ["/usr/local/bin/bomcensus-scanner"]
+CMD ["run"]
+
+# ---------------------------------------------------------------------------
+# Node agent of the scanner chart's DaemonSet: one image for both containers
+# of the pod (bomcensus-agent, and bomcensus-probe serve). No shell, no
+# setuid binaries. The binaries are mode 0755 so that the probe, after
+# switching to uid 65534, can still execute itself for version commands.
+# Updates come with the image; the agent runs with --disable-updates.
+FROM gcr.io/distroless/static-debian13:nonroot AS node-agent
+ARG TARGETARCH
+ARG VERSION=0.0.0-dev
+ARG SOURCE_URL=https://github.com/bomcensus/bomcensus
+LABEL org.opencontainers.image.title="bomcensus-node-agent" \
+      org.opencontainers.image.description="bomcensus agent and probe for the Kubernetes node DaemonSet" \
+      org.opencontainers.image.source="${SOURCE_URL}" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.licenses="AGPL-3.0-only OR LicenseRef-bomcensus-Commercial" \
+      org.opencontainers.image.vendor="JC-Lab"
+COPY --from=dist --chmod=0755 /bundle/linux-${TARGETARCH}/bomcensus-agent /usr/local/bin/bomcensus-agent
+COPY --from=dist --chmod=0755 /bundle/linux-${TARGETARCH}/bomcensus-probe /usr/local/bin/bomcensus-probe
+USER nonroot:nonroot
+ENTRYPOINT ["/usr/local/bin/bomcensus-agent"]
 CMD ["run"]
 
 # ---------------------------------------------------------------------------

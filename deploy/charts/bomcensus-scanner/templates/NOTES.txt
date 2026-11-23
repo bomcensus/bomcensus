@@ -33,3 +33,23 @@ WARNING: persistence is disabled. The scanner identity lives in an emptyDir
 and is lost with the pod; every new pod enrolls again and needs a Register
 Key with uses left.
 {{- end }}
+{{- if .Values.nodeAgent.enabled }}
+
+Node agent: DaemonSet {{ include "bomcensus-scanner.nodeAgentName" . }}, one agent per node
+({{ if .Values.nodeAgent.tolerations }}tolerations set{{ else }}nodes with taints, such as control plane nodes, are left out{{ end }}).
+Enrollment: Secret {{ include "bomcensus-scanner.nodeAgentTokenSecretName" . }}, key {{ include "bomcensus-scanner.nodeAgentTokenSecretKey" . }}
+            (a Register Key of kind agent with a use for every node)
+
+The pods need a namespace that admits privileged pods:
+
+  kubectl label namespace {{ .Release.Namespace }} pod-security.kubernetes.io/enforce=privileged
+
+Every node enrolls on its own and waits for approval in the console:
+
+  kubectl -n {{ .Release.Namespace }} get pods -l app.kubernetes.io/name=bomcensus-node-agent,app.kubernetes.io/instance={{ .Release.Name }}
+  kubectl -n {{ .Release.Namespace }} logs POD -c enroll
+  kubectl -n {{ .Release.Namespace }} logs POD -c probe
+
+Anyone who can change this DaemonSet or exec into its pods can read every
+file of every selected node. Restrict access to the namespace accordingly.
+{{- end }}

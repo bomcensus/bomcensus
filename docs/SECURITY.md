@@ -380,7 +380,7 @@ Reduced coverage is never presented as a clean result. Each report states the pr
 The probe runs version commands of known software (for example `java -version`, `php -v`) to identify versions. These are files found on the target and are not trusted.
 
 - Only arguments fixed in a detector are used. A file that matches no detector is not executed.
-- Only files on the probe's own root are executed. Inside a container root seen through `/proc/<pid>/root`, only static extraction is used.
+- Only files on the probe's own root are executed. Inside a container root seen through `/proc/<pid>/root`, only static extraction is used. A probe in host root mode (6.7) has changed its root to the host's, so the host's files are executed as on a host installation.
 - The command is started through a helper process, a re-execution of the probe binary (`internal/collect/artifact/exechelper.go`). The probe passes the exact file it opened and inspected as an inherited file descriptor, and the helper executes that descriptor, so the file cannot be swapped between inspection and execution.
 - Nothing is executed as root. When the probe is root, the command runs as uid/gid 65534 without supplementary groups; otherwise it runs as the probe's own user. In the helper the ambient and bounding capability sets are cleared, all capabilities are dropped and `no_new_privs` is set, so setuid bits and file capabilities have no effect. The probe's seccomp filter (6.2) is inherited: no writes to the file system and no network sockets. A root probe that cannot switch users does not run version commands (6.2).
 - The environment is empty except for variables named by the detector and derived from the install path (such as `JAVA_HOME`). The environment of the target process is not copied.
@@ -392,6 +392,33 @@ The probe runs version commands of known software (for example `java -version`, 
 - The output is treated as untrusted input. Standard output and standard error are kept separately, each truncated at 64 KiB.
 
 A planted file named `java` is therefore executed only as an isolated, unprivileged process. Execution can be disabled by the collection policy (`exec_version`); static extraction is used instead. The policy is a single server-wide setting; per-group policies are not implemented.
+
+### 6.7 Kubernetes node agent
+
+The node agent of the `bomcensus-scanner` chart ([DEPLOYMENT.md](DEPLOYMENT.md) §3.7) runs the Linux components of 6.1 as the containers of one pod per node.
+
+| Component | systemd | Node agent pod |
+|---|---|---|
+| agent | user `bomcensus`, no capabilities | uid 65532, no capabilities, read-only root file system; of the node it mounts only its state directory |
+| probe | one process per connection (socket activation), user `bomcensus-probe` with the two capabilities | one process per connection, started by `bomcensus-probe serve`; starts as root, changes its root to the node's file system and drops to uid 65534 with the two capabilities |
+| updater | user `bomcensus-update` | none: the image is the update unit |
+
+The same as with systemd:
+
+- The agent never holds the probe's capabilities. It does not start a probe itself (`--require-probe-socket`) and can only ask for a report; the probe accepts connections from the agent's uid only (`SO_PEERCRED`).
+- Every collection runs under the sandbox of 6.2: uid/gid 65534 without groups, exactly `CAP_DAC_READ_SEARCH` and `CAP_SYS_PTRACE`, the bounding set reduced to them, `no_new_privs` and the seccomp filter. In host root mode (`collect --host-root`) this is not best effort: a collection whose drop is incomplete writes no report and exits.
+- Version commands (6.6) run from the node's root file system as uid 65534.
+
+Differences:
+
+- **The listener is a resident root process.** `bomcensus-probe serve` keeps `CAP_DAC_READ_SEARCH`, `CAP_SYS_PTRACE`, `CAP_SYS_CHROOT`, `CAP_SETUID`, `CAP_SETGID` and `CAP_SETPCAP` in its permitted set so that its children start with them; it keeps none effective, sets `no_new_privs` and installs the probe's seccomp filter without the `chroot` denial, so it cannot write files, open network sockets or trace processes. It parses nothing it receives: the connection becomes the child's standard input and output. With systemd, PID 1 is the listener.
+- **Each collection is root from its start until the drop.** In that window it checks `/host/proc`, changes its root and drops its privileges; it has not read its request yet.
+- **The node's root file system is mounted into the probe container**, read-only. Without recursive read-only mounts (before Kubernetes 1.31, or a runtime without support) the node's submounts under `/host` (`/proc`, `/sys`, `/run`, volumes of other pods mounted before the pod started) stay writable for root. The listener and the collections cannot write through the seccomp filter, and a collection is uid 65534 by the time it reads input.
+- **AppArmor is off for the probe container**, because the runtime's default profile denies reading other processes. The systemd probe is not confined by AppArmor either. On SELinux nodes the probe needs the `spc_t` type, which is unconfined.
+- **The pod is in the node's network namespace** (`hostNetwork`), as the systemd agent is; NetworkPolicies do not apply. The probe container shares it, but its seccomp filter allows only `AF_UNIX` and `AF_NETLINK` sockets.
+- **Kubernetes access is node access.** Whoever can change the DaemonSet, create pods in its namespace (which admits privileged pods), exec or attach to its pods, add ephemeral containers to them or replace the image can read every file on every node it runs on: kubelet credentials, the Secret volumes of other pods and, on control plane nodes, the administrator kubeconfig and the etcd data, which leads to cluster administration. With systemd the same takes root on the host. The image has no shell, but an exec into the probe container still runs as root with the six capabilities and the node mounted. Keep the namespace for bomcensus, restrict who may change workloads, exec and read Secrets there, and keep the DaemonSet off control plane nodes unless they must be collected (no tolerations by default).
+- **Updates are trusted as the image.** The systemd updater verifies the release signature before it installs (5.2); the node agent runs the image the kubelet pulls. Released images are signed with cosign ([RELEASING.md](RELEASING.md)); pin the image by digest and verify the signature at admission.
+- **The enrollment string is a Secret** in the namespace and is used by every node. Give its Register Key the number of uses the nodes need, and require approval if nodes are not added by trusted operators only.
 
 ## 7. Remote collection
 
@@ -466,6 +493,8 @@ The probe parses arbitrary files while holding the capability to read every file
 - The server signs messages with the key of its TLS certificate. Signature formats are domain-separated, but the key serves two purposes.
 - Process collection is polling-based. A process that starts and exits between two collections is not seen. Network namespaces without a visible process are not seen, UDP sockets bound by clients appear as listening, and command-line masking is heuristic.
 - Replaced and deleted libraries are usually not hashed, because the probe lacks the capability to open `/proc/<pid>/map_files` (6.1).
+- The node agent's probe listener runs as root with six capabilities permitted (none effective), and without recursive read-only mounts the node's submounts are writable for root in its container (6.7).
+- Access to the node agent's namespace in Kubernetes amounts to reading every file of the nodes it runs on (6.7).
 - A root probe in a container with the default capability set keeps that set (6.2). It is still confined by `no_new_privs` and the seccomp filter, but it holds more capabilities than the two of a host installation.
 - Software that only its owner may execute, and every file inside a container root seen from the host, is identified by static extraction only (6.3, 6.6).
 - Agents need a clock within 5 minutes of the server's (4.6).

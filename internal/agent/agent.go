@@ -5,7 +5,8 @@
 // Package agent is the host agent: it enrolls, keeps the connection to the
 // server through internal/agent/core, collects sections on schedule or on
 // request by invoking the probe, uploads the reports and drives automatic
-// updates. It runs as any user and performs no privileged operation.
+// updates. It runs as any user and performs no privileged operation, except
+// init-state, a container init step that runs as root (InitStateDir).
 package agent
 
 import (
@@ -30,6 +31,7 @@ import (
 	"github.com/bomcensus/bomcensus/internal/link"
 	"github.com/bomcensus/bomcensus/internal/pki"
 	"github.com/bomcensus/bomcensus/internal/platform/paths"
+	"github.com/bomcensus/bomcensus/internal/report"
 	"github.com/bomcensus/bomcensus/internal/version"
 )
 
@@ -60,6 +62,9 @@ type Options struct {
 	ProbeSocket string
 	ProbePath   string
 	ProbeEnv    []string
+	// ProbeRequireSocket fails collections while the probe socket is
+	// missing instead of running the probe as a child.
+	ProbeRequireSocket bool
 
 	// Version defaults to version.Version.
 	Version string
@@ -144,7 +149,8 @@ func Run(ctx context.Context, o Options) error {
 	}
 	probe := o.Probe
 	if probe == nil {
-		probe = &probeexec.Invoker{Socket: o.ProbeSocket, Path: o.ProbePath, Env: o.ProbeEnv, Logger: log}
+		probe = &probeexec.Invoker{Socket: o.ProbeSocket, RequireSocket: o.ProbeRequireSocket,
+			Path: o.ProbePath, Env: o.ProbeEnv, Logger: log}
 	}
 	if _, err := newCollector(rt, probe, log); err != nil {
 		return err
@@ -167,10 +173,16 @@ type EnrollOptions struct {
 	// ExtraRootsFile holds PEM CA certificates trusted in addition to the
 	// OS store in the system TLS mode.
 	ExtraRootsFile string
-	Version        string
-	Logger         *slog.Logger
-	OnListening    func(net.Addr)
-	Runtime        core.Options
+	// ProbeSocket, when set, makes the probe behind it describe the host
+	// instead of this process reading the system it runs on. The node agent
+	// enrolls from a container that does not see the host.
+	ProbeSocket string
+	// ProbeWait is how long the socket is waited for (default 2 minutes).
+	ProbeWait   time.Duration
+	Version     string
+	Logger      *slog.Logger
+	OnListening func(net.Addr)
+	Runtime     core.Options
 }
 
 // Enroll enrolls the agent and waits for approval.
@@ -192,6 +204,16 @@ func Enroll(ctx context.Context, o EnrollOptions) error {
 	if err != nil {
 		return err
 	}
+	hostFunc := func(ctx context.Context) (agentapi.HostFacts, error) { return HostFacts(ctx), nil }
+	if o.ProbeSocket != "" {
+		wait := o.ProbeWait
+		if wait <= 0 {
+			wait = 2 * time.Minute
+		}
+		hostFunc = func(ctx context.Context) (agentapi.HostFacts, error) {
+			return probeHostFacts(ctx, o.ProbeSocket, wait, o.Logger)
+		}
+	}
 	st, err := state.OpenAs(o.StateDir, paths.AgentService)
 	if err != nil {
 		return err
@@ -208,7 +230,7 @@ func Enroll(ctx context.Context, o EnrollOptions) error {
 		ListenAddress: o.ListenAddress,
 		TLSMode:       mode,
 		ExtraRoots:    extra,
-		Host:          HostFacts(ctx),
+		HostFunc:      hostFunc,
 		Logger:        o.Logger,
 		OnListening:   o.OnListening,
 		Runtime:       o.Runtime,
@@ -229,7 +251,37 @@ func loadRoots(path string) ([]*x509.Certificate, error) {
 
 // HostFacts describes the host for the enrollment request.
 func HostFacts(ctx context.Context) agentapi.HostFacts {
-	h := hostinfo.Collect(ctx, collect.NewEnv())
+	return hostFacts(hostinfo.Collect(ctx, collect.NewEnv()))
+}
+
+// probeHostFacts asks the probe behind sock for the host section. The probe
+// container of the node agent may still be starting, so the socket is
+// waited for until wait has passed.
+func probeHostFacts(ctx context.Context, sock string, wait time.Duration, log *slog.Logger) (agentapi.HostFacts, error) {
+	inv := &probeexec.Invoker{Socket: sock, RequireSocket: true, Logger: log}
+	req := &report.Request{Sections: []string{report.SectionHost}, Policy: report.DefaultPolicy()}
+	deadline := time.Now().Add(wait)
+	for {
+		rep, err := inv.Collect(ctx, req)
+		if err == nil {
+			if rep.Host == nil {
+				return agentapi.HostFacts{}, errors.New("host facts: the probe report has no host section")
+			}
+			return hostFacts(rep.Host), nil
+		}
+		if !time.Now().Before(deadline) {
+			return agentapi.HostFacts{}, fmt.Errorf("host facts from the probe: %w", err)
+		}
+		log.Info("waiting for the probe", "socket", sock, "error", err)
+		select {
+		case <-ctx.Done():
+			return agentapi.HostFacts{}, ctx.Err()
+		case <-time.After(2 * time.Second):
+		}
+	}
+}
+
+func hostFacts(h *report.HostSection) agentapi.HostFacts {
 	if h == nil {
 		name, _ := os.Hostname()
 		return agentapi.HostFacts{Hostname: name, Os: agentapi.OsRelease{Family: runtime.GOOS}}

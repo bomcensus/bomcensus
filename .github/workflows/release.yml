@@ -7,7 +7,7 @@ name: Release
 # Push a tag like v1.2.3 (or v1.2.3-rc.1 for a pre-release) to publish:
 #   - a GitHub release with every binary (Linux: AuthentiELF, Windows:
 #     Authenticode), the agent bundle, the systemd files and the Helm charts
-#   - the server, scanner and agent images on ghcr.io (cosign-signed)
+#   - the server, scanner, node-agent and agent images on ghcr.io (cosign-signed)
 #   - the Helm charts as OCI artifacts on ghcr.io (cosign-signed)
 # with SLSA build provenance for all of them. See docs/RELEASING.md.
 #
@@ -306,10 +306,11 @@ jobs:
             --set '*.platform=linux/amd64,linux/arm64' \
             --provenance=mode=max --sbom=true \
             --metadata-file "$RUNNER_TEMP/bake.json" --push \
-            server scanner agent
-          for t in server scanner agent; do
+            server scanner node-agent agent
+          for t in server scanner node-agent agent; do
             d=$(jq -er --arg t "$t" '.[$t]["containerimage.digest"]' "$RUNNER_TEMP/bake.json")
-            echo "DIGEST_${t^^}=$d" >>"$GITHUB_ENV"
+            n=${t^^}
+            echo "DIGEST_${n//-/_}=$d" >>"$GITHUB_ENV"
           done
 
       - name: Push Helm charts
@@ -337,6 +338,7 @@ jobs:
           cosign sign --yes \
             "$IMAGE_REPO/server@$DIGEST_SERVER" \
             "$IMAGE_REPO/scanner@$DIGEST_SCANNER" \
+            "$IMAGE_REPO/node-agent@$DIGEST_NODE_AGENT" \
             "$IMAGE_REPO/agent@$DIGEST_AGENT" \
             "$CHART_REPO/bomcensus-scanner@$DIGEST_CHART_SCANNER" \
             "$CHART_REPO/bomcensus-manager@$DIGEST_CHART_MANAGER"
@@ -352,6 +354,12 @@ jobs:
         with:
           subject-name: ${{ env.IMAGE_REPO }}/scanner
           subject-digest: ${{ env.DIGEST_SCANNER }}
+          push-to-registry: true
+      - name: Attest node-agent image
+        uses: actions/attest@v4
+        with:
+          subject-name: ${{ env.IMAGE_REPO }}/node-agent
+          subject-digest: ${{ env.DIGEST_NODE_AGENT }}
           push-to-registry: true
       - name: Attest agent image
         uses: actions/attest@v4

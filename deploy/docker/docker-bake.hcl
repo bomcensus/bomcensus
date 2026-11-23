@@ -52,7 +52,7 @@ function "tags" {
 }
 
 group "default" {
-  targets = ["server", "scanner", "agent"]
+  targets = ["server", "scanner", "node-agent", "agent"]
 }
 
 target "_common" {
@@ -77,6 +77,12 @@ target "scanner" {
   inherits = ["_common"]
   target   = "scanner"
   tags     = tags("scanner")
+}
+
+target "node-agent" {
+  inherits = ["_common"]
+  target   = "node-agent"
+  tags     = tags("node-agent")
 }
 
 target "agent" {

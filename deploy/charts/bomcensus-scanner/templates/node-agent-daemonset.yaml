@@ -1,0 +1,273 @@
+{{- /*
+  Copyright (C) 2026 JC-Lab
+  SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-bomcensus-Commercial
+  Additional terms apply. See LICENSING.md.
+*/ -}}
+
+{{- /*
+  Node agent: the host agent of every selected node, split like the systemd
+  units into an unprivileged agent and a probe that only reads.
+
+    init-state  root with CAP_CHOWN and CAP_FOWNER only: hands the host
+                state directory to the agent's uid
+    probe       native sidecar; root with the capabilities the probe's own
+                privilege drop needs. "bomcensus-probe serve" starts one
+                "collect --host-root /host" per connection, which changes
+                its root to the node's file system, drops to uid 65534 with
+                CAP_DAC_READ_SEARCH and CAP_SYS_PTRACE and installs its
+                seccomp filter before it reads the request, or collects
+                nothing
+    enroll      unprivileged; takes the host facts from the probe
+    agent       unprivileged, no capabilities; talks to the server and asks
+                the probe over the socket
+
+  hostNetwork gives the probe the node's hostname (UTS namespace) and the
+  agent the node's network, as for the systemd agent. The probe reads
+  processes through the node's /proc under /host, so hostPID is not needed
+  and the agent does not see the node's processes.
+*/ -}}
+
+{{- if .Values.nodeAgent.enabled }}
+{{- $kube := .Capabilities.KubeVersion.Version }}
+{{- if not (semverCompare ">=1.29.0-0" $kube) }}
+{{- fail "nodeAgent needs Kubernetes 1.29 or later: the probe runs as a native sidecar container" }}
+{{- end }}
+{{- $na := .Values.nodeAgent }}
+{{- $name := include "bomcensus-scanner.nodeAgentName" . }}
+{{- $image := include "bomcensus-scanner.nodeAgentImage" . }}
+{{- $owner := printf "%d:%d" (int $na.runAsUser) (int $na.runAsGroup) }}
+{{- $level := default .Values.logLevel $na.logLevel }}
+{{- $dataDir := include "bomcensus-scanner.nodeAgentDataDir" . }}
+{{- $stateDir := printf "%s/state" $dataDir }}
+{{- $socket := "/run/bomcensus/probe.sock" }}
+{{- /* securityContext.appArmorProfile exists from 1.30; older clusters take the annotation. */}}
+{{- $appArmorField := semverCompare ">=1.30.0-0" $kube }}
+{{- /* recursiveReadOnly is beta (on by default) from 1.31. */}}
+{{- $recursiveRO := semverCompare ">=1.31.0-0" $kube }}
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "bomcensus-scanner.nodeAgentLabels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "bomcensus-scanner.nodeAgentSelectorLabels" . | nindent 6 }}
+  updateStrategy:
+    {{- toYaml $na.updateStrategy | nindent 4 }}
+  template:
+    metadata:
+      labels:
+        {{- include "bomcensus-scanner.nodeAgentSelectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: node-agent
+        app.kubernetes.io/part-of: bomcensus
+        {{- with $na.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      annotations:
+        {{- if $na.enrollment.token }}
+        checksum/enrollment: {{ include (print $.Template.BasePath "/node-agent-secret.yaml") . | sha256sum }}
+        {{- end }}
+        {{- if not $appArmorField }}
+        container.apparmor.security.beta.kubernetes.io/probe: unconfined
+        {{- end }}
+        {{- with $na.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      hostPID: false
+      hostIPC: false
+      # Nothing in the pod talks to the Kubernetes API.
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $na.priorityClassName }}
+      priorityClassName: {{ . }}
+      {{- end }}
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        - name: init-state
+          image: {{ $image }}
+          imagePullPolicy: {{ $na.image.pullPolicy }}
+          command:
+            - /usr/local/bin/bomcensus-agent
+            - init-state
+            - --dir={{ $dataDir }}
+            - --owner={{ $owner }}
+          securityContext:
+            runAsUser: 0
+            runAsGroup: 0
+            runAsNonRoot: false
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            privileged: false
+            capabilities:
+              drop:
+                - ALL
+              add:
+                - CHOWN
+                - FOWNER
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              memory: 64Mi
+          volumeMounts:
+            - name: state
+              mountPath: {{ $dataDir }}
+        - name: probe
+          image: {{ $image }}
+          imagePullPolicy: {{ $na.image.pullPolicy }}
+          # Native sidecar: started before enroll and kept running beside
+          # the agent.
+          restartPolicy: Always
+          command:
+            - /usr/local/bin/bomcensus-probe
+            - serve
+            - --socket={{ $socket }}
+            - --host-root=/host
+            - --allow-uid={{ int $na.runAsUser }}
+            - --max-runtime={{ $na.probe.maxRuntime }}
+            - --log-level={{ $level }}
+          securityContext:
+            # Root only until each collection has dropped to uid 65534
+            # (bomcensus-probe collect --host-root fails otherwise).
+            runAsUser: 0
+            runAsGroup: 0
+            runAsNonRoot: false
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            privileged: false
+            capabilities:
+              drop:
+                - ALL
+              add:
+                # Kept by every collection: read any file, and the
+                # /proc/<pid> links of other users' processes.
+                - DAC_READ_SEARCH
+                - SYS_PTRACE
+                # Needed for the drop itself and given up by it: change the
+                # root, switch to uid 65534, reduce the bounding set.
+                - SYS_CHROOT
+                - SETUID
+                - SETGID
+                - SETPCAP
+            {{- if $appArmorField }}
+            # The default profile denies reading other processes, which is
+            # what the probe is for. Its own seccomp filter stays in force.
+            appArmorProfile:
+              type: Unconfined
+            {{- end }}
+            {{- with $na.probe.seLinuxOptions }}
+            seLinuxOptions:
+              {{- toYaml . | nindent 14 }}
+            {{- end }}
+          resources:
+            {{- toYaml $na.probe.resources | nindent 12 }}
+          volumeMounts:
+            - name: host
+              mountPath: /host
+              readOnly: true
+              {{- if $recursiveRO }}
+              # Also the node's submounts (/proc, /sys, /run, ...), where the
+              # runtime supports it.
+              recursiveReadOnly: IfPossible
+              {{- end }}
+              mountPropagation: None
+            - name: probe-socket
+              mountPath: /run/bomcensus
+        - name: enroll
+          image: {{ $image }}
+          imagePullPolicy: {{ $na.image.pullPolicy }}
+          command:
+            - /usr/local/bin/bomcensus-agent
+            - enroll
+            - --if-not-enrolled
+            - --server={{ include "bomcensus-scanner.serverURL" . }}
+            {{- with .Values.server.name }}
+            - --server-name={{ . }}
+            {{- end }}
+            - --tls-verify={{ .Values.server.tlsVerify }}
+            - --state-dir={{ $stateDir }}
+            - --probe-socket={{ $socket }}
+            - --log-level={{ $level }}
+          env:
+            - name: BOMCENSUS_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "bomcensus-scanner.nodeAgentTokenSecretName" . }}
+                  key: {{ include "bomcensus-scanner.nodeAgentTokenSecretKey" . }}
+            {{- with $na.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          securityContext:
+            {{- include "bomcensus-scanner.nodeAgentSecurityContext" . | nindent 12 }}
+          resources:
+            {{- toYaml $na.resources | nindent 12 }}
+          volumeMounts:
+            {{- include "bomcensus-scanner.nodeAgentMounts" . | nindent 12 }}
+      containers:
+        - name: agent
+          image: {{ $image }}
+          imagePullPolicy: {{ $na.image.pullPolicy }}
+          command:
+            - /usr/local/bin/bomcensus-agent
+            - run
+            - --state-dir={{ $stateDir }}
+            - --probe-socket={{ $socket }}
+            - --require-probe-socket
+            # The image is the update unit.
+            - --disable-updates
+            - --log-level={{ $level }}
+            {{- range $na.extraArgs }}
+            - {{ . | quote }}
+            {{- end }}
+          {{- with $na.extraEnv }}
+          env:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          securityContext:
+            {{- include "bomcensus-scanner.nodeAgentSecurityContext" . | nindent 12 }}
+          resources:
+            {{- toYaml $na.resources | nindent 12 }}
+          volumeMounts:
+            {{- include "bomcensus-scanner.nodeAgentMounts" . | nindent 12 }}
+      volumes:
+        - name: host
+          hostPath:
+            path: /
+            type: Directory
+        - name: state
+          hostPath:
+            path: {{ $na.stateHostPath }}
+            type: DirectoryOrCreate
+        - name: probe-socket
+          emptyDir:
+            medium: Memory
+            sizeLimit: 1Mi
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
+      {{- with $na.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $na.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $na.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

@@ -55,6 +55,11 @@ type Invoker struct {
 	// Socket is the probe socket; empty selects DefaultSocket. A socket
 	// that does not exist, or no socket at all, selects the child process.
 	Socket string
+	// RequireSocket fails a run when the socket is missing instead of
+	// starting the probe as a child. The node agent of the Kubernetes chart
+	// sets it: a child would run inside the agent's container, without
+	// privileges, and report that container instead of the host.
+	RequireSocket bool
 	// Path is the probe executable; empty selects ProbeName next to the
 	// running executable.
 	Path string
@@ -94,12 +99,20 @@ func (inv *Invoker) Collect(ctx context.Context, req *report.Request) (*report.R
 		sock = DefaultSocket
 	}
 	var out []byte
-	if fi, err := statSocket(sock); err == nil && fi.Mode().Type() == fs.ModeSocket {
+	fi, serr := statSocket(sock)
+	switch {
+	case serr == nil && fi.Mode().Type() == fs.ModeSocket:
 		out, err = inv.viaSocket(ctx, sock, in)
 		if err != nil {
 			return nil, err
 		}
-	} else {
+	case inv.RequireSocket && sock == "":
+		return nil, errors.New("probe socket required, but none is configured")
+	case inv.RequireSocket && serr != nil:
+		return nil, fmt.Errorf("probe socket required: %w", serr)
+	case inv.RequireSocket:
+		return nil, fmt.Errorf("probe socket required: %s is not a socket", sock)
+	default:
 		out, err = inv.viaChild(ctx, in)
 		if err != nil {
 			return nil, err

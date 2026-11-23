@@ -9,7 +9,8 @@
 #
 # Copies deploy/charts, sets version and appVersion of both charts and the
 # manager's dependency on the scanner chart to VERSION, points the default
-# images to IMAGE_REPO/{server,scanner} (for example ghcr.io/OWNER/bomcensus),
+# images to IMAGE_REPO/{server,scanner,node-agent} (for example
+# ghcr.io/OWNER/bomcensus),
 # and writes bomcensus-scanner-VERSION.tgz and bomcensus-manager-VERSION.tgz
 # to OUTDIR (default dist/charts).
 set -euo pipefail
@@ -41,8 +42,10 @@ done
 sed -i "/^dependencies:/,\$ s|^\(    version:\).*|\1 $VERSION|" "$work/bomcensus-manager/Chart.yaml"
 sed -i "s|^  repository: ghcr.io/bomcensus/bomcensus/server$|  repository: $REPO/server|" "$work/bomcensus-manager/values.yaml"
 sed -i "s|^  repository: ghcr.io/bomcensus/bomcensus/scanner$|  repository: $REPO/scanner|" "$work/bomcensus-scanner/values.yaml"
+sed -i "s|^    repository: ghcr.io/bomcensus/bomcensus/node-agent$|    repository: $REPO/node-agent|" "$work/bomcensus-scanner/values.yaml"
 if ! grep -q "repository: $REPO/server$" "$work/bomcensus-manager/values.yaml" ||
-	! grep -q "repository: $REPO/scanner$" "$work/bomcensus-scanner/values.yaml"; then
+	! grep -q "^  repository: $REPO/scanner$" "$work/bomcensus-scanner/values.yaml" ||
+	! grep -q "^    repository: $REPO/node-agent$" "$work/bomcensus-scanner/values.yaml"; then
 	echo "package-charts.sh: default image repositories not found in values.yaml" >&2
 	exit 1
 fi

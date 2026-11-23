@@ -4,7 +4,8 @@
 
 // Command bomcensus-probe collects one report of the system it runs on.
 //
-//	bomcensus-probe collect [--no-sandbox] [--log-level LEVEL]
+//	bomcensus-probe collect [--no-sandbox] [--host-root DIR] [--log-level LEVEL]
+//	bomcensus-probe serve --socket PATH [--host-root DIR] [--allow-uid UIDS] ...
 //
 // reads a JSON request from standard input until end of file (empty input
 // means the default request) and writes the zstd-compressed report to
@@ -13,6 +14,14 @@
 // of a parent process or an SSH or exec session. A caller on a socket shuts
 // down its write side after the request, so that the probe sees the end of
 // the input.
+//
+// With --host-root the probe changes its root directory to DIR, where the
+// host's root file system is mounted, before it restricts itself, and stops
+// unless the full privilege drop took effect (Kubernetes node agent).
+//
+// serve listens on a Unix socket and starts one collect per connection,
+// with the connection as standard input and output, like the systemd socket
+// unit does. It is the probe container of the Kubernetes node agent.
 //
 // Exit status: 0 when a report was written (also a partial one), 1 when no
 // report could be produced, 2 for usage errors.
@@ -29,6 +38,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 
@@ -47,6 +57,7 @@ type command struct {
 
 var commands = []command{
 	{"collect", "read a request from stdin and write the report to stdout", runCollect},
+	{"serve", "run one collection per connection on a Unix socket", runServe},
 	{"self-test", "apply the self-restrictions and print what took effect", runSelfTest},
 	{"version", "print the version", runVersion},
 }
@@ -109,12 +120,16 @@ func runCollect(ctx context.Context, args []string, stdin io.Reader, stdout, std
 	fs := flag.NewFlagSet("collect", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	noSandbox := fs.Bool("no-sandbox", false, "do not restrict the process (debugging only)")
+	hostRoot := fs.String("host-root", "", "collect the host whose root file system is mounted at this directory (needs root with CAP_SYS_CHROOT and CAP_SETPCAP)")
 	level := fs.String("log-level", "info", "log level: debug, info, warn or error")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	if fs.NArg() > 0 {
 		return fmt.Errorf("%w: unexpected arguments %v", errUsage, fs.Args())
+	}
+	if *hostRoot != "" && *noSandbox {
+		return fmt.Errorf("%w: --host-root cannot be combined with --no-sandbox", errUsage)
 	}
 	log, err := newLogger(stderr, *level)
 	if err != nil {
@@ -127,7 +142,17 @@ func runCollect(ctx context.Context, args []string, stdin io.Reader, stdout, std
 		log.Warn("sandbox disabled; the probe runs with all the privileges it was started with")
 	} else {
 		probe.EnsureExecutableAfterDrop(log)
-		probe.ApplySandbox(log)
+		if *hostRoot != "" {
+			if err := probe.EnterHostRoot(*hostRoot); err != nil {
+				return err
+			}
+		}
+		res := probe.ApplySandbox(log)
+		if *hostRoot != "" {
+			if err := probe.VerifyHostRootSandbox(res); err != nil {
+				return err
+			}
+		}
 	}
 
 	req, err := probe.DecodeRequest(stdin)
@@ -146,6 +171,75 @@ func runCollect(ctx context.Context, args []string, stdin io.Reader, stdout, std
 		return fmt.Errorf("write report: %w", err)
 	}
 	return nil
+}
+
+func runServe(ctx context.Context, args []string, _ io.Reader, _, stderr io.Writer) error {
+	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	socket := fs.String("socket", "", "path of the listening socket (required)")
+	hostRoot := fs.String("host-root", "", "pass --host-root to every collection")
+	allow := fs.String("allow-uid", "", "comma-separated peer uids allowed to connect; the socket is then mode 0666 (default: owner only, mode 0600)")
+	maxConns := fs.Int("max-connections", probe.DefaultServeConnections, "collections running at the same time")
+	maxRuntime := fs.Duration("max-runtime", probe.DefaultServeRuntime, "a collection is killed after this time")
+	noSandbox := fs.Bool("no-sandbox", false, "do not restrict the listener (debugging only)")
+	level := fs.String("log-level", "info", "log level of the listener and the collections")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("%w: unexpected arguments %v", errUsage, fs.Args())
+	}
+	if *socket == "" {
+		return fmt.Errorf("%w: --socket is required", errUsage)
+	}
+	if *hostRoot != "" && *noSandbox {
+		return fmt.Errorf("%w: --host-root cannot be combined with --no-sandbox", errUsage)
+	}
+	uids, err := parseUIDs(*allow)
+	if err != nil {
+		return fmt.Errorf("%w: --allow-uid: %v", errUsage, err)
+	}
+	log, err := newLogger(stderr, *level)
+	if err != nil {
+		return err
+	}
+	o := probe.ServeOptions{
+		Socket:         *socket,
+		AllowUIDs:      uids,
+		MaxConnections: *maxConns,
+		MaxRuntime:     *maxRuntime,
+		Args:           []string{"collect", "--log-level", *level},
+		Stderr:         stderr,
+		Sandbox:        !*noSandbox,
+		Log:            log,
+	}
+	if len(uids) > 0 {
+		// Peers are checked by uid; the socket must be writable for them.
+		o.SocketMode = 0o666
+	}
+	if *hostRoot != "" {
+		o.Args = append(o.Args, "--host-root", *hostRoot)
+	}
+	if *noSandbox {
+		log.Warn("listener sandbox disabled")
+		o.Args = append(o.Args, "--no-sandbox")
+	}
+	return probe.Serve(ctx, o)
+}
+
+func parseUIDs(s string) ([]int, error) {
+	var out []int
+	for f := range strings.SplitSeq(s, ",") {
+		if f = strings.TrimSpace(f); f == "" {
+			continue
+		}
+		n, err := strconv.Atoi(f)
+		if err != nil || n < 0 {
+			return nil, fmt.Errorf("%q is not a uid", f)
+		}
+		out = append(out, n)
+	}
+	return out, nil
 }
 
 func runSelfTest(_ context.Context, args []string, _ io.Reader, stdout, stderr io.Writer) error {

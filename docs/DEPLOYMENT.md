@@ -43,9 +43,10 @@ Register Keys can restrict enrollment to source address ranges. The server check
 |---|---|---|
 | `bomcensus/server:VERSION` | `gcr.io/distroless/static-debian13:nonroot` | `bomcensus-server` with the console built in, the release bundle in `/usr/share/bomcensus/releases` (`BOMCENSUS_RELEASE_DIR`). Runs as uid 65532 |
 | `bomcensus/scanner:VERSION` | `gcr.io/distroless/static-debian13:nonroot` | `bomcensus-scanner`, state in `/var/lib/bomcensus/scanner`. Runs as uid 65532 |
+| `bomcensus/node-agent:VERSION` | `gcr.io/distroless/static-debian13:nonroot` | `bomcensus-agent` and `bomcensus-probe` in `/usr/local/bin`, mode 0755. Both containers of the scanner chart's node agent DaemonSet (3.7); no shell, no update layout |
 | `bomcensus/agent:VERSION` | `debian:trixie-slim` | the agent laid out as on a host (see 2.8). For trying the product and for tests |
 
-Released images are published as `ghcr.io/bomcensus/bomcensus/{server,scanner,agent}:VERSION` for linux/amd64 and linux/arm64, signed and attested ([RELEASING.md](RELEASING.md)). To use them instead of a local build, set `BOMCENSUS_REPO=ghcr.io/bomcensus/bomcensus` and `BOMCENSUS_VERSION` in `.env`.
+Released images are published as `ghcr.io/bomcensus/bomcensus/{server,scanner,node-agent,agent}:VERSION` for linux/amd64 and linux/arm64, signed and attested ([RELEASING.md](RELEASING.md)). To use them instead of a local build, set `BOMCENSUS_REPO=ghcr.io/bomcensus/bomcensus` and `BOMCENSUS_VERSION` in `.env`.
 
 The server image has no shell. Its healthcheck is `bomcensus-server healthcheck`, which requests `/readyz` on the loopback address of `BOMCENSUS_WEB_LISTEN`, over HTTP when `BOMCENSUS_WEB_TLS=off` and HTTPS otherwise (5.1).
 
@@ -214,7 +215,7 @@ Two charts are in `deploy/charts/`:
 | Chart | Deploys |
 |---|---|
 | `bomcensus-manager` | `bomcensus-server` (Deployment, Services `web` and `agent`, optional Ingress for the console), its Secrets, optionally a CloudNativePG database, optionally the in-cluster scanner |
-| `bomcensus-scanner` | one scanner (StatefulSet with one replica, no DaemonSet) that collects the cluster it runs in through the Kubernetes API |
+| `bomcensus-scanner` | one scanner (StatefulSet with one replica) that collects the cluster it runs in through the Kubernetes API; optionally the host agent on every node (DaemonSet, 3.7) |
 
 Each chart has a README with all values. `make helm-lint` checks both charts and renders every database mode; `make helm-package` writes the packages to `dist/charts`.
 
@@ -288,7 +289,28 @@ RBAC of the scanner: a ClusterRole with `get`/`list` on namespaces, nodes, pods 
 
 ### 3.6 Security context
 
-Server, scanner and Job run as UID/GID 65532, non-root, with a read-only root file system, all capabilities dropped, no privilege escalation and the `RuntimeDefault` seccomp profile. `/tmp` and the scanner state are the only writable paths.
+Server, scanner and Job run as UID/GID 65532, non-root, with a read-only root file system, all capabilities dropped, no privilege escalation and the `RuntimeDefault` seccomp profile. `/tmp` and the scanner state are the only writable paths. The node agent (3.7) is the exception: its probe container runs as root with read capabilities.
+
+### 3.7 Node agent
+
+`nodeAgent.enabled=true` in the `bomcensus-scanner` chart adds a DaemonSet that runs the host agent on every selected node. It collects the node as the systemd installation (section 4) does, and each node enrolls as an agent with a Register Key of kind agent (`nodeAgent.enrollment`; the manager's bootstrap Job does not create one). Requirements: Kubernetes 1.29 or later, Linux nodes, and a namespace with Pod Security level `privileged`.
+
+The pod reproduces the split of the systemd units (SECURITY.md §6.7):
+
+| Container | Like | Runs as | Command |
+|---|---|---|---|
+| `init-state` (init) | `StateDirectory=` | root, `CHOWN` `FOWNER` | `bomcensus-agent init-state --dir /var/lib/bomcensus-agent --owner UID:GID` |
+| `probe` (native sidecar) | `bomcensus-probe.socket`, `bomcensus-probe@.service` | root, `DAC_READ_SEARCH` `SYS_PTRACE` `SYS_CHROOT` `SETUID` `SETGID` `SETPCAP`, AppArmor unconfined | `bomcensus-probe serve --socket /run/bomcensus/probe.sock --host-root /host --allow-uid UID` |
+| `enroll` (init) | `install.sh` enrollment | `nodeAgent.runAsUser`, no capabilities | `bomcensus-agent enroll --if-not-enrolled --probe-socket …` |
+| `agent` | `bomcensus-agent.service` | `nodeAgent.runAsUser`, no capabilities | `bomcensus-agent run --require-probe-socket --disable-updates …` |
+
+- The node's root file system is mounted read-only at `/host` with `mountPropagation: None` and, from Kubernetes 1.31, `recursiveReadOnly: IfPossible`. Each collection changes its root to `/host`, so paths, `/proc`, the hash cache and version commands are those of the node. Mounts made on the node after the pod started are not seen until the pod restarts.
+- `hostNetwork: true` (with `dnsPolicy: ClusterFirstWithHostNet`) gives the probe the node's hostname and the agent the node's network. `hostPID` is not used: processes are read through the node's `/proc` under `/host`.
+- The socket is in a memory `emptyDir` shared by the probe (read-write) and the agent containers (read-only); it is mode 0666 and the probe accepts only the peer uid `nodeAgent.runAsUser` (`SO_PEERCRED`).
+- The identity lives on the node in `nodeAgent.stateHostPath` (default `/var/lib/bomcensus/node-agent`, mounted at `/var/lib/bomcensus-agent`, state in its subdirectory `state`). It survives pod restarts, upgrades and `helm uninstall`; delete the directory on the node to enroll the node again. A node that also has the systemd agent installed is enrolled twice.
+- Updates: the agent's update flow is off; upgrade the chart or the image tag. Pin the image by digest and verify its signature at admission where possible (SECURITY.md §6.7).
+- On SELinux nodes set `nodeAgent.probe.seLinuxOptions.type=spc_t`; the default container type cannot read host files.
+- The ServiceAccount token is not mounted; nothing in the pod uses the Kubernetes API. NetworkPolicies do not apply to host-network pods.
 
 ## 4. systemd
 
@@ -566,6 +588,7 @@ Commands:
 | `--state-dir` | `$BOMCENSUS_STATE_DIR` or `/var/lib/bomcensus/agent` | state directory |
 | `--log-level` | `$BOMCENSUS_LOG_LEVEL` or `info` | `debug`, `info`, `warn`, `error` |
 | `--if-not-enrolled` | `false` | when the state directory already holds an approved enrollment, log one line and exit 0 instead of failing with `already enrolled`. For install scripts and init steps that run on every start |
+| `--probe-socket` | | take the host facts of the enrollment request from the probe behind this socket instead of reading the system the command runs on; the socket is waited for up to 2 minutes. Asked only for a new enrollment. For the node agent, whose enroll container does not see the node |
 
 `bomcensus-agent run`:
 
@@ -575,7 +598,18 @@ Commands:
 | `--install-dir` | `$BOMCENSUS_INSTALL_DIR`, else derived from the executable path (`<install>/versions/<v>/bomcensus-agent`) | install directory; updates are disabled when it cannot be determined |
 | `--update-spool` | `/var/lib/bomcensus/update-spool`; Windows: `%ProgramData%\bomcensus\update-spool` | update spool directory |
 | `--probe-socket` | `/run/bomcensus/probe.sock` | probe socket; when it does not exist the probe runs as a child |
+| `--require-probe-socket` | `false` | never run the probe as a child: a collection fails while the socket is missing |
+| `--disable-updates` | `false` | turn the update flow off (images that are updated as a whole) |
 | `--log-level` | `$BOMCENSUS_LOG_LEVEL` or `info` | log level |
+
+`bomcensus-agent init-state --dir DIR --owner UID:GID` makes the existing directory `DIR` (not a symbolic link) owned by `UID:GID` with mode 0700, without touching its content. It is the node agent's init step and needs root with `CAP_CHOWN` and `CAP_FOWNER`.
+
+`bomcensus-probe` commands besides `collect` and `self-test`:
+
+| Command | Flags (default) |
+|---|---|
+| `collect --host-root DIR` | change the root directory to `DIR`, where the host's root file system is mounted, before the sandbox; then require the full privilege drop (uid 65534, exactly `CAP_DAC_READ_SEARCH` and `CAP_SYS_PTRACE`, no_new_privs, seccomp) and exit 1 without a report otherwise. Needs root with `CAP_SYS_CHROOT`, `CAP_SETUID`, `CAP_SETGID`, `CAP_SETPCAP` and the two read capabilities. Not combinable with `--no-sandbox` |
+| `serve` | `--socket` (required), `--host-root` (passed to every `collect`), `--allow-uid` (comma-separated peer uids; socket mode 0666, otherwise 0600 and any peer), `--max-connections` (`4`; further connections are closed), `--max-runtime` (`20m`; the collection's process group is killed after it), `--log-level` (`info`), `--no-sandbox`. Starts one `collect` per connection with the connection as standard input and output |
 
 `BOMCENSUS_UPDATER=systemd` tells the agent that systemd units run the updater (`apply` from a path unit, `boot-check` before the agent). Otherwise the agent runs both itself. On Windows the agent never runs the updater; the `bomcensus-updater` service does (section 5.4). There the install directory is also derived from `<install>\current\bomcensus-agent.exe`, the path a service started through the junction sees.
 

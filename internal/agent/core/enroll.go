@@ -54,6 +54,9 @@ type EnrollOptions struct {
 	ExtraRoots []*x509.Certificate
 	// Host describes the host in the enrollment request.
 	Host agentapi.HostFacts
+	// HostFunc, when set, replaces Host. It is called only for a new
+	// enrollment, not when one is resumed or already approved.
+	HostFunc func(context.Context) (agentapi.HostFacts, error)
 	// HPKEPublicKey is the scanner's encryption public key.
 	HPKEPublicKey []byte
 
@@ -98,6 +101,11 @@ func Enroll(ctx context.Context, o EnrollOptions) (*state.Enrollment, error) {
 	tok, err := token.Parse(o.Token)
 	if err != nil {
 		return nil, err
+	}
+	if o.HostFunc != nil {
+		if o.Host, err = o.HostFunc(ctx); err != nil {
+			return nil, err
+		}
 	}
 	registerKey := tok.PrivateKey()
 	defer func() {

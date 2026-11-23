@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
+	"strconv"
 	"strings"
 	"syscall"
 
@@ -35,9 +36,10 @@ const (
 const usageText = `usage: bomcensus-agent <command> [flags]
 
 commands:
-  enroll   enroll with the server and wait for approval
-  run      run the agent
-  version  print the version
+  enroll      enroll with the server and wait for approval
+  run         run the agent
+  init-state  give a state directory to the agent's user (container init step, as root)
+  version     print the version
 
 Run 'bomcensus-agent <command> -h' for the flags of a command.
 `
@@ -58,6 +60,8 @@ func Main(args []string, stdout, stderr io.Writer) int {
 		err = cmdEnroll(ctx, args[1:], stderr)
 	case "run":
 		err = cmdRun(ctx, args[1:], stderr)
+	case "init-state":
+		err = cmdInitState(args[1:], stderr)
 	case "version":
 		fmt.Fprintln(stdout, version.Version)
 		return 0
@@ -124,6 +128,7 @@ func cmdEnroll(ctx context.Context, args []string, stderr io.Writer) error {
 	stateDir := fs.String("state-dir", envOr(EnvStateDir, state.DefaultDir), "state directory")
 	level := fs.String("log-level", envOr(EnvLogLevel, "info"), "log level: debug, info, warn, error")
 	ifNotEnrolled := fs.Bool("if-not-enrolled", false, "succeed without doing anything when the state directory holds an approved enrollment")
+	probeSock := fs.String("probe-socket", "", "take the host facts from the probe behind this socket instead of reading this system (container use)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -151,6 +156,7 @@ func cmdEnroll(ctx context.Context, args []string, stderr io.Writer) error {
 		ServerName:     *serverName,
 		TLSMode:        *tlsVerify,
 		ExtraRootsFile: *tlsCA,
+		ProbeSocket:    *probeSock,
 		Logger:         log,
 	})
 	if *ifNotEnrolled && errors.Is(err, core.ErrAlreadyEnrolled) {
@@ -167,6 +173,8 @@ func cmdRun(ctx context.Context, args []string, stderr io.Writer) error {
 	install := fs.String("install-dir", os.Getenv(EnvInstallDir), "install directory (default: derived from the executable path)")
 	spool := fs.String("update-spool", update.DefaultSpool, "update spool directory")
 	probeSock := fs.String("probe-socket", probeexec.DefaultSocket, "probe socket; when absent the probe runs as a child")
+	requireSock := fs.Bool("require-probe-socket", false, "never run the probe as a child; collections fail while the socket is missing")
+	noUpdates := fs.Bool("disable-updates", false, "turn automatic updates off (the binaries are updated with the image)")
 	level := fs.String("log-level", envOr(EnvLogLevel, "info"), "log level: debug, info, warn, error")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -179,11 +187,37 @@ func cmdRun(ctx context.Context, args []string, stderr io.Writer) error {
 		return err
 	}
 	return Run(ctx, Options{
-		StateDir:    *stateDir,
-		InstallDir:  *install,
-		UpdateSpool: *spool,
-		Systemd:     strings.EqualFold(os.Getenv(update.SystemdEnv), update.SystemdValue),
-		ProbeSocket: *probeSock,
-		Logger:      log,
+		StateDir:           *stateDir,
+		InstallDir:         *install,
+		UpdateSpool:        *spool,
+		Systemd:            strings.EqualFold(os.Getenv(update.SystemdEnv), update.SystemdValue),
+		ProbeSocket:        *probeSock,
+		ProbeRequireSocket: *requireSock,
+		DisableUpdates:     *noUpdates,
+		Logger:             log,
 	})
+}
+
+func cmdInitState(args []string, stderr io.Writer) error {
+	fs := flag.NewFlagSet("init-state", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	dir := fs.String("dir", "", "existing directory to hand over (required)")
+	owner := fs.String("owner", "", "UID:GID of the agent (required)")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() != 0 || *dir == "" || *owner == "" {
+		return fmt.Errorf("%w: init-state --dir DIR --owner UID:GID", errUsage)
+	}
+	u, g, ok := strings.Cut(*owner, ":")
+	uid, err1 := strconv.Atoi(u)
+	gid, err2 := strconv.Atoi(g)
+	if !ok || err1 != nil || err2 != nil || uid < 0 || gid < 0 {
+		return fmt.Errorf("%w: --owner %q is not UID:GID", errUsage, *owner)
+	}
+	if err := InitStateDir(*dir, uid, gid); err != nil {
+		return err
+	}
+	fmt.Fprintf(stderr, "bomcensus-agent: %s is owned by %d:%d with mode 0700\n", *dir, uid, gid)
+	return nil
 }

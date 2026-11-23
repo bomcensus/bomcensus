@@ -104,3 +104,80 @@ State directory: a subdirectory of the volume, so that the scanner creates
 it itself with mode 0700 whatever the volume root looks like.
 */}}
 {{- define "bomcensus-scanner.stateDir" -}}/var/lib/bomcensus-scanner/state{{- end }}
+
+{{/*
+Node agent. Its pods carry a name label of their own, so that the
+scanner's selector (name and instance) does not match them.
+*/}}
+{{- define "bomcensus-scanner.nodeAgentName" -}}
+{{- printf "%s-node-agent" (include "bomcensus-scanner.fullname" . | trunc 52 | trimSuffix "-") }}
+{{- end }}
+
+{{- define "bomcensus-scanner.nodeAgentSelectorLabels" -}}
+app.kubernetes.io/name: bomcensus-node-agent
+app.kubernetes.io/instance: {{ .Release.Name }}
+{{- end }}
+
+{{- define "bomcensus-scanner.nodeAgentLabels" -}}
+helm.sh/chart: {{ include "bomcensus-scanner.chart" . }}
+{{ include "bomcensus-scanner.nodeAgentSelectorLabels" . }}
+app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
+app.kubernetes.io/managed-by: {{ .Release.Service }}
+app.kubernetes.io/component: node-agent
+app.kubernetes.io/part-of: bomcensus
+{{- end }}
+
+{{- define "bomcensus-scanner.nodeAgentImage" -}}
+{{- $default := ternary "latest" .Chart.AppVersion (eq .Chart.AppVersion "0.0.0-dev") }}
+{{- printf "%s:%s" .Values.nodeAgent.image.repository (default $default .Values.nodeAgent.image.tag) }}
+{{- end }}
+
+{{/*
+Secret name and key of the node agent's enrollment string. The bootstrap
+Job of the bomcensus-manager chart writes a scanner key only, so there is
+no bundled default.
+*/}}
+{{- define "bomcensus-scanner.nodeAgentTokenSecretName" -}}
+{{- $e := .Values.nodeAgent.enrollment }}
+{{- if and $e.token $e.existingSecret.name }}
+{{- fail "set either nodeAgent.enrollment.token or nodeAgent.enrollment.existingSecret.name, not both" }}
+{{- else if $e.token }}
+{{- printf "%s-enrollment" (include "bomcensus-scanner.nodeAgentName" .) }}
+{{- else if $e.existingSecret.name }}
+{{- $e.existingSecret.name }}
+{{- else }}
+{{- fail "nodeAgent needs the enrollment string of a Register Key of kind agent: set nodeAgent.enrollment.existingSecret.name (recommended) or nodeAgent.enrollment.token" }}
+{{- end }}
+{{- end }}
+
+{{- define "bomcensus-scanner.nodeAgentTokenSecretKey" -}}
+{{- if .Values.nodeAgent.enrollment.token }}token{{ else }}{{ default "token" .Values.nodeAgent.enrollment.existingSecret.key }}{{ end }}
+{{- end }}
+
+{{/* Mount point of the node's state directory in the node agent's containers. */}}
+{{- define "bomcensus-scanner.nodeAgentDataDir" -}}/var/lib/bomcensus-agent{{- end }}
+
+{{/* Security context of the node agent's unprivileged containers. */}}
+{{- define "bomcensus-scanner.nodeAgentSecurityContext" -}}
+runAsUser: {{ int .Values.nodeAgent.runAsUser }}
+runAsGroup: {{ int .Values.nodeAgent.runAsGroup }}
+runAsNonRoot: true
+allowPrivilegeEscalation: false
+readOnlyRootFilesystem: true
+privileged: false
+capabilities:
+  drop:
+    - ALL
+{{- end }}
+
+{{/* Mounts of the node agent's unprivileged containers. */}}
+{{- define "bomcensus-scanner.nodeAgentMounts" -}}
+- name: state
+  mountPath: {{ include "bomcensus-scanner.nodeAgentDataDir" . }}
+# Connecting needs no write access to the mount.
+- name: probe-socket
+  mountPath: /run/bomcensus
+  readOnly: true
+- name: tmp
+  mountPath: /tmp
+{{- end }}
