@@ -53,6 +53,11 @@ type watcher struct {
 	log    *slog.Logger
 	now    func() time.Time
 
+	// cur is the current version last read; curOK is false until a read
+	// succeeded.
+	cur   string
+	curOK bool
+
 	agentPID uint32
 	// counted is set when the boot check at start counted the agent start
 	// that follows it.
@@ -78,11 +83,16 @@ func (w *watcher) current(ctx context.Context) (v string, ok bool) {
 	return v, true
 }
 
-// changed reports whether the current version differs from before. A read
-// that failed on either side is not a change.
-func (w *watcher) changed(ctx context.Context, before string, beforeOK bool) bool {
-	after, ok := w.current(ctx)
-	return beforeOK && ok && after != before
+// changed reads the current version and reports whether it differs from
+// the one read last. A failed read is not a change and keeps the last one.
+func (w *watcher) changed(ctx context.Context) bool {
+	v, ok := w.current(ctx)
+	if !ok {
+		return false
+	}
+	was := w.curOK && v != w.cur
+	w.cur, w.curOK = v, true
+	return was
 }
 
 // start runs before the service reports RUNNING.
@@ -95,7 +105,7 @@ func (w *watcher) changed(ctx context.Context, before string, beforeOK bool) boo
 // again on every updater restart would roll back a version that never
 // failed.
 func (w *watcher) start(ctx context.Context) error {
-	before, beforeOK := w.current(ctx)
+	w.cur, w.curOK = w.current(ctx)
 	pid, err := w.agent.PID()
 	if err != nil {
 		w.log.Warn("query agent service", "error", err)
@@ -125,7 +135,7 @@ func (w *watcher) start(ctx context.Context) error {
 	}
 	w.agentPID = pid
 	w.counted = pid == 0
-	w.switched = w.changed(ctx, before, beforeOK)
+	w.switched = w.changed(ctx)
 	return nil
 }
 
@@ -149,7 +159,9 @@ func (w *watcher) run(ctx context.Context, interval time.Duration) error {
 }
 
 func (w *watcher) tick(ctx context.Context) error {
-	before, beforeOK := w.current(ctx)
+	if !w.curOK {
+		w.cur, w.curOK = w.current(ctx)
+	}
 	if w.spoolHasWork() {
 		res, err := updater.Apply(ctx, w.opts, w.spool)
 		switch {
@@ -170,7 +182,7 @@ func (w *watcher) tick(ctx context.Context) error {
 	if ctx.Err() != nil {
 		return nil
 	}
-	if w.changed(ctx, before, beforeOK) {
+	if w.changed(ctx) {
 		return w.afterSwitch(ctx)
 	}
 	return nil

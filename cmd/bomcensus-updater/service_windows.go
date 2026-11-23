@@ -19,7 +19,7 @@ import (
 
 const serviceName = "bomcensus-updater"
 
-type scmAgent struct{ c winsvc.Control }
+type scmAgent struct{ c *winsvc.Control }
 
 func (a scmAgent) PID() (uint32, error) { return a.c.PID() }
 
@@ -40,11 +40,13 @@ func runService(c serviceConfig, stderr io.Writer) error {
 	}
 	defer logw.Close()
 	log := newLogger(logw)
+	agent := &winsvc.Control{Name: c.agentService}
+	defer agent.Close()
 	w := &watcher{
 		opts:   updater.Options{InstallDir: c.install, Logger: log, LockWait: c.lockWait},
 		spool:  c.spool,
 		limits: c.limits,
-		agent:  scmAgent{winsvc.Control{Name: c.agentService}},
+		agent:  scmAgent{agent},
 		log:    log,
 		now:    time.Now,
 	}

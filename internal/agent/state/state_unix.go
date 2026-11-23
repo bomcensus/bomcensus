@@ -14,7 +14,7 @@ import (
 )
 
 // securePrivateDir sets mode 0700 on dir unless it has it already.
-func securePrivateDir(dir string, fi os.FileInfo, _ string) error {
+func securePrivateDir(dir string, fi os.FileInfo, _ string, _ bool) error {
 	if fi.Mode().Perm() != 0o700 {
 		if err := os.Chmod(dir, 0o700); err != nil {
 			return fmt.Errorf("state: chmod %s: %w", dir, err)

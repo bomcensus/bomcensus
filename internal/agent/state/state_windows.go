@@ -16,9 +16,11 @@ import (
 
 // securePrivateDir gives dir a protected DACL with full control for
 // LocalSystem, Administrators, the account of the process and the virtual
-// account of service, inherited by every file in it. It is applied on every
-// Open, because the mode check of other systems has no cheap equivalent.
-func securePrivateDir(dir string, _ os.FileInfo, service string) error {
+// account of service, inherited by every file in it, unless it has one
+// already. The system applies a new DACL to the whole subtree, so it is
+// refused for a directory that is not known to be a state directory (a
+// mistyped --state-dir).
+func securePrivateDir(dir string, _ os.FileInfo, service string, known bool) error {
 	var extra []*windows.SID
 	if service != "" {
 		sid, err := winacl.ServiceSID(service)
@@ -26,6 +28,16 @@ func securePrivateDir(dir string, _ os.FileInfo, service string) error {
 			return fmt.Errorf("state: service %s: %w", service, err)
 		}
 		extra = append(extra, sid)
+	}
+	ok, err := winacl.IsProtected(dir, extra...)
+	if err != nil {
+		return fmt.Errorf("state: read ACL of %s: %w", dir, err)
+	}
+	if ok {
+		return nil
+	}
+	if !known {
+		return fmt.Errorf("state: %s is not empty and has no %s file; not replacing the ACL of a directory that may not be a state directory", dir, lockName)
 	}
 	if err := winacl.ProtectDir(dir, extra...); err != nil {
 		return fmt.Errorf("state: restrict %s: %w", dir, err)

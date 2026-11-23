@@ -141,6 +141,75 @@ func contains(list []*windows.SID, sid *windows.SID) bool {
 	return false
 }
 
+// IsProtected reports whether path has what ProtectDir would give it: an
+// owner among the trusted and extra SIDs, and a protected DACL of allow
+// entries for those SIDs only, with full control inherited by files and
+// subdirectories for LocalSystem, Administrators, every extra SID and the
+// current account. The current account needs no entry of its own when it
+// is a member of Administrators. Callers use it to leave a directory alone
+// that is already set up (by an earlier call or by the installer).
+func IsProtected(path string, extra ...*windows.SID) (bool, error) {
+	sd, err := windows.GetNamedSecurityInfo(path, windows.SE_FILE_OBJECT, windows.OWNER_SECURITY_INFORMATION|windows.DACL_SECURITY_INFORMATION)
+	if err != nil {
+		return false, err
+	}
+	ctl, _, err := sd.Control()
+	if err != nil {
+		return false, err
+	}
+	if ctl&windows.SE_DACL_PROTECTED == 0 {
+		return false, nil
+	}
+	trusted, err := Trusted()
+	if err != nil {
+		return false, err
+	}
+	system, admins, self := trusted[0], trusted[1], trusted[2]
+	allowed := append(append([]*windows.SID(nil), trusted...), extra...)
+	owner, _, err := sd.Owner()
+	if err != nil {
+		return false, err
+	}
+	if owner == nil || !contains(allowed, owner) {
+		return false, nil
+	}
+	dacl, _, err := sd.DACL()
+	if err != nil {
+		return false, err
+	}
+	if dacl == nil {
+		return false, nil
+	}
+	const inherit = windows.OBJECT_INHERIT_ACE | windows.CONTAINER_INHERIT_ACE
+	var full []*windows.SID
+	for i := uint32(0); i < uint32(dacl.AceCount); i++ {
+		var ace *windows.ACCESS_ALLOWED_ACE
+		if err := windows.GetAce(dacl, i, &ace); err != nil {
+			return false, err
+		}
+		sid := (*windows.SID)(unsafe.Pointer(&ace.SidStart))
+		if ace.Header.AceType != windows.ACCESS_ALLOWED_ACE_TYPE || !contains(allowed, sid) {
+			return false, nil
+		}
+		if ace.Mask&fileAllAccess == fileAllAccess && ace.Header.AceFlags&inherit == inherit {
+			full = append(full, sid)
+		}
+	}
+	required := append([]*windows.SID{system, admins}, extra...)
+	if !contains(full, self) {
+		// Token 0 is the token of the calling thread or process.
+		if isAdmin, err := windows.Token(0).IsMember(admins); err != nil || !isAdmin {
+			required = append(required, self)
+		}
+	}
+	for _, sid := range required {
+		if sid != nil && !contains(full, sid) {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
 // Check reports an error unless path has a protected DACL that grants
 // access to the trusted SIDs and the extra ones only. Tests and
 // diagnostics use it.

@@ -26,3 +26,22 @@ func checkPrivateFile(t *testing.T, path string) {
 		t.Fatalf("mode %v, %v", fi.Mode(), err)
 	}
 }
+
+func TestLockedOpenKeepsMode(t *testing.T) {
+	dir := t.TempDir()
+	d, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+	if err := os.Chmod(dir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Open(dir); err != ErrLocked {
+		t.Fatalf("second open: %v", err)
+	}
+	fi, err := os.Stat(dir)
+	if err != nil || fi.Mode().Perm() != 0o750 {
+		t.Fatalf("mode %v, %v", fi.Mode(), err)
+	}
+}

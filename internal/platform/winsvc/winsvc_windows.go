@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sync"
 	"time"
 
 	"golang.org/x/sys/windows"
@@ -146,13 +147,19 @@ func (w *eventWriter) Close() error {
 	return w.l.Close()
 }
 
-// Control controls one service through the SCM.
+// Control controls one service through the SCM. It keeps its connection
+// and service handle open between calls, for a caller that polls; an error
+// closes them and the next call opens them again. Close releases them.
 type Control struct {
 	Name string
+
+	mu sync.Mutex
+	m  *mgr.Mgr
+	s  *mgr.Service
 }
 
 // PID returns the process ID of the service, or 0 when it does not run.
-func (c Control) PID() (uint32, error) {
+func (c *Control) PID() (uint32, error) {
 	var pid uint32
 	err := c.with(func(s *mgr.Service) error {
 		st, err := s.Query()
@@ -169,7 +176,7 @@ func (c Control) PID() (uint32, error) {
 
 // Restart stops the service and starts it again. A service that is stopped
 // is left alone: it was stopped on purpose or has not been started yet.
-func (c Control) Restart(ctx context.Context, timeout time.Duration) error {
+func (c *Control) Restart(ctx context.Context, timeout time.Duration) error {
 	return c.with(func(s *mgr.Service) error {
 		st, err := s.Query()
 		if err != nil {
@@ -209,16 +216,44 @@ func (c Control) Restart(ctx context.Context, timeout time.Duration) error {
 	})
 }
 
-func (c Control) with(f func(*mgr.Service) error) error {
-	m, err := mgr.Connect()
-	if err != nil {
-		return err
+// Close closes the service handle and the SCM connection.
+func (c *Control) Close() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.closeLocked()
+	return nil
+}
+
+func (c *Control) closeLocked() {
+	if c.s != nil {
+		c.s.Close()
+		c.s = nil
 	}
-	defer m.Disconnect()
-	s, err := m.OpenService(c.Name)
-	if err != nil {
-		return err
+	if c.m != nil {
+		c.m.Disconnect()
+		c.m = nil
 	}
-	defer s.Close()
-	return f(s)
+}
+
+func (c *Control) with(f func(*mgr.Service) error) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.s == nil {
+		m, err := mgr.Connect()
+		if err != nil {
+			return err
+		}
+		s, err := m.OpenService(c.Name)
+		if err != nil {
+			m.Disconnect()
+			return err
+		}
+		c.m, c.s = m, s
+	}
+	err := f(c.s)
+	if err != nil {
+		// The handle may be stale (service deleted, SCM restarted).
+		c.closeLocked()
+	}
+	return err
 }

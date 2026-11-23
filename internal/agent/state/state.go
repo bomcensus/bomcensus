@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -56,9 +57,11 @@ type Dir struct {
 	lock *os.File
 }
 
-// Open creates path if needed (mode 0700), tightens its mode and takes an
-// exclusive lock on it. The lock is released by Close or when the process
-// exits or executes another program.
+// Open creates path if needed (mode 0700), takes an exclusive lock on it and
+// then tightens its mode. The lock is released by Close or when the process
+// exits or executes another program. On Windows a directory that needs a new
+// DACL is refused unless it was just created, is empty or already has the
+// lock file of an earlier Open.
 func Open(path string) (*Dir, error) { return OpenAs(path, "") }
 
 // OpenAs is Open for the state directory of a Windows service: on Windows
@@ -73,6 +76,8 @@ func OpenAs(path, service string) (*Dir, error) {
 	if err != nil {
 		return nil, fmt.Errorf("state: %w", err)
 	}
+	_, err = os.Lstat(abs)
+	created := errors.Is(err, fs.ErrNotExist)
 	if err := os.MkdirAll(abs, 0o700); err != nil {
 		return nil, fmt.Errorf("state: create %s: %w", abs, err)
 	}
@@ -83,10 +88,18 @@ func OpenAs(path, service string) (*Dir, error) {
 	if !fi.IsDir() {
 		return nil, fmt.Errorf("state: %s is not a directory", abs)
 	}
-	if err := securePrivateDir(abs, fi, service); err != nil {
-		return nil, err
+	lockPath := filepath.Join(abs, lockName)
+	_, err = os.Lstat(lockPath)
+	hadLock := err == nil
+	// A directory is known to be a state directory when it was just
+	// created, was opened before (it has the lock file) or is empty.
+	known := created || hadLock
+	if !known {
+		if known, err = isEmptyDir(abs); err != nil {
+			return nil, fmt.Errorf("state: %w", err)
+		}
 	}
-	f, err := os.OpenFile(filepath.Join(abs, lockName), os.O_RDWR|os.O_CREATE, 0o600)
+	f, err := os.OpenFile(lockPath, os.O_RDWR|os.O_CREATE, 0o600)
 	if err != nil {
 		return nil, fmt.Errorf("state: open lock: %w", err)
 	}
@@ -94,7 +107,29 @@ func OpenAs(path, service string) (*Dir, error) {
 		f.Close()
 		return nil, err
 	}
+	// Permissions change only under the lock, so that a process that fails
+	// with ErrLocked leaves the directory of the running one alone.
+	if err := securePrivateDir(abs, fi, service, known); err != nil {
+		f.Close()
+		if !hadLock {
+			os.Remove(lockPath)
+		}
+		return nil, err
+	}
 	return &Dir{path: abs, lock: f}, nil
+}
+
+func isEmptyDir(dir string) (bool, error) {
+	d, err := os.Open(dir)
+	if err != nil {
+		return false, err
+	}
+	defer d.Close()
+	_, err = d.Readdirnames(1)
+	if errors.Is(err, io.EOF) {
+		return true, nil
+	}
+	return false, err
 }
 
 // Path returns the absolute directory path.
