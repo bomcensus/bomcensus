@@ -6,7 +6,7 @@ bomcensus는 서버·컨테이너·쿠버네티스에 설치되고 실행 중인
 
 ## 상태
 
-Linux Agent(connect·listen 모드), SSH를 통한 Agentless 수집, Kubernetes 인벤토리와 exec 수집, Agent 자동 업데이트, 웹 콘솔이 구현되어 있습니다. 모든 명령은 Windows(amd64, arm64)에서도 빌드되고 실행되며, Windows Agent는 현재 호스트 정보만 보고합니다. 취약점 대조, SBOM 내보내기, Windows 소프트웨어 수집, Windows 스캔 대상은 아직 구현되지 않았습니다.
+Linux Agent(connect·listen 모드), SSH를 통한 Agentless 수집, Kubernetes 인벤토리와 exec 수집, 취약점 대조, Agent 자동 업데이트, 웹 콘솔이 구현되어 있습니다. 모든 명령은 Windows(amd64, arm64)에서도 빌드되고 실행되며, Windows Agent는 현재 호스트 정보만 보고합니다.
 
 ## 설치
 
@@ -30,6 +30,7 @@ curl -fsSL https://github.com/bomcensus/bomcensus/releases/latest/download/insta
 - [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md): Docker Compose, Helm, systemd, Windows 서비스로 서버·Agent·Scanner를 빌드하고 실행하는 방법 (영문)
 - [docs/SECURITY.md](docs/SECURITY.md): 보안 설계, 권한 구성, 알려진 한계 (영문)
 - [docs/PROTOCOL.md](docs/PROTOCOL.md): Agent 프로토콜의 서명과 비밀값 암호화 (영문)
+- [docs/GO_SYMBOLS.md](docs/GO_SYMBOLS.md): Go 심볼 확인, 지원하는 실행 파일과 테스트한 Go 버전 (영문)
 - [docs/RELEASING.md](docs/RELEASING.md): 배포되는 이미지·차트·바이너리와 검증 방법 (영문)
 
 ## 라이선스
