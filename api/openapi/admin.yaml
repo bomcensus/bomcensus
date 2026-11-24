@@ -61,6 +61,8 @@ tags:
     description: TLS configuration
   - name: feed
     description: Vulnerability feed servers and the instance key
+  - name: vulnerabilities
+    description: Findings by update action and by vulnerability
 
 paths:
   /meta:
@@ -1983,6 +1985,154 @@ paths:
         default:
           $ref: "#/components/responses/UnexpectedError"
 
+  /vulnerabilities/summary:
+    get:
+      tags: [vulnerabilities]
+      operationId: getVulnerabilitySummary
+      summary: Vulnerability figures of the dashboard and the first update actions
+      description: |
+        `actions` are the first 10 update actions (one per vulnerable
+        component), ordered by exposure, then known exploitation, EPSS and
+        CVSS. `actionsTotal` counts them all.
+      responses:
+        "200":
+          description: Summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VulnSummary"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /vulnerabilities/components:
+    get:
+      tags: [vulnerabilities]
+      operationId: listVulnerableComponents
+      summary: Update actions, one per vulnerable component
+      description: |
+        Ordered by exposure, then known exploitation, EPSS and CVSS. `q`
+        matches the component name, version and the CVE ids.
+      parameters:
+        - $ref: "#/components/parameters/QueryQ"
+        - $ref: "#/components/parameters/QuerySeverity"
+        - $ref: "#/components/parameters/QueryExposure"
+        - $ref: "#/components/parameters/QueryKev"
+        - $ref: "#/components/parameters/QueryLimit"
+        - $ref: "#/components/parameters/QueryOffset"
+      responses:
+        "200":
+          description: Update actions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VulnComponentList"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /vulnerabilities/components/{id}:
+    parameters:
+      - $ref: "#/components/parameters/PathId"
+    get:
+      tags: [vulnerabilities]
+      operationId: getVulnerableComponent
+      summary: The vulnerabilities of one component and where it is
+      responses:
+        "200":
+          description: Component
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VulnComponentDetail"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /vulnerabilities/cves:
+    get:
+      tags: [vulnerabilities]
+      operationId: listVulnerabilities
+      summary: Open vulnerabilities, one per id
+      description: |
+        Ordered by exposure, then known exploitation, EPSS and CVSS. `q`
+        matches the id, aliases, summary and component names.
+      parameters:
+        - $ref: "#/components/parameters/QueryQ"
+        - $ref: "#/components/parameters/QuerySeverity"
+        - $ref: "#/components/parameters/QueryExposure"
+        - $ref: "#/components/parameters/QueryKev"
+        - $ref: "#/components/parameters/QueryLimit"
+        - $ref: "#/components/parameters/QueryOffset"
+      responses:
+        "200":
+          description: Vulnerabilities
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VulnCveList"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /vulnerabilities/cves/{vulnId}:
+    parameters:
+      - name: vulnId
+        in: path
+        required: true
+        schema:
+          type: string
+          maxLength: 128
+    get:
+      tags: [vulnerabilities]
+      operationId: getVulnerability
+      summary: One vulnerability with the components and places it affects
+      description: "`404` when no open finding has it."
+      responses:
+        "200":
+          description: Vulnerability
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VulnCveDetail"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /assets/{id}/vulnerabilities:
+    parameters:
+      - $ref: "#/components/parameters/PathId"
+    get:
+      tags: [assets]
+      operationId: listAssetVulnerabilities
+      summary: Open findings of an asset
+      responses:
+        "200":
+          description: Findings, most exposed first
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssetVulnList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
 components:
   securitySchemes:
     session:
@@ -1998,6 +2148,24 @@ components:
       schema:
         type: string
         maxLength: 256
+    QuerySeverity:
+      name: severity
+      in: query
+      description: Keep items with a vulnerability of this rating.
+      schema:
+        $ref: "#/components/schemas/Severity"
+    QueryExposure:
+      name: exposure
+      in: query
+      description: Keep items with a location of this exposure.
+      schema:
+        $ref: "#/components/schemas/Exposure"
+    QueryKev:
+      name: kev
+      in: query
+      description: Keep items with a known exploited vulnerability.
+      schema:
+        type: boolean
     QueryLimit:
       name: limit
       in: query
@@ -4099,3 +4267,461 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ComponentVulnerability"
+    Exposure:
+      description: |
+        `listening`: a process that loaded the component listens on a
+        non-loopback address. `running`: a process loaded it.
+        `installed`: no process did. `unknown`: the processes were not fully
+        collected.
+      type: string
+      enum: [listening, running, installed, unknown]
+    FindingLayer:
+      description: "`host` for the asset itself, `runtime` for files added in the running container, `image` for the image content."
+      type: string
+      enum: [host, runtime, image]
+    ExposureCounts:
+      description: Locations (asset and container) by exposure.
+      type: object
+      required: [listening, running, installed, unknown]
+      properties:
+        listening:
+          type: integer
+        running:
+          type: integer
+        installed:
+          type: integer
+        unknown:
+          type: integer
+    SeverityCounts:
+      description: Vulnerabilities by rating; `unknown` have no CVSS score.
+      type: object
+      required: [critical, high, medium, low, unknown]
+      properties:
+        critical:
+          type: integer
+        high:
+          type: integer
+        medium:
+          type: integer
+        low:
+          type: integer
+        unknown:
+          type: integer
+    ProcessCount:
+      type: object
+      required: [exe, count]
+      properties:
+        exe:
+          type: string
+        count:
+          type: integer
+    FindingProcess:
+      type: object
+      required: [pid, exe, ports]
+      properties:
+        pid:
+          type: integer
+        exe:
+          type: string
+        pod:
+          type: string
+        ports:
+          description: Non-loopback listening sockets, `tcp/443`.
+          type: array
+          items:
+            type: string
+    VulnComponent:
+      description: An update action. `fixedVersion` is the version that fixes all its vulnerabilities, when one is known.
+      type: object
+      required: [componentId, name, version, type, cves, kev, severityCounts, exposure, exposureCounts, assets, processes, fixedVersions]
+      properties:
+        componentId:
+          type: string
+        name:
+          type: string
+        version:
+          type: string
+        type:
+          $ref: "#/components/schemas/ComponentType"
+        purl:
+          type: string
+        fixedVersion:
+          type: string
+        fixedVersions:
+          description: Distinct fixed versions of its vulnerabilities.
+          type: array
+          items:
+            type: string
+        unfixed:
+          description: Vulnerabilities without a fixed version.
+          type: integer
+        cves:
+          type: integer
+        kev:
+          type: integer
+        severityCounts:
+          $ref: "#/components/schemas/SeverityCounts"
+        score:
+          type: number
+          format: double
+        severity:
+          $ref: "#/components/schemas/Severity"
+        epss:
+          type: number
+          format: double
+        exposure:
+          $ref: "#/components/schemas/Exposure"
+        exposureCounts:
+          $ref: "#/components/schemas/ExposureCounts"
+        assets:
+          type: integer
+        processes:
+          description: Executables of the loading processes, most frequent first (at most 5).
+          type: array
+          items:
+            $ref: "#/components/schemas/ProcessCount"
+    VulnComponentList:
+      type: object
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/VulnComponent"
+        total:
+          type: integer
+    VulnCve:
+      type: object
+      required: [vulnId, kev, components, assets, exposure, exposureCounts]
+      properties:
+        vulnId:
+          type: string
+        summary:
+          type: string
+        severity:
+          $ref: "#/components/schemas/Severity"
+        score:
+          type: number
+          format: double
+        kev:
+          type: boolean
+        kevAdded:
+          type: string
+          format: date
+        epss:
+          type: number
+          format: double
+        epssPercentile:
+          type: number
+          format: double
+        components:
+          type: integer
+        assets:
+          type: integer
+        exposure:
+          $ref: "#/components/schemas/Exposure"
+        exposureCounts:
+          $ref: "#/components/schemas/ExposureCounts"
+        fixState:
+          description: In the context of one component.
+          allOf:
+            - $ref: "#/components/schemas/FixState"
+        fixedVersion:
+          description: In the context of one component.
+          type: string
+        processes:
+          description: In the context of one component; the loading processes of the most exposed location.
+          type: array
+          items:
+            $ref: "#/components/schemas/FindingProcess"
+    VulnCveList:
+      type: object
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/VulnCve"
+        total:
+          type: integer
+    VulnLocation:
+      description: One place a component is, with the open findings there.
+      type: object
+      required: [assetId, assetName, assetKind, layer, componentId, componentName, componentVersion, locations, exposure, processes, cves, firstSeen]
+      properties:
+        assetId:
+          type: string
+        assetName:
+          type: string
+        assetKind:
+          $ref: "#/components/schemas/AssetKind"
+        container:
+          type: string
+        layer:
+          $ref: "#/components/schemas/FindingLayer"
+        imageDigest:
+          type: string
+        componentId:
+          type: string
+        componentName:
+          type: string
+        componentVersion:
+          type: string
+        locations:
+          description: File paths (or the package database) of the component there.
+          type: array
+          items:
+            type: string
+        method:
+          $ref: "#/components/schemas/DetectMethod"
+        exposure:
+          $ref: "#/components/schemas/Exposure"
+        processes:
+          type: array
+          items:
+            $ref: "#/components/schemas/FindingProcess"
+        cves:
+          type: integer
+        firstSeen:
+          type: string
+          format: date-time
+    VulnComponentDetail:
+      type: object
+      required: [component, cves, locations]
+      properties:
+        component:
+          $ref: "#/components/schemas/VulnComponent"
+        cves:
+          type: array
+          items:
+            $ref: "#/components/schemas/VulnCve"
+        locations:
+          type: array
+          items:
+            $ref: "#/components/schemas/VulnLocation"
+    CvssScore:
+      type: object
+      required: [version, vector, score]
+      properties:
+        source:
+          type: string
+        type:
+          description: Primary (NVD) or Secondary (CNA).
+          type: string
+        version:
+          type: string
+        vector:
+          type: string
+        score:
+          type: number
+          format: double
+        severity:
+          type: string
+    KevEntry:
+      type: object
+      required: [dateAdded]
+      properties:
+        dateAdded:
+          type: string
+          format: date
+        dueDate:
+          type: string
+          format: date
+        name:
+          type: string
+        requiredAction:
+          type: string
+        ransomwareUse:
+          type: string
+    VulnDetail:
+      type: object
+      required: [vulnId, aliases, cvss, cwes, references]
+      properties:
+        vulnId:
+          type: string
+        aliases:
+          type: array
+          items:
+            type: string
+        summary:
+          type: string
+        description:
+          type: string
+        severity:
+          $ref: "#/components/schemas/Severity"
+        score:
+          type: number
+          format: double
+        cvss:
+          type: array
+          items:
+            $ref: "#/components/schemas/CvssScore"
+        cwes:
+          type: array
+          items:
+            type: string
+        references:
+          type: array
+          items:
+            type: string
+        kev:
+          $ref: "#/components/schemas/KevEntry"
+        epss:
+          type: number
+          format: double
+        epssPercentile:
+          type: number
+          format: double
+        published:
+          type: string
+          format: date-time
+        modified:
+          type: string
+          format: date-time
+    VulnCveComponent:
+      type: object
+      required: [componentId, name, version, type, method, fixState, platforms, advisories, assets, exposure]
+      properties:
+        componentId:
+          type: string
+        name:
+          type: string
+        version:
+          type: string
+        type:
+          $ref: "#/components/schemas/ComponentType"
+        purl:
+          type: string
+        method:
+          type: string
+          enum: [package, cpe]
+        ecosystem:
+          type: string
+        fixState:
+          $ref: "#/components/schemas/FixState"
+        fixedVersion:
+          type: string
+        cpeMatch:
+          type: string
+          enum: [exact, range]
+        rangeSource:
+          type: string
+          enum: [nvd, vulncheck, cna]
+        platforms:
+          type: array
+          items:
+            type: string
+        advisories:
+          type: array
+          items:
+            $ref: "#/components/schemas/VulnAdvisory"
+        assets:
+          type: integer
+        exposure:
+          $ref: "#/components/schemas/Exposure"
+    VulnCveDetail:
+      type: object
+      required: [vulnerability, components, locations]
+      properties:
+        vulnerability:
+          $ref: "#/components/schemas/VulnDetail"
+        components:
+          type: array
+          items:
+            $ref: "#/components/schemas/VulnCveComponent"
+        locations:
+          type: array
+          items:
+            $ref: "#/components/schemas/VulnLocation"
+    AssetVuln:
+      type: object
+      required: [componentId, componentName, componentVersion, layer, vulnId, kev, exposure, fixState, processes, firstSeen]
+      properties:
+        componentId:
+          type: string
+        componentName:
+          type: string
+        componentVersion:
+          type: string
+        container:
+          type: string
+        layer:
+          $ref: "#/components/schemas/FindingLayer"
+        imageDigest:
+          type: string
+        vulnId:
+          type: string
+        summary:
+          type: string
+        severity:
+          $ref: "#/components/schemas/Severity"
+        score:
+          type: number
+          format: double
+        kev:
+          type: boolean
+        epss:
+          type: number
+          format: double
+        exposure:
+          $ref: "#/components/schemas/Exposure"
+        fixState:
+          $ref: "#/components/schemas/FixState"
+        fixedVersion:
+          type: string
+        processes:
+          type: array
+          items:
+            $ref: "#/components/schemas/FindingProcess"
+        firstSeen:
+          type: string
+          format: date-time
+    AssetVulnList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AssetVuln"
+    VulnSummary:
+      type: object
+      required: [urgent, totals, unsupported, actions, actionsTotal]
+      properties:
+        revision:
+          description: Data revision of the active feed server at the last check.
+          type: integer
+          format: int64
+        checkedAt:
+          type: string
+          format: date-time
+        urgent:
+          description: Update actions with a critical or high vulnerability at a listening or running location.
+          type: object
+          required: [components, cves]
+          properties:
+            components:
+              type: integer
+            cves:
+              type: integer
+        totals:
+          type: object
+          required: [cves, components, kev, assets]
+          properties:
+            cves:
+              type: integer
+            components:
+              type: integer
+            kev:
+              type: integer
+            assets:
+              type: integer
+        unsupported:
+          description: Live components the feed server has no data for.
+          type: integer
+        actions:
+          type: array
+          items:
+            $ref: "#/components/schemas/VulnComponent"
+        actionsTotal:
+          type: integer

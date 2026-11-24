@@ -11,8 +11,8 @@ import (
 )
 
 // Manage covers sessions, register keys, agents, PKI material, releases,
-// scan targets, credentials, feed servers and settings. Services should
-// depend on the narrowest of the embedded interfaces they need.
+// scan targets, credentials, feed servers and settings. Services should depend on the
+// narrowest of the embedded interfaces they need.
 type Manage interface {
 	Sessions
 	RegisterKeys

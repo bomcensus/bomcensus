@@ -42,6 +42,7 @@ func (d *DB) ReplaceProcesses(ctx context.Context, scope store.ProcessScope, sna
 		NeedsRestart bool              `json:"needs_restart"`
 		Suspicious   bool              `json:"suspicious"`
 		ComponentID  *string           `json:"component_id"`
+		Packages     []string          `json:"packages"`
 	}
 	type listenRow struct {
 		Container string    `json:"container"`
@@ -94,7 +95,7 @@ func (d *DB) ReplaceProcesses(ctx context.Context, scope store.ProcessScope, sna
 			NewID: ivNewID(), Container: container, PID: p.PID, PPID: p.PPID, User: p.User, UID: p.UID,
 			Exe: p.Exe, ExeSource: p.ExeSource, ExeState: state, SHA256: p.SHA256, Cmdline: p.Cmdline,
 			StartedAt: started, Libs: libs, NeedsRestart: proc.NeedsRestart(), Suspicious: proc.Suspicious(),
-			ComponentID: comp,
+			ComponentID: comp, Packages: p.Packages,
 		}
 		for _, l := range p.Listen {
 			listens[listenKey{k, l.Proto, l.Address, l.Port}] = listenRow{container, p.PID, started, l.Proto, l.Address, l.Port}
@@ -142,7 +143,8 @@ func (d *DB) ReplaceProcesses(ctx context.Context, scope store.ProcessScope, sna
 	const scopeCond = `p.asset_id = $1 AND p.pod = $2 AND ($2 = '' OR p.container = $3)`
 	const obs = `jsonb_to_recordset($4::jsonb) AS o(new_id uuid, container text, pid integer, ppid integer,
 		user_name text, uid integer, exe text, exe_source text, exe_state text, sha256 text, cmdline text,
-		started_at timestamptz, libs jsonb, needs_restart boolean, suspicious boolean, component_id uuid)`
+		started_at timestamptz, libs jsonb, needs_restart boolean, suspicious boolean, component_id uuid,
+		packages text[])`
 	const match = `o.container = p.container AND o.pid = p.pid AND o.started_at = p.started_at`
 	const byHash = `(SELECT fh.component_id FROM file_hashes fh WHERE fh.sha256 = o.sha256 AND o.sha256 <> ''
 		ORDER BY fh.last_seen DESC, fh.component_id LIMIT 1)`
@@ -168,7 +170,7 @@ func (d *DB) ReplaceProcesses(ctx context.Context, scope store.ProcessScope, sna
 		tag, err := d.q.Exec(ctx, `
 			UPDATE processes p SET ppid = o.ppid, user_name = o.user_name, uid = o.uid, exe = o.exe,
 				exe_source = o.exe_source, exe_state = o.exe_state, sha256 = o.sha256, cmdline = o.cmdline,
-				libs = o.libs, needs_restart = o.needs_restart, suspicious = o.suspicious,
+				libs = o.libs, needs_restart = o.needs_restart, suspicious = o.suspicious, packages = o.packages,
 				component_id = COALESCE(o.component_id, `+byHash+`, p.component_id),
 				last_seen = GREATEST(p.last_seen, $5)
 			FROM `+obs+`
@@ -181,10 +183,10 @@ func (d *DB) ReplaceProcesses(ctx context.Context, scope store.ProcessScope, sna
 			WITH added AS (
 				INSERT INTO processes (id, asset_id, pod, container, pid, ppid, user_name, uid, exe, exe_source,
 					exe_state, sha256, cmdline, started_at, libs, needs_restart, suspicious, component_id,
-					first_seen, last_seen)
+					packages, first_seen, last_seen)
 				SELECT o.new_id, $1, $2, o.container, o.pid, o.ppid, o.user_name, o.uid, o.exe, o.exe_source,
 					o.exe_state, o.sha256, o.cmdline, o.started_at, o.libs, o.needs_restart, o.suspicious,
-					COALESCE(o.component_id, `+byHash+`), $5, $5
+					COALESCE(o.component_id, `+byHash+`), o.packages, $5, $5
 				FROM `+obs+`
 				WHERE NOT EXISTS (SELECT 1 FROM processes p WHERE `+scopeCond+` AND `+match+`)
 				RETURNING *

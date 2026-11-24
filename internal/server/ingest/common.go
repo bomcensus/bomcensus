@@ -100,6 +100,9 @@ func processObservations(ps []report.Process, container func(id string) string) 
 		for _, l := range p.Listen {
 			o.Listen = append(o.Listen, store.ListenAddr{Proto: l.Proto, Address: l.Address, Port: l.Port})
 		}
+		if p.PackagesKnown {
+			o.Packages = append([]string{}, p.Packages...)
+		}
 		if container != nil && p.ContainerID != "" {
 			o.Container = container(p.ContainerID)
 		}

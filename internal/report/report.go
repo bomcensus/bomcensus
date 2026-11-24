@@ -315,6 +315,15 @@ type Process struct {
 	ContainerID string `json:"container_id,omitempty"`
 	// MountNS is the inode of the mount namespace, zero when unreadable.
 	MountNS uint64 `json:"mount_ns,omitempty"`
+	// Packages are the OS packages that own the executable and the files
+	// the process maps for execution (shared libraries), as named by the
+	// package database of the process's root. Only meaningful when
+	// PackagesKnown: that database was read and the mappings were too.
+	Packages      []string `json:"packages,omitempty"`
+	PackagesKnown bool     `json:"packages_known,omitempty"`
+	// Mapped are the paths of the other files mapped for execution. The
+	// probe turns them into Packages; they are not reported.
+	Mapped []string `json:"-"`
 }
 
 // MappedLib is an executable mapping whose file was replaced or deleted.

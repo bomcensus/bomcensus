@@ -17,6 +17,7 @@ import {
   listAssetComponents,
   listAssetInstances,
   listAssetProcesses,
+  listAssetVulnerabilities,
   optional,
   toApiError,
 } from '~/api'
@@ -272,8 +273,16 @@ const nonRootLimits: { item: string; limit: string }[] = [
 
 // Counts are left out until the list has loaded
 const countOf = (pending: boolean, rows: unknown[]) => (pending ? undefined : rows.length)
+const {
+  data: vulns,
+  pending: vulnsPending,
+  error: vulnsError,
+  refresh: refreshVulns,
+} = useLoad(`asset:${id}:vulns`, async () => (await listAssetVulnerabilities(id)).items, () => [])
+
 const tabs = computed(() => [
   { key: 'overview', label: '개요' },
+  { key: 'vulnerabilities', label: '취약점', count: countOf(vulnsPending.value, vulns.value) },
   { key: 'components', label: '컴포넌트', count: countOf(componentsPending.value, componentRows.value) },
   { key: 'processes', label: '프로세스', count: countOf(procsPending.value, procs.value) },
   ...(assetContainers.value.length > 0 ? [{ key: 'containers', label: '컨테이너', count: assetContainers.value.length }] : []),
@@ -639,6 +648,8 @@ const tabs = computed(() => [
           </DataTable>
         </Panel>
       </div>
+
+      <AssetVulnPanel v-else-if="tab === 'vulnerabilities'" :items="vulns" :pending="vulnsPending" :error="vulnsError" @retry="refreshVulns" />
 
       <!-- Collection -->
       <div v-else-if="tab === 'collection'" class="space-y-4">

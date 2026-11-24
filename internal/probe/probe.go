@@ -104,6 +104,10 @@ func Run(ctx context.Context, req report.Request, opts Options) (*report.Report,
 			rep.Processes = procs
 		}
 	}
+	r.procs = procs
+	if owner != nil {
+		linkPackages(env.Proc, procs, env.Path("/"), owner.Owner)
+	}
 	var running []artifact.RunningExe
 	var open openFileIndex
 	if want[report.SectionArtifacts] || scanContent {
@@ -136,7 +140,10 @@ func orDefault(s, def string) string {
 
 // runner holds the state shared by the sections of one run.
 type runner struct {
-	env      *collect.Env
+	env *collect.Env
+	// procs is the processes section of the run, nil when not collected;
+	// container scans link its processes to their image's packages.
+	procs    *report.ProcessesSection
 	log      *slog.Logger
 	opts     Options
 	ctx      context.Context

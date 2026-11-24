@@ -56,6 +56,9 @@ type Component struct {
 	SourceVersion string
 	Vendor        string
 	Origin        ComponentOrigin
+	// Modularity is the rpm module stream label
+	// (name:stream:version:context), empty for other packages.
+	Modularity string
 }
 
 // ComponentScope is one component set of an asset.

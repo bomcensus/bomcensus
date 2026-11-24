@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/bomcensus/bomcensus/internal/server/store"
@@ -27,7 +28,7 @@ const vuMatchedIn = `m.component_id = c.id AND m.feed_server_id = $1 AND m.revis
 func (d *DB) PendingMatches(ctx context.Context, e store.MatchEpoch, limit int) ([]store.Component, error) {
 	rows, err := d.q.Query(ctx, `
 		SELECT c.id, c.type, c.name, c.version, c.arch, c.distro, c.purl, c.cpe,
-			c.source_name, c.source_version, c.vendor, c.origin
+			c.source_name, c.source_version, c.vendor, c.origin, c.modularity
 		FROM components c
 		WHERE `+vuLive+`
 			AND NOT EXISTS (SELECT 1 FROM component_matches m WHERE `+vuMatchedIn+`)
@@ -42,7 +43,7 @@ func (d *DB) PendingMatches(ctx context.Context, e store.MatchEpoch, limit int) 
 	for rows.Next() {
 		var c store.Component
 		if err := rows.Scan(&c.ID, &c.Type, &c.Name, &c.Version, &c.Arch, &c.Distro, &c.PURL, &c.CPE,
-			&c.SourceName, &c.SourceVersion, &c.Vendor, &c.Origin); err != nil {
+			&c.SourceName, &c.SourceVersion, &c.Vendor, &c.Origin, &c.Modularity); err != nil {
 			return nil, mgErr("pending matches", err)
 		}
 		out = append(out, c)
@@ -160,6 +161,10 @@ func (d *DB) SaveMatches(ctx context.Context, b store.MatchBatch) error {
 				return mgErr("save vulnerability details", err)
 			}
 		}
+		changed, err := tx.vuChangedComponents(ctx, b.Components)
+		if err != nil {
+			return err
+		}
 		if _, err := tx.q.Exec(ctx, `DELETE FROM component_vulns WHERE component_id = ANY($1::uuid[])`, ids); err != nil {
 			return mgErr("save component vulnerabilities", err)
 		}
@@ -176,7 +181,7 @@ func (d *DB) SaveMatches(ctx context.Context, b store.MatchBatch) error {
 				return mgErr("save component vulnerabilities", err)
 			}
 		}
-		_, err := tx.q.Exec(ctx, `
+		_, err = tx.q.Exec(ctx, `
 			INSERT INTO component_matches (component_id, feed_server_id, revision, rules_digest, os_key, status, reason, matched_at)
 			SELECT x.component_id, $2, $3, $4, x.os_key, x.status, x.reason, $5
 			FROM jsonb_to_recordset($1::text::jsonb) AS x(component_id uuid, os_key text, status text, reason text)
@@ -184,8 +189,53 @@ func (d *DB) SaveMatches(ctx context.Context, b store.MatchBatch) error {
 				rules_digest = excluded.rules_digest, os_key = excluded.os_key, status = excluded.status,
 				reason = excluded.reason, matched_at = excluded.matched_at`,
 			string(matchJSON), b.Epoch.ServerID, b.Epoch.Revision, b.Epoch.Rules, at)
-		return mgErr("save component matches", err)
+		if err != nil {
+			return mgErr("save component matches", err)
+		}
+		return tx.markVulnsChanged(ctx, changed)
 	})
+}
+
+// vuChangedComponents returns the components of a batch whose set of
+// vulnerabilities differs from the stored one.
+func (d *DB) vuChangedComponents(ctx context.Context, comps []store.ComponentMatch) ([]string, error) {
+	ids := make([]string, 0, len(comps))
+	for _, c := range comps {
+		ids = append(ids, c.ComponentID)
+	}
+	old := map[string][]string{}
+	rows, err := d.q.Query(ctx, `
+		SELECT component_id::text, array_agg(DISTINCT vuln_id ORDER BY vuln_id)
+		FROM component_vulns WHERE component_id = ANY($1::uuid[]) GROUP BY component_id`, ids)
+	if err != nil {
+		return nil, mgErr("compare component vulnerabilities", err)
+	}
+	for rows.Next() {
+		var id string
+		var vulns []string
+		if err := rows.Scan(&id, &vulns); err != nil {
+			rows.Close()
+			return nil, mgErr("compare component vulnerabilities", err)
+		}
+		old[id] = vulns
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, mgErr("compare component vulnerabilities", err)
+	}
+	var changed []string
+	for _, c := range comps {
+		var now []string
+		for _, v := range c.Vulns {
+			now = append(now, v.VulnID)
+		}
+		slices.Sort(now)
+		now = slices.Compact(now)
+		if !slices.Equal(now, old[c.ComponentID]) {
+			changed = append(changed, c.ComponentID)
+		}
+	}
+	return changed, nil
 }
 
 // ResetMatches implements store.Vulns.

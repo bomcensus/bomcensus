@@ -130,13 +130,18 @@ func parseMapsLine(line string) (mapping, bool) {
 // anonymous mappings.
 var unlinkedNoise = []string{"/memfd:", "/SYSV", "/dev/zero", "/anon_hugepage"}
 
+// maxMapped bounds the executable mappings kept per process for package
+// linking.
+const maxMapped = 512
+
 // mappedLibs returns the executable file mappings of a process whose file was
-// replaced or deleted. The executable itself is reported on the process and
-// left out here.
-func (c *collector) mappedLibs(dir, exe string) ([]report.MappedLib, error) {
+// replaced or deleted, and the paths of the other executable file mappings
+// (for linking the process to the packages it loads). The executable itself
+// is reported on the process and left out of both.
+func (c *collector) mappedLibs(dir, exe string) ([]report.MappedLib, []string, error) {
 	f, err := os.Open(filepath.Join(dir, "maps"))
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer f.Close()
 	lr := &io.LimitedReader{R: f, N: maxMapsRead}
@@ -144,10 +149,17 @@ func (c *collector) mappedLibs(dir, exe string) ([]report.MappedLib, error) {
 	sc.Buffer(make([]byte, 0, 64<<10), 64<<10)
 
 	var libs []report.MappedLib
+	var mapped []string
 	seen := map[string]bool{}
 	for sc.Scan() {
 		line := sc.Text()
 		if !strings.HasSuffix(line, deletedSuffix) {
+			if len(mapped) < maxMapped && strings.Contains(line, " /") {
+				if m, ok := parseMapsLine(line); ok && m.exec && strings.HasPrefix(m.path, "/") && m.path != exe && !seen[m.path] {
+					seen[m.path] = true
+					mapped = append(mapped, m.path)
+				}
+			}
 			continue
 		}
 		m, ok := parseMapsLine(line)
@@ -171,13 +183,18 @@ func (c *collector) mappedLibs(dir, exe string) ([]report.MappedLib, error) {
 		libs = append(libs, lib)
 	}
 	slices.SortFunc(libs, func(a, b report.MappedLib) int { return strings.Compare(a.Path, b.Path) })
+	slices.Sort(mapped)
+	if mapped == nil {
+		// Non-nil tells the maps were read.
+		mapped = []string{}
+	}
 	if err := sc.Err(); err != nil {
-		return libs, err
+		return libs, mapped, err
 	}
 	if lr.N <= 0 {
-		return libs, errMapsTruncated
+		return libs, mapped, errMapsTruncated
 	}
-	return libs, nil
+	return libs, mapped, nil
 }
 
 // hashMapFile hashes the file behind a mapping. Opening map_files entries

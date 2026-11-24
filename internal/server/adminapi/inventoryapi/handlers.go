@@ -28,6 +28,8 @@ type Store interface {
 	store.K8sClusters
 	store.AssetRequests
 	store.VulnQuery
+	GetActiveFeedServer(ctx context.Context) (store.FeedServer, error)
+	CountMatches(ctx context.Context, e store.MatchEpoch) (store.MatchCounts, error)
 }
 
 // AgentStore gives the agent numbers of the dashboard and checks scanner
@@ -173,7 +175,7 @@ func (h *Handlers) logChange(ctx context.Context, msg string, args ...any) {
 func (h *Handlers) GetMeta(ctx context.Context, _ gen.GetMetaRequestObject) (gen.GetMetaResponseObject, error) {
 	return gen.GetMeta200JSONResponse{
 		Version:      version.Version,
-		Features:     gen.Features{Vulnerabilities: false, SbomExport: false},
+		Features:     gen.Features{Vulnerabilities: true, SbomExport: false},
 		AgentAddress: str(h.cfg.AgentAddress),
 	}, nil
 }

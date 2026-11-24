@@ -183,7 +183,7 @@ func seed(t *testing.T) *fixture {
 		Processes: []store.ProcessObservation{
 			{PID: 1, User: "root", Exe: "/sbin/init", ExeSource: "proc", ExeState: store.ExeNormal, StartedAt: t0},
 			{PID: 200, User: "www-data", Exe: "/usr/sbin/nginx", ExeSource: "proc", ExeState: store.ExeReplaced,
-				StartedAt: t0, Container: "nginx",
+				StartedAt: t0, Container: "nginx", Packages: []string{"libc6", "nginx"},
 				Listen: []store.ListenAddr{{Proto: "tcp", Address: "0.0.0.0", Port: 443}}},
 			{PID: 300, User: "app", Exe: "/usr/bin/app", ExeSource: "cmdline", ExeState: store.ExeNormal, StartedAt: t0,
 				Libs: []store.MappedLib{{Path: "/usr/lib/libssl.so.3", State: store.ExeDeleted}}},
@@ -415,7 +415,7 @@ func TestComponents(t *testing.T) {
 		t.Fatalf("host only: %+v", hostOnly.Items)
 	}
 	inC := lc(gen.ListAssetComponentsParams{Container: ptr("nginx")})
-	if names(inC.Items, rowName) != "libc6,nginx" || *inC.Items[0].Layer != gen.Image || *inC.Items[0].Container != "nginx" {
+	if names(inC.Items, rowName) != "libc6,nginx" || *inC.Items[0].Layer != gen.ComponentLayerImage || *inC.Items[0].Container != "nginx" {
 		t.Fatalf("container: %+v", inC.Items)
 	}
 	srt := gen.ListAssetComponentsParamsSort("-name")
@@ -430,10 +430,10 @@ func TestComponents(t *testing.T) {
 		}, store.ReplaceOptions{At: t0})
 		return err
 	}())
-	if r := lc(gen.ListAssetComponentsParams{Layer: ptr(gen.Runtime)}); names(r.Items, rowName) != "tool" {
+	if r := lc(gen.ListAssetComponentsParams{Layer: ptr(gen.ComponentLayerRuntime)}); names(r.Items, rowName) != "tool" {
 		t.Fatalf("layer runtime: %s", names(r.Items, rowName))
 	}
-	if r := lc(gen.ListAssetComponentsParams{Layer: ptr(gen.Image)}); names(r.Items, rowName) != "libc6,nginx" {
+	if r := lc(gen.ListAssetComponentsParams{Layer: ptr(gen.ComponentLayerImage)}); names(r.Items, rowName) != "libc6,nginx" {
 		t.Fatalf("layer image: %s", names(r.Items, rowName))
 	}
 	if r := lc(gen.ListAssetComponentsParams{InUse: ptr(false)}); names(r.Items, rowName) != "curl,libc6,nginx,openssl" {
@@ -832,7 +832,7 @@ func TestDashboardAndMeta(t *testing.T) {
 
 	m, err := f.h.GetMeta(f.ctx, gen.GetMetaRequestObject{})
 	must(t, err)
-	if meta := m.(gen.GetMeta200JSONResponse); meta.Version == "" || meta.Features.Vulnerabilities || meta.Features.SbomExport ||
+	if meta := m.(gen.GetMeta200JSONResponse); meta.Version == "" || !meta.Features.Vulnerabilities || meta.Features.SbomExport ||
 		meta.AgentAddress == nil || *meta.AgentAddress != "bomcensus.example:8443" {
 		t.Fatalf("meta: %+v", meta)
 	}

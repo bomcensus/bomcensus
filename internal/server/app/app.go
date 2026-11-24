@@ -158,15 +158,25 @@ func Run(ctx context.Context, cfg config.Config, log *slog.Logger, opts Options)
 	queue := job.NewRiver(db.Pool(), log.With("component", "queue"), job.RiverConfig{})
 	jobLog := log.With("component", "job")
 	cleanup := cleanupStore{Store: db, auth: authSvc, enroll: enroll, dispatch: disp}
-	matcher, err := vulnsvc.New(vulnsvc.Config{Store: db, Feed: feed, Queue: queue, Logger: log.With("component", "match")})
+	refresher, err := vulnsvc.NewRefresher(db, queue, log.With("component", "findings"))
+	if err != nil {
+		return err
+	}
+	matcher, err := vulnsvc.New(vulnsvc.Config{Store: db, Feed: feed, Queue: queue, Logger: log.With("component", "match"),
+		Matched: func(ctx context.Context) {
+			if err := refresher.Trigger(ctx, 0); err != nil {
+				log.Warn("queue findings refresh", "error", err)
+			}
+		}})
 	if err != nil {
 		return err
 	}
 	if err := errors.Join(
-		queue.Register(job.KindIngestReport, matchAfterIngest(job.IngestReportHandler(ing, jobLog), matcher, jobLog)),
+		queue.Register(job.KindIngestReport, afterIngest(job.IngestReportHandler(ing, jobLog), matcher, refresher, jobLog)),
 		queue.Register(job.KindCleanup, job.CleanupHandler(cleanup, job.DefaultRetention(), jobLog, nil)),
 		queue.Periodic(job.KindCleanup, opts.CleanupInterval, job.CleanupArgs{}),
 		matcher.Register(queue, vulnsvc.DefaultInterval),
+		refresher.Register(queue, vulnsvc.DefaultRefreshInterval),
 	); err != nil {
 		return err
 	}
@@ -320,16 +330,19 @@ func Run(ctx context.Context, cfg config.Config, log *slog.Logger, opts Options)
 	return nil
 }
 
-// matchAfterIngest queues a match run shortly after a report was applied,
-// for the components it brought. Reports that arrive in the meantime share
-// the run.
-func matchAfterIngest(h job.Handler, m *vulnsvc.Matcher, log *slog.Logger) job.Handler {
+// afterIngest queues component matching and a findings refresh shortly
+// after a report was applied. Reports that arrive in the meantime share the
+// runs.
+func afterIngest(h job.Handler, m *vulnsvc.Matcher, r *vulnsvc.Refresher, log *slog.Logger) job.Handler {
 	return func(ctx context.Context, j job.Job) error {
 		if err := h(ctx, j); err != nil {
 			return err
 		}
 		if err := m.Trigger(ctx, time.Minute); err != nil {
 			log.Warn("queue component matching", "error", err)
+		}
+		if err := r.Trigger(ctx, 30*time.Second); err != nil {
+			log.Warn("queue findings refresh", "error", err)
 		}
 		return nil
 	}

@@ -164,3 +164,13 @@ export const trustFeedServerKey = (id: string, key: string) => call(sdk.trustFee
 export const rematchFeedServer = async (id: string) => {
   await call(sdk.rematchFeedServer({ path: { id } }))
 }
+
+// ── vulnerabilities ─────────────────────────────────────
+
+export const getVulnerabilitySummary = () => call(sdk.getVulnerabilitySummary())
+export const listVulnerableComponents = (query?: Query<gen.ListVulnerableComponentsData>) =>
+  call(sdk.listVulnerableComponents({ query }))
+export const getVulnerableComponent = (id: string) => call(sdk.getVulnerableComponent({ path: { id } }))
+export const listVulnerabilities = (query?: Query<gen.ListVulnerabilitiesData>) => call(sdk.listVulnerabilities({ query }))
+export const getVulnerability = (vulnId: string) => call(sdk.getVulnerability({ path: { vulnId } }))
+export const listAssetVulnerabilities = (id: string) => call(sdk.listAssetVulnerabilities({ path: { id } }))

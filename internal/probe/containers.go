@@ -257,6 +257,7 @@ func (r *runner) scanContainers(sec *report.ContainersSection, running []artifac
 				r.storeImageScan(ct, img, activity)
 			}
 		}
+		r.linkContainerPackages(ctx, root, img)
 		source := img != nil && img.scope.FromContainer == ct.ID
 
 		var cov report.Coverage
@@ -345,6 +346,21 @@ func (r *runner) scanImage(ctx context.Context, ct *report.Container, root strin
 	img.scope.Packages = pkgs.Packages
 	img.scope.Artifacts = arts.Artifacts
 	return img
+}
+
+// linkContainerPackages links the processes running in a container root to
+// the packages of its image.
+func (r *runner) linkContainerPackages(ctx context.Context, root string, img *imageScan) {
+	if r.procs == nil || img == nil || ctx.Err() != nil {
+		return
+	}
+	if img.owner == nil {
+		if !img.reused {
+			return
+		}
+		_, img.owner = pkgdb.Collect(ctx, r.env.WithRoot(root))
+	}
+	linkPackages(r.env.Proc, r.procs, root, img.owner.Owner)
 }
 
 // scanUpper reads the artifacts in the writable layer of a container. Paths

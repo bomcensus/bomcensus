@@ -33,6 +33,10 @@ func Package(p report.Package, d Distro) store.Component {
 		SourceVersion: p.SourceVersion,
 		Vendor:        p.Vendor,
 		Origin:        origin,
+		Modularity:    strings.TrimSpace(p.ModularityLabel),
+	}
+	if p.Type != report.PackageRPM || c.Modularity == "(none)" {
+		c.Modularity = ""
 	}
 	if c.Vendor == "" {
 		c.Vendor = p.Maintainer

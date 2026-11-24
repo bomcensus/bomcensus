@@ -138,8 +138,9 @@ type Vulns interface {
 	VulnQuery
 }
 
-// VulnQuery reads match results for the console.
+// VulnQuery reads match results and findings for the console.
 type VulnQuery interface {
+	VulnViews
 	// GetComponentMatch returns ErrNotFound when the component was never
 	// matched.
 	GetComponentMatch(ctx context.Context, componentID string) (ComponentMatch, MatchEpoch, time.Time, error)

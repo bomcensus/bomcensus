@@ -5,11 +5,14 @@
 -->
 
 <script setup lang="ts">
-import { getDashboard } from '~/api'
+import { getDashboard, getVulnerabilitySummary } from '~/api'
 
 useHead({ title: '대시보드 · bomcensus' })
 
 const { data: dashboard, error, refresh } = useLoad('dashboard', getDashboard)
+const { data: vulns, error: vulnsError, refresh: refreshVulns } = useLoad('dashboard:vulns', getVulnerabilitySummary)
+
+const exposures = ['listening', 'running', 'installed', 'unknown'] as const
 
 const coverageMax = computed(() => Math.max(1, ...(dashboard.value?.coverage.map((c) => c.count) ?? [])))
 </script>
@@ -52,6 +55,49 @@ const coverageMax = computed(() => Math.max(1, ...(dashboard.value?.coverage.map
           to="/assets"
         />
       </div>
+
+      <template v-if="vulns">
+        <div class="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <StatTile
+            label="긴급 업데이트 필요"
+            :value="vulns.urgent.components"
+            :tone="vulns.urgent.components ? 'danger' : 'neutral'"
+            :hint="`치명·높음 × listen ports·실행 · CVE ${vulns.urgent.cves}`"
+            to="/vulnerabilities?view=component"
+          />
+          <StatTile
+            label="취약점"
+            :value="vulns.totals.cves"
+            :hint="`컴포넌트 ${vulns.totals.components} · KEV ${vulns.totals.kev}`"
+            to="/vulnerabilities"
+          />
+          <StatTile label="취약점이 있는 자산" :value="vulns.totals.assets" to="/assets" />
+          <StatTile
+            label="확인 범위 제한"
+            :value="vulns.unsupported"
+            :tone="vulns.unsupported ? 'warn' : 'neutral'"
+            hint="feed 서버에 데이터가 없는 컴포넌트"
+          />
+        </div>
+
+        <Panel
+          class="mt-4"
+          title="취약점 · 조치 단위"
+          :description="vulns.revision !== undefined ? `취약점 데이터 rev ${vulns.revision} · ${formatDateTime(vulns.checkedAt)}` : 'feed 서버에 아직 연결하지 않았습니다'"
+          flush
+        >
+          <template #actions>
+            <span class="hidden flex-wrap gap-3 sm:flex">
+              <ExposureMeter v-for="e in exposures" :key="e" :exposure="e" />
+            </span>
+          </template>
+          <p v-if="!vulns.actions.length" class="px-3.5 py-3 text-sm text-ink-2">열린 취약점이 없습니다.</p>
+          <VulnActionTable v-else :items="vulns.actions" :more="vulns.actionsTotal - vulns.actions.length" />
+        </Panel>
+      </template>
+      <Panel v-else-if="vulnsError" class="mt-4">
+        <LoadError :error="vulnsError" @retry="refreshVulns" />
+      </Panel>
 
       <div class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
         <Panel title="수집 범위" class="min-w-0">

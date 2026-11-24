@@ -1332,6 +1332,268 @@ export type ComponentVulnerabilities = {
 };
 
 /**
+ * `listening`: a process that loaded the component listens on a
+ * non-loopback address. `running`: a process loaded it.
+ * `installed`: no process did. `unknown`: the processes were not fully
+ * collected.
+ *
+ */
+export type Exposure = 'listening' | 'running' | 'installed' | 'unknown';
+
+/**
+ * `host` for the asset itself, `runtime` for files added in the running container, `image` for the image content.
+ */
+export type FindingLayer = 'host' | 'runtime' | 'image';
+
+/**
+ * Locations (asset and container) by exposure.
+ */
+export type ExposureCounts = {
+    listening: number;
+    running: number;
+    installed: number;
+    unknown: number;
+};
+
+/**
+ * Vulnerabilities by rating; `unknown` have no CVSS score.
+ */
+export type SeverityCounts = {
+    critical: number;
+    high: number;
+    medium: number;
+    low: number;
+    unknown: number;
+};
+
+export type ProcessCount = {
+    exe: string;
+    count: number;
+};
+
+export type FindingProcess = {
+    pid: number;
+    exe: string;
+    pod?: string;
+    /**
+     * Non-loopback listening sockets, `tcp/443`.
+     */
+    ports: Array<string>;
+};
+
+/**
+ * An update action. `fixedVersion` is the version that fixes all its vulnerabilities, when one is known.
+ */
+export type VulnComponent = {
+    componentId: string;
+    name: string;
+    version: string;
+    type: ComponentType;
+    purl?: string;
+    fixedVersion?: string;
+    /**
+     * Distinct fixed versions of its vulnerabilities.
+     */
+    fixedVersions: Array<string>;
+    /**
+     * Vulnerabilities without a fixed version.
+     */
+    unfixed?: number;
+    cves: number;
+    kev: number;
+    severityCounts: SeverityCounts;
+    score?: number;
+    severity?: Severity;
+    epss?: number;
+    exposure: Exposure;
+    exposureCounts: ExposureCounts;
+    assets: number;
+    /**
+     * Executables of the loading processes, most frequent first (at most 5).
+     */
+    processes: Array<ProcessCount>;
+};
+
+export type VulnComponentList = {
+    items: Array<VulnComponent>;
+    total: number;
+};
+
+export type VulnCve = {
+    vulnId: string;
+    summary?: string;
+    severity?: Severity;
+    score?: number;
+    kev: boolean;
+    kevAdded?: string;
+    epss?: number;
+    epssPercentile?: number;
+    components: number;
+    assets: number;
+    exposure: Exposure;
+    exposureCounts: ExposureCounts;
+    /**
+     * In the context of one component.
+     */
+    fixState?: FixState;
+    /**
+     * In the context of one component.
+     */
+    fixedVersion?: string;
+    /**
+     * In the context of one component; the loading processes of the most exposed location.
+     */
+    processes?: Array<FindingProcess>;
+};
+
+export type VulnCveList = {
+    items: Array<VulnCve>;
+    total: number;
+};
+
+/**
+ * One place a component is, with the open findings there.
+ */
+export type VulnLocation = {
+    assetId: string;
+    assetName: string;
+    assetKind: AssetKind;
+    container?: string;
+    layer: FindingLayer;
+    imageDigest?: string;
+    componentId: string;
+    componentName: string;
+    componentVersion: string;
+    /**
+     * File paths (or the package database) of the component there.
+     */
+    locations: Array<string>;
+    method?: DetectMethod;
+    exposure: Exposure;
+    processes: Array<FindingProcess>;
+    cves: number;
+    firstSeen: string;
+};
+
+export type VulnComponentDetail = {
+    component: VulnComponent;
+    cves: Array<VulnCve>;
+    locations: Array<VulnLocation>;
+};
+
+export type CvssScore = {
+    source?: string;
+    /**
+     * Primary (NVD) or Secondary (CNA).
+     */
+    type?: string;
+    version: string;
+    vector: string;
+    score: number;
+    severity?: string;
+};
+
+export type KevEntry = {
+    dateAdded: string;
+    dueDate?: string;
+    name?: string;
+    requiredAction?: string;
+    ransomwareUse?: string;
+};
+
+export type VulnDetail = {
+    vulnId: string;
+    aliases: Array<string>;
+    summary?: string;
+    description?: string;
+    severity?: Severity;
+    score?: number;
+    cvss: Array<CvssScore>;
+    cwes: Array<string>;
+    references: Array<string>;
+    kev?: KevEntry;
+    epss?: number;
+    epssPercentile?: number;
+    published?: string;
+    modified?: string;
+};
+
+export type VulnCveComponent = {
+    componentId: string;
+    name: string;
+    version: string;
+    type: ComponentType;
+    purl?: string;
+    method: 'package' | 'cpe';
+    ecosystem?: string;
+    fixState: FixState;
+    fixedVersion?: string;
+    cpeMatch?: 'exact' | 'range';
+    rangeSource?: 'nvd' | 'vulncheck' | 'cna';
+    platforms: Array<string>;
+    advisories: Array<VulnAdvisory>;
+    assets: number;
+    exposure: Exposure;
+};
+
+export type VulnCveDetail = {
+    vulnerability: VulnDetail;
+    components: Array<VulnCveComponent>;
+    locations: Array<VulnLocation>;
+};
+
+export type AssetVuln = {
+    componentId: string;
+    componentName: string;
+    componentVersion: string;
+    container?: string;
+    layer: FindingLayer;
+    imageDigest?: string;
+    vulnId: string;
+    summary?: string;
+    severity?: Severity;
+    score?: number;
+    kev: boolean;
+    epss?: number;
+    exposure: Exposure;
+    fixState: FixState;
+    fixedVersion?: string;
+    processes: Array<FindingProcess>;
+    firstSeen: string;
+};
+
+export type AssetVulnList = {
+    items: Array<AssetVuln>;
+};
+
+export type VulnSummary = {
+    /**
+     * Data revision of the active feed server at the last check.
+     */
+    revision?: number;
+    checkedAt?: string;
+    /**
+     * Update actions with a critical or high vulnerability at a listening or running location.
+     */
+    urgent: {
+        components: number;
+        cves: number;
+    };
+    totals: {
+        cves: number;
+        components: number;
+        kev: number;
+        assets: number;
+    };
+    /**
+     * Live components the feed server has no data for.
+     */
+    unsupported: number;
+    actions: Array<VulnComponent>;
+    actionsTotal: number;
+};
+
+/**
  * Secrets are encrypted at rest and never returned.
  * `ssh_key`: `username`, `privateKey` (OpenSSH or PEM), optional
  * `passphrase`. `ssh_password`: `username`, `password`.
@@ -1388,6 +1650,21 @@ export type TlsEndpointUpdateWritable = {
  * Free-text search, case-insensitive substring match.
  */
 export type QueryQ = string;
+
+/**
+ * Keep items with a vulnerability of this rating.
+ */
+export type QuerySeverity = Severity;
+
+/**
+ * Keep items with a location of this exposure.
+ */
+export type QueryExposure = Exposure;
+
+/**
+ * Keep items with a known exploited vulnerability.
+ */
+export type QueryKev = boolean;
 
 export type QueryLimit = number;
 
@@ -3949,3 +4226,241 @@ export type RematchFeedServerResponses = {
      */
     202: unknown;
 };
+
+export type GetVulnerabilitySummaryData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/vulnerabilities/summary';
+};
+
+export type GetVulnerabilitySummaryErrors = {
+    /**
+     * No valid session, or wrong credentials on login.
+     */
+    401: Error;
+    /**
+     * Unexpected error.
+     */
+    default: Error;
+};
+
+export type GetVulnerabilitySummaryError = GetVulnerabilitySummaryErrors[keyof GetVulnerabilitySummaryErrors];
+
+export type GetVulnerabilitySummaryResponses = {
+    /**
+     * Summary
+     */
+    200: VulnSummary;
+};
+
+export type GetVulnerabilitySummaryResponse = GetVulnerabilitySummaryResponses[keyof GetVulnerabilitySummaryResponses];
+
+export type ListVulnerableComponentsData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Free-text search, case-insensitive substring match.
+         */
+        q?: string;
+        /**
+         * Keep items with a vulnerability of this rating.
+         */
+        severity?: Severity;
+        /**
+         * Keep items with a location of this exposure.
+         */
+        exposure?: Exposure;
+        /**
+         * Keep items with a known exploited vulnerability.
+         */
+        kev?: boolean;
+        limit?: number;
+        offset?: number;
+    };
+    url: '/vulnerabilities/components';
+};
+
+export type ListVulnerableComponentsErrors = {
+    /**
+     * The request is malformed or a value is invalid.
+     */
+    400: Error;
+    /**
+     * No valid session, or wrong credentials on login.
+     */
+    401: Error;
+    /**
+     * Unexpected error.
+     */
+    default: Error;
+};
+
+export type ListVulnerableComponentsError = ListVulnerableComponentsErrors[keyof ListVulnerableComponentsErrors];
+
+export type ListVulnerableComponentsResponses = {
+    /**
+     * Update actions
+     */
+    200: VulnComponentList;
+};
+
+export type ListVulnerableComponentsResponse = ListVulnerableComponentsResponses[keyof ListVulnerableComponentsResponses];
+
+export type GetVulnerableComponentData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/vulnerabilities/components/{id}';
+};
+
+export type GetVulnerableComponentErrors = {
+    /**
+     * No valid session, or wrong credentials on login.
+     */
+    401: Error;
+    /**
+     * The resource does not exist.
+     */
+    404: Error;
+    /**
+     * Unexpected error.
+     */
+    default: Error;
+};
+
+export type GetVulnerableComponentError = GetVulnerableComponentErrors[keyof GetVulnerableComponentErrors];
+
+export type GetVulnerableComponentResponses = {
+    /**
+     * Component
+     */
+    200: VulnComponentDetail;
+};
+
+export type GetVulnerableComponentResponse = GetVulnerableComponentResponses[keyof GetVulnerableComponentResponses];
+
+export type ListVulnerabilitiesData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Free-text search, case-insensitive substring match.
+         */
+        q?: string;
+        /**
+         * Keep items with a vulnerability of this rating.
+         */
+        severity?: Severity;
+        /**
+         * Keep items with a location of this exposure.
+         */
+        exposure?: Exposure;
+        /**
+         * Keep items with a known exploited vulnerability.
+         */
+        kev?: boolean;
+        limit?: number;
+        offset?: number;
+    };
+    url: '/vulnerabilities/cves';
+};
+
+export type ListVulnerabilitiesErrors = {
+    /**
+     * The request is malformed or a value is invalid.
+     */
+    400: Error;
+    /**
+     * No valid session, or wrong credentials on login.
+     */
+    401: Error;
+    /**
+     * Unexpected error.
+     */
+    default: Error;
+};
+
+export type ListVulnerabilitiesError = ListVulnerabilitiesErrors[keyof ListVulnerabilitiesErrors];
+
+export type ListVulnerabilitiesResponses = {
+    /**
+     * Vulnerabilities
+     */
+    200: VulnCveList;
+};
+
+export type ListVulnerabilitiesResponse = ListVulnerabilitiesResponses[keyof ListVulnerabilitiesResponses];
+
+export type GetVulnerabilityData = {
+    body?: never;
+    path: {
+        vulnId: string;
+    };
+    query?: never;
+    url: '/vulnerabilities/cves/{vulnId}';
+};
+
+export type GetVulnerabilityErrors = {
+    /**
+     * No valid session, or wrong credentials on login.
+     */
+    401: Error;
+    /**
+     * The resource does not exist.
+     */
+    404: Error;
+    /**
+     * Unexpected error.
+     */
+    default: Error;
+};
+
+export type GetVulnerabilityError = GetVulnerabilityErrors[keyof GetVulnerabilityErrors];
+
+export type GetVulnerabilityResponses = {
+    /**
+     * Vulnerability
+     */
+    200: VulnCveDetail;
+};
+
+export type GetVulnerabilityResponse = GetVulnerabilityResponses[keyof GetVulnerabilityResponses];
+
+export type ListAssetVulnerabilitiesData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/assets/{id}/vulnerabilities';
+};
+
+export type ListAssetVulnerabilitiesErrors = {
+    /**
+     * No valid session, or wrong credentials on login.
+     */
+    401: Error;
+    /**
+     * The resource does not exist.
+     */
+    404: Error;
+    /**
+     * Unexpected error.
+     */
+    default: Error;
+};
+
+export type ListAssetVulnerabilitiesError = ListAssetVulnerabilitiesErrors[keyof ListAssetVulnerabilitiesErrors];
+
+export type ListAssetVulnerabilitiesResponses = {
+    /**
+     * Findings, most exposed first
+     */
+    200: AssetVulnList;
+};
+
+export type ListAssetVulnerabilitiesResponse = ListAssetVulnerabilitiesResponses[keyof ListAssetVulnerabilitiesResponses];

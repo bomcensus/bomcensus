@@ -14,6 +14,8 @@ import type {
   Coverage,
   DetectMethod,
   ExeState,
+  Exposure,
+  FindingLayer,
   FixState,
   K8sPodPhase,
   PrivilegeLevel,
@@ -226,4 +228,25 @@ export const fixStateLabel: Record<FixState, string> = {
   will_not_fix: '수정 안 함',
   under_investigation: '조사 중',
   unknown: '확인 안 됨',
+}
+
+// Exposure levels as the meter shows them: 4 bars for listening down to 1 for unknown.
+export const exposureLevel: Record<Exposure, number> = {
+  listening: 4,
+  running: 3,
+  installed: 2,
+  unknown: 1,
+}
+
+export const exposureLabel: Record<Exposure, string> = {
+  listening: 'listen ports',
+  running: '실행',
+  installed: '설치',
+  unknown: '미확인',
+}
+
+export const findingLayerLabel: Record<FindingLayer, string> = {
+  host: '호스트',
+  runtime: '실행 중 추가',
+  image: '이미지',
 }

@@ -12,6 +12,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -213,6 +214,42 @@ func openJars(procDir string, sec *report.ProcessesSection) openFileIndex {
 		}
 	}
 	return ix
+}
+
+// linkPackages fills Packages of the processes whose root directory is
+// root with the packages owning their executable and executable mappings.
+// Processes whose maps were not read, or whose root cannot be checked, are
+// left without (PackagesKnown false).
+func linkPackages(procDir string, sec *report.ProcessesSection, root string, owner func(string) (string, bool)) {
+	if sec == nil || owner == nil {
+		return
+	}
+	want, ok := rootKeyOf(root)
+	if !ok {
+		return
+	}
+	for i := range sec.Processes {
+		p := &sec.Processes[i]
+		if p.PackagesKnown || p.Mapped == nil || p.ExeSource != report.ExeFromProc {
+			continue
+		}
+		k, ok := rootKeyOf(filepath.Join(procDir, strconv.Itoa(p.PID), "root"))
+		if !ok || k != want {
+			continue
+		}
+		set := map[string]bool{}
+		for _, f := range append([]string{p.Exe}, p.Mapped...) {
+			if pkg, ok := owner(f); ok {
+				set[pkg] = true
+			}
+		}
+		p.Packages = make([]string, 0, len(set))
+		for pkg := range set {
+			p.Packages = append(p.Packages, pkg)
+		}
+		slices.Sort(p.Packages)
+		p.PackagesKnown = true
+	}
 }
 
 func isJVM(exe string) bool {

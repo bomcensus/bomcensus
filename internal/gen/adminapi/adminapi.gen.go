@@ -129,16 +129,16 @@ func (e CollectMethod) Valid() bool {
 
 // Defines values for ComponentLayer.
 const (
-	Image   ComponentLayer = "image"
-	Runtime ComponentLayer = "runtime"
+	ComponentLayerImage   ComponentLayer = "image"
+	ComponentLayerRuntime ComponentLayer = "runtime"
 )
 
 // Valid indicates whether the value is a known member of the ComponentLayer enum.
 func (e ComponentLayer) Valid() bool {
 	switch e {
-	case Image:
+	case ComponentLayerImage:
 		return true
-	case Runtime:
+	case ComponentLayerRuntime:
 		return true
 	default:
 		return false
@@ -222,16 +222,16 @@ func (e ComponentType) Valid() bool {
 
 // Defines values for ComponentVulnerabilityCpeMatch.
 const (
-	Exact ComponentVulnerabilityCpeMatch = "exact"
-	Range ComponentVulnerabilityCpeMatch = "range"
+	ComponentVulnerabilityCpeMatchExact ComponentVulnerabilityCpeMatch = "exact"
+	ComponentVulnerabilityCpeMatchRange ComponentVulnerabilityCpeMatch = "range"
 )
 
 // Valid indicates whether the value is a known member of the ComponentVulnerabilityCpeMatch enum.
 func (e ComponentVulnerabilityCpeMatch) Valid() bool {
 	switch e {
-	case Exact:
+	case ComponentVulnerabilityCpeMatchExact:
 		return true
-	case Range:
+	case ComponentVulnerabilityCpeMatchRange:
 		return true
 	default:
 		return false
@@ -240,16 +240,16 @@ func (e ComponentVulnerabilityCpeMatch) Valid() bool {
 
 // Defines values for ComponentVulnerabilityMethod.
 const (
-	Cpe     ComponentVulnerabilityMethod = "cpe"
-	Package ComponentVulnerabilityMethod = "package"
+	ComponentVulnerabilityMethodCpe     ComponentVulnerabilityMethod = "cpe"
+	ComponentVulnerabilityMethodPackage ComponentVulnerabilityMethod = "package"
 )
 
 // Valid indicates whether the value is a known member of the ComponentVulnerabilityMethod enum.
 func (e ComponentVulnerabilityMethod) Valid() bool {
 	switch e {
-	case Cpe:
+	case ComponentVulnerabilityMethodCpe:
 		return true
-	case Package:
+	case ComponentVulnerabilityMethodPackage:
 		return true
 	default:
 		return false
@@ -258,19 +258,19 @@ func (e ComponentVulnerabilityMethod) Valid() bool {
 
 // Defines values for ComponentVulnerabilityRangeSource.
 const (
-	Cna       ComponentVulnerabilityRangeSource = "cna"
-	Nvd       ComponentVulnerabilityRangeSource = "nvd"
-	Vulncheck ComponentVulnerabilityRangeSource = "vulncheck"
+	ComponentVulnerabilityRangeSourceCna       ComponentVulnerabilityRangeSource = "cna"
+	ComponentVulnerabilityRangeSourceNvd       ComponentVulnerabilityRangeSource = "nvd"
+	ComponentVulnerabilityRangeSourceVulncheck ComponentVulnerabilityRangeSource = "vulncheck"
 )
 
 // Valid indicates whether the value is a known member of the ComponentVulnerabilityRangeSource enum.
 func (e ComponentVulnerabilityRangeSource) Valid() bool {
 	switch e {
-	case Cna:
+	case ComponentVulnerabilityRangeSourceCna:
 		return true
-	case Nvd:
+	case ComponentVulnerabilityRangeSourceNvd:
 		return true
-	case Vulncheck:
+	case ComponentVulnerabilityRangeSourceVulncheck:
 		return true
 	default:
 		return false
@@ -436,6 +436,30 @@ func (e ExeState) Valid() bool {
 	}
 }
 
+// Defines values for Exposure.
+const (
+	ExposureInstalled Exposure = "installed"
+	ExposureListening Exposure = "listening"
+	ExposureRunning   Exposure = "running"
+	ExposureUnknown   Exposure = "unknown"
+)
+
+// Valid indicates whether the value is a known member of the Exposure enum.
+func (e Exposure) Valid() bool {
+	switch e {
+	case ExposureInstalled:
+		return true
+	case ExposureListening:
+		return true
+	case ExposureRunning:
+		return true
+	case ExposureUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for FeedServerStatus.
 const (
 	FeedServerStatusConnected  FeedServerStatus = "connected"
@@ -454,6 +478,27 @@ func (e FeedServerStatus) Valid() bool {
 	case FeedServerStatusKeyChanged:
 		return true
 	case FeedServerStatusNever:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for FindingLayer.
+const (
+	FindingLayerHost    FindingLayer = "host"
+	FindingLayerImage   FindingLayer = "image"
+	FindingLayerRuntime FindingLayer = "runtime"
+)
+
+// Valid indicates whether the value is a known member of the FindingLayer enum.
+func (e FindingLayer) Valid() bool {
+	switch e {
+	case FindingLayerHost:
+		return true
+	case FindingLayerImage:
+		return true
+	case FindingLayerRuntime:
 		return true
 	default:
 		return false
@@ -880,6 +925,63 @@ func (e UpdateState) Valid() bool {
 	case UpdateStateUpToDate:
 		return true
 	case UpdateStateUpdating:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for VulnCveComponentCpeMatch.
+const (
+	VulnCveComponentCpeMatchExact VulnCveComponentCpeMatch = "exact"
+	VulnCveComponentCpeMatchRange VulnCveComponentCpeMatch = "range"
+)
+
+// Valid indicates whether the value is a known member of the VulnCveComponentCpeMatch enum.
+func (e VulnCveComponentCpeMatch) Valid() bool {
+	switch e {
+	case VulnCveComponentCpeMatchExact:
+		return true
+	case VulnCveComponentCpeMatchRange:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for VulnCveComponentMethod.
+const (
+	VulnCveComponentMethodCpe     VulnCveComponentMethod = "cpe"
+	VulnCveComponentMethodPackage VulnCveComponentMethod = "package"
+)
+
+// Valid indicates whether the value is a known member of the VulnCveComponentMethod enum.
+func (e VulnCveComponentMethod) Valid() bool {
+	switch e {
+	case VulnCveComponentMethodCpe:
+		return true
+	case VulnCveComponentMethodPackage:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for VulnCveComponentRangeSource.
+const (
+	VulnCveComponentRangeSourceCna       VulnCveComponentRangeSource = "cna"
+	VulnCveComponentRangeSourceNvd       VulnCveComponentRangeSource = "nvd"
+	VulnCveComponentRangeSourceVulncheck VulnCveComponentRangeSource = "vulncheck"
+)
+
+// Valid indicates whether the value is a known member of the VulnCveComponentRangeSource enum.
+func (e VulnCveComponentRangeSource) Valid() bool {
+	switch e {
+	case VulnCveComponentRangeSourceCna:
+		return true
+	case VulnCveComponentRangeSourceNvd:
+		return true
+	case VulnCveComponentRangeSourceVulncheck:
 		return true
 	default:
 		return false
@@ -2049,6 +2151,41 @@ type AssetSummary struct {
 	WorkloadKind *string         `json:"workloadKind,omitempty"`
 }
 
+// AssetVuln defines model for AssetVuln.
+type AssetVuln struct {
+	ComponentId      string   `json:"componentId"`
+	ComponentName    string   `json:"componentName"`
+	ComponentVersion string   `json:"componentVersion"`
+	Container        *string  `json:"container,omitempty"`
+	Epss             *float64 `json:"epss,omitempty"`
+
+	// Exposure `listening`: a process that loaded the component listens on a
+	// non-loopback address. `running`: a process loaded it.
+	// `installed`: no process did. `unknown`: the processes were not fully
+	// collected.
+	Exposure     Exposure  `json:"exposure"`
+	FirstSeen    time.Time `json:"firstSeen"`
+	FixState     FixState  `json:"fixState"`
+	FixedVersion *string   `json:"fixedVersion,omitempty"`
+	ImageDigest  *string   `json:"imageDigest,omitempty"`
+	Kev          bool      `json:"kev"`
+
+	// Layer `host` for the asset itself, `runtime` for files added in the running container, `image` for the image content.
+	Layer     FindingLayer     `json:"layer"`
+	Processes []FindingProcess `json:"processes"`
+	Score     *float64         `json:"score,omitempty"`
+
+	// Severity CVSS rating of the highest base score.
+	Severity *Severity `json:"severity,omitempty"`
+	Summary  *string   `json:"summary,omitempty"`
+	VulnId   string    `json:"vulnId"`
+}
+
+// AssetVulnList defines model for AssetVulnList.
+type AssetVulnList struct {
+	Items []AssetVuln `json:"items"`
+}
+
 // CollectMethod defines model for CollectMethod.
 type CollectMethod string
 
@@ -2328,6 +2465,18 @@ type CredentialSecretUpdate struct {
 // lists the tag for this digest in its latest observation. Sorted.
 type CurrentImageTags = []string
 
+// CvssScore defines model for CvssScore.
+type CvssScore struct {
+	Score    float64 `json:"score"`
+	Severity *string `json:"severity,omitempty"`
+	Source   *string `json:"source,omitempty"`
+
+	// Type Primary (NVD) or Secondary (CNA).
+	Type    *string `json:"type,omitempty"`
+	Vector  string  `json:"vector"`
+	Version string  `json:"version"`
+}
+
 // Dashboard defines model for Dashboard.
 type Dashboard struct {
 	// Agents Counts over agents and scanners.
@@ -2383,6 +2532,20 @@ type ExeSource string
 
 // ExeState `replaced`: another file now exists at the path. `deleted`: nothing exists at the path. `memfd`: executed from an anonymous memory file.
 type ExeState string
+
+// Exposure `listening`: a process that loaded the component listens on a
+// non-loopback address. `running`: a process loaded it.
+// `installed`: no process did. `unknown`: the processes were not fully
+// collected.
+type Exposure string
+
+// ExposureCounts Locations (asset and container) by exposure.
+type ExposureCounts struct {
+	Installed int `json:"installed"`
+	Listening int `json:"listening"`
+	Running   int `json:"running"`
+	Unknown   int `json:"unknown"`
+}
 
 // Features defines model for Features.
 type Features struct {
@@ -2513,6 +2676,19 @@ type FeedSource struct {
 
 	// UpdatedAt Last successful collection.
 	UpdatedAt *time.Time `json:"updatedAt,omitempty"`
+}
+
+// FindingLayer `host` for the asset itself, `runtime` for files added in the running container, `image` for the image content.
+type FindingLayer string
+
+// FindingProcess defines model for FindingProcess.
+type FindingProcess struct {
+	Exe string  `json:"exe"`
+	Pid int     `json:"pid"`
+	Pod *string `json:"pod,omitempty"`
+
+	// Ports Non-loopback listening sockets, `tcp/443`.
+	Ports []string `json:"ports"`
 }
 
 // FixState defines model for FixState.
@@ -2704,6 +2880,15 @@ type K8sWorkloadList struct {
 	Total int           `json:"total"`
 }
 
+// KevEntry defines model for KevEntry.
+type KevEntry struct {
+	DateAdded      openapi_types.Date  `json:"dateAdded"`
+	DueDate        *openapi_types.Date `json:"dueDate,omitempty"`
+	Name           *string             `json:"name,omitempty"`
+	RansomwareUse  *string             `json:"ransomwareUse,omitempty"`
+	RequiredAction *string             `json:"requiredAction,omitempty"`
+}
+
 // ListenPort defines model for ListenPort.
 type ListenPort struct {
 	Address string      `json:"address"`
@@ -2833,6 +3018,12 @@ type Principal struct {
 
 // PrivilegeLevel defines model for PrivilegeLevel.
 type PrivilegeLevel string
+
+// ProcessCount defines model for ProcessCount.
+type ProcessCount struct {
+	Count int    `json:"count"`
+	Exe   string `json:"exe"`
+}
 
 // ProcessInfo defines model for ProcessInfo.
 type ProcessInfo struct {
@@ -3055,6 +3246,15 @@ type SectionName string
 // Severity CVSS rating of the highest base score.
 type Severity string
 
+// SeverityCounts Vulnerabilities by rating; `unknown` have no CVSS score.
+type SeverityCounts struct {
+	Critical int `json:"critical"`
+	High     int `json:"high"`
+	Low      int `json:"low"`
+	Medium   int `json:"medium"`
+	Unknown  int `json:"unknown"`
+}
+
 // SoftwareComponent defines model for SoftwareComponent.
 type SoftwareComponent struct {
 	Arch   *string `json:"arch,omitempty"`
@@ -3171,11 +3371,226 @@ type VulnAdvisory struct {
 	Source string `json:"source"`
 }
 
+// VulnComponent An update action. `fixedVersion` is the version that fixes all its vulnerabilities, when one is known.
+type VulnComponent struct {
+	Assets      int      `json:"assets"`
+	ComponentId string   `json:"componentId"`
+	Cves        int      `json:"cves"`
+	Epss        *float64 `json:"epss,omitempty"`
+
+	// Exposure `listening`: a process that loaded the component listens on a
+	// non-loopback address. `running`: a process loaded it.
+	// `installed`: no process did. `unknown`: the processes were not fully
+	// collected.
+	Exposure Exposure `json:"exposure"`
+
+	// ExposureCounts Locations (asset and container) by exposure.
+	ExposureCounts ExposureCounts `json:"exposureCounts"`
+	FixedVersion   *string        `json:"fixedVersion,omitempty"`
+
+	// FixedVersions Distinct fixed versions of its vulnerabilities.
+	FixedVersions []string `json:"fixedVersions"`
+	Kev           int      `json:"kev"`
+	Name          string   `json:"name"`
+
+	// Processes Executables of the loading processes, most frequent first (at most 5).
+	Processes []ProcessCount `json:"processes"`
+	Purl      *string        `json:"purl,omitempty"`
+	Score     *float64       `json:"score,omitempty"`
+
+	// Severity CVSS rating of the highest base score.
+	Severity *Severity `json:"severity,omitempty"`
+
+	// SeverityCounts Vulnerabilities by rating; `unknown` have no CVSS score.
+	SeverityCounts SeverityCounts `json:"severityCounts"`
+	Type           ComponentType  `json:"type"`
+
+	// Unfixed Vulnerabilities without a fixed version.
+	Unfixed *int   `json:"unfixed,omitempty"`
+	Version string `json:"version"`
+}
+
+// VulnComponentDetail defines model for VulnComponentDetail.
+type VulnComponentDetail struct {
+	// Component An update action. `fixedVersion` is the version that fixes all its vulnerabilities, when one is known.
+	Component VulnComponent  `json:"component"`
+	Cves      []VulnCve      `json:"cves"`
+	Locations []VulnLocation `json:"locations"`
+}
+
+// VulnComponentList defines model for VulnComponentList.
+type VulnComponentList struct {
+	Items []VulnComponent `json:"items"`
+	Total int             `json:"total"`
+}
+
+// VulnCve defines model for VulnCve.
+type VulnCve struct {
+	Assets         int      `json:"assets"`
+	Components     int      `json:"components"`
+	Epss           *float64 `json:"epss,omitempty"`
+	EpssPercentile *float64 `json:"epssPercentile,omitempty"`
+
+	// Exposure `listening`: a process that loaded the component listens on a
+	// non-loopback address. `running`: a process loaded it.
+	// `installed`: no process did. `unknown`: the processes were not fully
+	// collected.
+	Exposure Exposure `json:"exposure"`
+
+	// ExposureCounts Locations (asset and container) by exposure.
+	ExposureCounts ExposureCounts `json:"exposureCounts"`
+
+	// FixState In the context of one component.
+	FixState *FixState `json:"fixState,omitempty"`
+
+	// FixedVersion In the context of one component.
+	FixedVersion *string             `json:"fixedVersion,omitempty"`
+	Kev          bool                `json:"kev"`
+	KevAdded     *openapi_types.Date `json:"kevAdded,omitempty"`
+
+	// Processes In the context of one component; the loading processes of the most exposed location.
+	Processes *[]FindingProcess `json:"processes,omitempty"`
+	Score     *float64          `json:"score,omitempty"`
+
+	// Severity CVSS rating of the highest base score.
+	Severity *Severity `json:"severity,omitempty"`
+	Summary  *string   `json:"summary,omitempty"`
+	VulnId   string    `json:"vulnId"`
+}
+
+// VulnCveComponent defines model for VulnCveComponent.
+type VulnCveComponent struct {
+	Advisories  []VulnAdvisory            `json:"advisories"`
+	Assets      int                       `json:"assets"`
+	ComponentId string                    `json:"componentId"`
+	CpeMatch    *VulnCveComponentCpeMatch `json:"cpeMatch,omitempty"`
+	Ecosystem   *string                   `json:"ecosystem,omitempty"`
+
+	// Exposure `listening`: a process that loaded the component listens on a
+	// non-loopback address. `running`: a process loaded it.
+	// `installed`: no process did. `unknown`: the processes were not fully
+	// collected.
+	Exposure     Exposure                     `json:"exposure"`
+	FixState     FixState                     `json:"fixState"`
+	FixedVersion *string                      `json:"fixedVersion,omitempty"`
+	Method       VulnCveComponentMethod       `json:"method"`
+	Name         string                       `json:"name"`
+	Platforms    []string                     `json:"platforms"`
+	Purl         *string                      `json:"purl,omitempty"`
+	RangeSource  *VulnCveComponentRangeSource `json:"rangeSource,omitempty"`
+	Type         ComponentType                `json:"type"`
+	Version      string                       `json:"version"`
+}
+
+// VulnCveComponentCpeMatch defines model for VulnCveComponent.CpeMatch.
+type VulnCveComponentCpeMatch string
+
+// VulnCveComponentMethod defines model for VulnCveComponent.Method.
+type VulnCveComponentMethod string
+
+// VulnCveComponentRangeSource defines model for VulnCveComponent.RangeSource.
+type VulnCveComponentRangeSource string
+
+// VulnCveDetail defines model for VulnCveDetail.
+type VulnCveDetail struct {
+	Components    []VulnCveComponent `json:"components"`
+	Locations     []VulnLocation     `json:"locations"`
+	Vulnerability VulnDetail         `json:"vulnerability"`
+}
+
+// VulnCveList defines model for VulnCveList.
+type VulnCveList struct {
+	Items []VulnCve `json:"items"`
+	Total int       `json:"total"`
+}
+
+// VulnDetail defines model for VulnDetail.
+type VulnDetail struct {
+	Aliases        []string    `json:"aliases"`
+	Cvss           []CvssScore `json:"cvss"`
+	Cwes           []string    `json:"cwes"`
+	Description    *string     `json:"description,omitempty"`
+	Epss           *float64    `json:"epss,omitempty"`
+	EpssPercentile *float64    `json:"epssPercentile,omitempty"`
+	Kev            *KevEntry   `json:"kev,omitempty"`
+	Modified       *time.Time  `json:"modified,omitempty"`
+	Published      *time.Time  `json:"published,omitempty"`
+	References     []string    `json:"references"`
+	Score          *float64    `json:"score,omitempty"`
+
+	// Severity CVSS rating of the highest base score.
+	Severity *Severity `json:"severity,omitempty"`
+	Summary  *string   `json:"summary,omitempty"`
+	VulnId   string    `json:"vulnId"`
+}
+
+// VulnLocation One place a component is, with the open findings there.
+type VulnLocation struct {
+	AssetId          string    `json:"assetId"`
+	AssetKind        AssetKind `json:"assetKind"`
+	AssetName        string    `json:"assetName"`
+	ComponentId      string    `json:"componentId"`
+	ComponentName    string    `json:"componentName"`
+	ComponentVersion string    `json:"componentVersion"`
+	Container        *string   `json:"container,omitempty"`
+	Cves             int       `json:"cves"`
+
+	// Exposure `listening`: a process that loaded the component listens on a
+	// non-loopback address. `running`: a process loaded it.
+	// `installed`: no process did. `unknown`: the processes were not fully
+	// collected.
+	Exposure    Exposure  `json:"exposure"`
+	FirstSeen   time.Time `json:"firstSeen"`
+	ImageDigest *string   `json:"imageDigest,omitempty"`
+
+	// Layer `host` for the asset itself, `runtime` for files added in the running container, `image` for the image content.
+	Layer FindingLayer `json:"layer"`
+
+	// Locations File paths (or the package database) of the component there.
+	Locations []string         `json:"locations"`
+	Method    *DetectMethod    `json:"method,omitempty"`
+	Processes []FindingProcess `json:"processes"`
+}
+
+// VulnSummary defines model for VulnSummary.
+type VulnSummary struct {
+	Actions      []VulnComponent `json:"actions"`
+	ActionsTotal int             `json:"actionsTotal"`
+	CheckedAt    *time.Time      `json:"checkedAt,omitempty"`
+
+	// Revision Data revision of the active feed server at the last check.
+	Revision *int64 `json:"revision,omitempty"`
+	Totals   struct {
+		Assets     int `json:"assets"`
+		Components int `json:"components"`
+		Cves       int `json:"cves"`
+		Kev        int `json:"kev"`
+	} `json:"totals"`
+
+	// Unsupported Live components the feed server has no data for.
+	Unsupported int `json:"unsupported"`
+
+	// Urgent Update actions with a critical or high vulnerability at a listening or running location.
+	Urgent struct {
+		Components int `json:"components"`
+		Cves       int `json:"cves"`
+	} `json:"urgent"`
+}
+
 // PathDigest defines model for PathDigest.
 type PathDigest = string
 
 // PathId defines model for PathId.
 type PathId = string
+
+// QueryExposure `listening`: a process that loaded the component listens on a
+// non-loopback address. `running`: a process loaded it.
+// `installed`: no process did. `unknown`: the processes were not fully
+// collected.
+type QueryExposure = Exposure
+
+// QueryKev defines model for QueryKev.
+type QueryKev = bool
 
 // QueryLimit defines model for QueryLimit.
 type QueryLimit = int
@@ -3185,6 +3600,9 @@ type QueryOffset = int
 
 // QueryQ defines model for QueryQ.
 type QueryQ = string
+
+// QuerySeverity CVSS rating of the highest base score.
+type QuerySeverity = Severity
 
 // BadRequest defines model for BadRequest.
 type BadRequest = Error
@@ -3509,6 +3927,40 @@ type ListScanTargetsParams struct {
 // ListScanTargetsParamsSort defines parameters for ListScanTargets.
 type ListScanTargetsParamsSort string
 
+// ListVulnerableComponentsParams defines parameters for ListVulnerableComponents.
+type ListVulnerableComponentsParams struct {
+	// Q Free-text search, case-insensitive substring match.
+	Q *QueryQ `form:"q,omitempty" json:"q,omitempty"`
+
+	// Severity Keep items with a vulnerability of this rating.
+	Severity *QuerySeverity `form:"severity,omitempty" json:"severity,omitempty"`
+
+	// Exposure Keep items with a location of this exposure.
+	Exposure *QueryExposure `form:"exposure,omitempty" json:"exposure,omitempty"`
+
+	// Kev Keep items with a known exploited vulnerability.
+	Kev    *QueryKev    `form:"kev,omitempty" json:"kev,omitempty"`
+	Limit  *QueryLimit  `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset *QueryOffset `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
+// ListVulnerabilitiesParams defines parameters for ListVulnerabilities.
+type ListVulnerabilitiesParams struct {
+	// Q Free-text search, case-insensitive substring match.
+	Q *QueryQ `form:"q,omitempty" json:"q,omitempty"`
+
+	// Severity Keep items with a vulnerability of this rating.
+	Severity *QuerySeverity `form:"severity,omitempty" json:"severity,omitempty"`
+
+	// Exposure Keep items with a location of this exposure.
+	Exposure *QueryExposure `form:"exposure,omitempty" json:"exposure,omitempty"`
+
+	// Kev Keep items with a known exploited vulnerability.
+	Kev    *QueryKev    `form:"kev,omitempty" json:"kev,omitempty"`
+	Limit  *QueryLimit  `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset *QueryOffset `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
 // UpdateAgentJSONRequestBody defines body for UpdateAgent for application/json ContentType.
 type UpdateAgentJSONRequestBody = AgentUpdate
 
@@ -3727,6 +4179,11 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /assets/{id}/processes (the `ListAssetProcesses` operationId).
 	ListAssetProcesses(ctx context.Context, id PathId, params *ListAssetProcessesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListAssetVulnerabilities Open findings of an asset
+	//
+	// Corresponds with GET /assets/{id}/vulnerabilities (the `ListAssetVulnerabilities` operationId).
+	ListAssetVulnerabilities(ctx context.Context, id PathId, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// LoginWithBody Start a session
 	//
@@ -4290,6 +4747,43 @@ type ClientInterface interface {
 	//
 	// Corresponds with PUT /update-settings (the `SetUpdateSettings` operationId).
 	SetUpdateSettings(ctx context.Context, body SetUpdateSettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListVulnerableComponents Update actions, one per vulnerable component
+	//
+	// Ordered by exposure, then known exploitation, EPSS and CVSS. `q`
+	// matches the component name, version and the CVE ids.
+	//
+	// Corresponds with GET /vulnerabilities/components (the `ListVulnerableComponents` operationId).
+	ListVulnerableComponents(ctx context.Context, params *ListVulnerableComponentsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetVulnerableComponent The vulnerabilities of one component and where it is
+	//
+	// Corresponds with GET /vulnerabilities/components/{id} (the `GetVulnerableComponent` operationId).
+	GetVulnerableComponent(ctx context.Context, id PathId, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListVulnerabilities Open vulnerabilities, one per id
+	//
+	// Ordered by exposure, then known exploitation, EPSS and CVSS. `q`
+	// matches the id, aliases, summary and component names.
+	//
+	// Corresponds with GET /vulnerabilities/cves (the `ListVulnerabilities` operationId).
+	ListVulnerabilities(ctx context.Context, params *ListVulnerabilitiesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetVulnerability One vulnerability with the components and places it affects
+	//
+	// `404` when no open finding has it.
+	//
+	// Corresponds with GET /vulnerabilities/cves/{vulnId} (the `GetVulnerability` operationId).
+	GetVulnerability(ctx context.Context, vulnId string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetVulnerabilitySummary Vulnerability figures of the dashboard and the first update actions
+	//
+	// `actions` are the first 10 update actions (one per vulnerable
+	// component), ordered by exposure, then known exploitation, EPSS and
+	// CVSS. `actionsTotal` counts them all.
+	//
+	// Corresponds with GET /vulnerabilities/summary (the `GetVulnerabilitySummary` operationId).
+	GetVulnerabilitySummary(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 }
 
 // ListAgents List agents and scanners
@@ -4503,6 +4997,21 @@ func (c *Client) ListAssetInstances(ctx context.Context, id PathId, params *List
 // Corresponds with GET /assets/{id}/processes (the `ListAssetProcesses` operationId).
 func (c *Client) ListAssetProcesses(ctx context.Context, id PathId, params *ListAssetProcessesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListAssetProcessesRequest(c.Server, id, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListAssetVulnerabilities Open findings of an asset
+//
+// Corresponds with GET /assets/{id}/vulnerabilities (the `ListAssetVulnerabilities` operationId).
+func (c *Client) ListAssetVulnerabilities(ctx context.Context, id PathId, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListAssetVulnerabilitiesRequest(c.Server, id)
 	if err != nil {
 		return nil, err
 	}
@@ -5766,6 +6275,93 @@ func (c *Client) SetUpdateSettings(ctx context.Context, body SetUpdateSettingsJS
 	return c.Client.Do(req)
 }
 
+// ListVulnerableComponents Update actions, one per vulnerable component
+//
+// Ordered by exposure, then known exploitation, EPSS and CVSS. `q`
+// matches the component name, version and the CVE ids.
+//
+// Corresponds with GET /vulnerabilities/components (the `ListVulnerableComponents` operationId).
+func (c *Client) ListVulnerableComponents(ctx context.Context, params *ListVulnerableComponentsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListVulnerableComponentsRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetVulnerableComponent The vulnerabilities of one component and where it is
+//
+// Corresponds with GET /vulnerabilities/components/{id} (the `GetVulnerableComponent` operationId).
+func (c *Client) GetVulnerableComponent(ctx context.Context, id PathId, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetVulnerableComponentRequest(c.Server, id)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListVulnerabilities Open vulnerabilities, one per id
+//
+// Ordered by exposure, then known exploitation, EPSS and CVSS. `q`
+// matches the id, aliases, summary and component names.
+//
+// Corresponds with GET /vulnerabilities/cves (the `ListVulnerabilities` operationId).
+func (c *Client) ListVulnerabilities(ctx context.Context, params *ListVulnerabilitiesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListVulnerabilitiesRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetVulnerability One vulnerability with the components and places it affects
+//
+// `404` when no open finding has it.
+//
+// Corresponds with GET /vulnerabilities/cves/{vulnId} (the `GetVulnerability` operationId).
+func (c *Client) GetVulnerability(ctx context.Context, vulnId string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetVulnerabilityRequest(c.Server, vulnId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetVulnerabilitySummary Vulnerability figures of the dashboard and the first update actions
+//
+// `actions` are the first 10 update actions (one per vulnerable
+// component), ordered by exposure, then known exploitation, EPSS and
+// CVSS. `actionsTotal` counts them all.
+//
+// Corresponds with GET /vulnerabilities/summary (the `GetVulnerabilitySummary` operationId).
+func (c *Client) GetVulnerabilitySummary(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetVulnerabilitySummaryRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // NewListAgentsRequest constructs an http.Request for the ListAgents method
 func NewListAgentsRequest(server string, params *ListAgentsParams) (*http.Request, error) {
 	var err error
@@ -6810,6 +7406,40 @@ func NewListAssetProcessesRequest(server string, id PathId, params *ListAssetPro
 			rawQueryFragments = append(rawQueryFragments, encoded)
 		}
 		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListAssetVulnerabilitiesRequest constructs an http.Request for the ListAssetVulnerabilities method
+func NewListAssetVulnerabilitiesRequest(server string, id PathId) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/assets/%s/vulnerabilities", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
 	}
 
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
@@ -9791,6 +10421,329 @@ func NewSetUpdateSettingsRequestWithBody(server string, contentType string, body
 	return req, nil
 }
 
+// NewListVulnerableComponentsRequest constructs an http.Request for the ListVulnerableComponents method
+func NewListVulnerableComponentsRequest(server string, params *ListVulnerableComponentsParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/vulnerabilities/components")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Q != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "q", *params.Q, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Severity != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "severity", *params.Severity, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Exposure != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "exposure", *params.Exposure, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Kev != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "kev", *params.Kev, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "boolean", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Offset != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "offset", *params.Offset, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetVulnerableComponentRequest constructs an http.Request for the GetVulnerableComponent method
+func NewGetVulnerableComponentRequest(server string, id PathId) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/vulnerabilities/components/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListVulnerabilitiesRequest constructs an http.Request for the ListVulnerabilities method
+func NewListVulnerabilitiesRequest(server string, params *ListVulnerabilitiesParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/vulnerabilities/cves")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Q != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "q", *params.Q, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Severity != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "severity", *params.Severity, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Exposure != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "exposure", *params.Exposure, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Kev != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "kev", *params.Kev, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "boolean", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Offset != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "offset", *params.Offset, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetVulnerabilityRequest constructs an http.Request for the GetVulnerability method
+func NewGetVulnerabilityRequest(server string, vulnId string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "vulnId", vulnId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/vulnerabilities/cves/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetVulnerabilitySummaryRequest constructs an http.Request for the GetVulnerabilitySummary method
+func NewGetVulnerabilitySummaryRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/vulnerabilities/summary")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 func (c *Client) applyEditors(ctx context.Context, req *http.Request, additionalEditors []RequestEditorFn) error {
 	for _, r := range c.RequestEditors {
 		if err := r(ctx, req); err != nil {
@@ -9947,6 +10900,13 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /assets/{id}/processes (the `ListAssetProcesses` operationId).
 	ListAssetProcessesWithResponse(ctx context.Context, id PathId, params *ListAssetProcessesParams, reqEditors ...RequestEditorFn) (*ListAssetProcessesResponse, error)
+
+	// ListAssetVulnerabilitiesWithResponse Open findings of an asset
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /assets/{id}/vulnerabilities (the `ListAssetVulnerabilities` operationId).
+	ListAssetVulnerabilitiesWithResponse(ctx context.Context, id PathId, reqEditors ...RequestEditorFn) (*ListAssetVulnerabilitiesResponse, error)
 
 	// LoginWithBodyWithResponse Start a session
 	//
@@ -10582,6 +11542,53 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with PUT /update-settings (the `SetUpdateSettings` operationId).
 	SetUpdateSettingsWithResponse(ctx context.Context, body SetUpdateSettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*SetUpdateSettingsResponse, error)
+
+	// ListVulnerableComponentsWithResponse Update actions, one per vulnerable component
+	//
+	// Ordered by exposure, then known exploitation, EPSS and CVSS. `q`
+	// matches the component name, version and the CVE ids.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /vulnerabilities/components (the `ListVulnerableComponents` operationId).
+	ListVulnerableComponentsWithResponse(ctx context.Context, params *ListVulnerableComponentsParams, reqEditors ...RequestEditorFn) (*ListVulnerableComponentsResponse, error)
+
+	// GetVulnerableComponentWithResponse The vulnerabilities of one component and where it is
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /vulnerabilities/components/{id} (the `GetVulnerableComponent` operationId).
+	GetVulnerableComponentWithResponse(ctx context.Context, id PathId, reqEditors ...RequestEditorFn) (*GetVulnerableComponentResponse, error)
+
+	// ListVulnerabilitiesWithResponse Open vulnerabilities, one per id
+	//
+	// Ordered by exposure, then known exploitation, EPSS and CVSS. `q`
+	// matches the id, aliases, summary and component names.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /vulnerabilities/cves (the `ListVulnerabilities` operationId).
+	ListVulnerabilitiesWithResponse(ctx context.Context, params *ListVulnerabilitiesParams, reqEditors ...RequestEditorFn) (*ListVulnerabilitiesResponse, error)
+
+	// GetVulnerabilityWithResponse One vulnerability with the components and places it affects
+	//
+	// `404` when no open finding has it.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /vulnerabilities/cves/{vulnId} (the `GetVulnerability` operationId).
+	GetVulnerabilityWithResponse(ctx context.Context, vulnId string, reqEditors ...RequestEditorFn) (*GetVulnerabilityResponse, error)
+
+	// GetVulnerabilitySummaryWithResponse Vulnerability figures of the dashboard and the first update actions
+	//
+	// `actions` are the first 10 update actions (one per vulnerable
+	// component), ordered by exposure, then known exploitation, EPSS and
+	// CVSS. `actionsTotal` counts them all.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /vulnerabilities/summary (the `GetVulnerabilitySummary` operationId).
+	GetVulnerabilitySummaryWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetVulnerabilitySummaryResponse, error)
 }
 
 type ListAgentsResponse struct {
@@ -11371,6 +12378,68 @@ func (r ListAssetProcessesResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r ListAssetProcessesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListAssetVulnerabilitiesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *AssetVulnList
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *UnexpectedError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListAssetVulnerabilitiesResponse) GetJSON200() *AssetVulnList {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ListAssetVulnerabilitiesResponse) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r ListAssetVulnerabilitiesResponse) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r ListAssetVulnerabilitiesResponse) GetJSONDefault() *UnexpectedError {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ListAssetVulnerabilitiesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListAssetVulnerabilitiesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListAssetVulnerabilitiesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListAssetVulnerabilitiesResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -14782,6 +15851,309 @@ func (r SetUpdateSettingsResponse) ContentType() string {
 	return ""
 }
 
+type ListVulnerableComponentsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *VulnComponentList
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *BadRequest
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *UnexpectedError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListVulnerableComponentsResponse) GetJSON200() *VulnComponentList {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r ListVulnerableComponentsResponse) GetJSON400() *BadRequest {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ListVulnerableComponentsResponse) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r ListVulnerableComponentsResponse) GetJSONDefault() *UnexpectedError {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ListVulnerableComponentsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListVulnerableComponentsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListVulnerableComponentsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListVulnerableComponentsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetVulnerableComponentResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *VulnComponentDetail
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *UnexpectedError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetVulnerableComponentResponse) GetJSON200() *VulnComponentDetail {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetVulnerableComponentResponse) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetVulnerableComponentResponse) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r GetVulnerableComponentResponse) GetJSONDefault() *UnexpectedError {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetVulnerableComponentResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetVulnerableComponentResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetVulnerableComponentResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetVulnerableComponentResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListVulnerabilitiesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *VulnCveList
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *BadRequest
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *UnexpectedError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListVulnerabilitiesResponse) GetJSON200() *VulnCveList {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r ListVulnerabilitiesResponse) GetJSON400() *BadRequest {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ListVulnerabilitiesResponse) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r ListVulnerabilitiesResponse) GetJSONDefault() *UnexpectedError {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ListVulnerabilitiesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListVulnerabilitiesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListVulnerabilitiesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListVulnerabilitiesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetVulnerabilityResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *VulnCveDetail
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *UnexpectedError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetVulnerabilityResponse) GetJSON200() *VulnCveDetail {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetVulnerabilityResponse) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetVulnerabilityResponse) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r GetVulnerabilityResponse) GetJSONDefault() *UnexpectedError {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetVulnerabilityResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetVulnerabilityResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetVulnerabilityResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetVulnerabilityResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetVulnerabilitySummaryResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *VulnSummary
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *UnexpectedError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetVulnerabilitySummaryResponse) GetJSON200() *VulnSummary {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetVulnerabilitySummaryResponse) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r GetVulnerabilitySummaryResponse) GetJSONDefault() *UnexpectedError {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetVulnerabilitySummaryResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetVulnerabilitySummaryResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetVulnerabilitySummaryResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetVulnerabilitySummaryResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 // ListAgentsWithResponse List agents and scanners
 //
 // `q` matches hostname, description, address, id, OS and listen address.
@@ -14971,6 +16343,19 @@ func (c *ClientWithResponses) ListAssetProcessesWithResponse(ctx context.Context
 		return nil, err
 	}
 	return ParseListAssetProcessesResponse(rsp)
+}
+
+// ListAssetVulnerabilitiesWithResponse Open findings of an asset
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /assets/{id}/vulnerabilities (the `ListAssetVulnerabilities` operationId).
+func (c *ClientWithResponses) ListAssetVulnerabilitiesWithResponse(ctx context.Context, id PathId, reqEditors ...RequestEditorFn) (*ListAssetVulnerabilitiesResponse, error) {
+	rsp, err := c.ListAssetVulnerabilities(ctx, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListAssetVulnerabilitiesResponse(rsp)
 }
 
 // LoginWithBodyWithResponse Start a session
@@ -16022,6 +17407,83 @@ func (c *ClientWithResponses) SetUpdateSettingsWithResponse(ctx context.Context,
 	return ParseSetUpdateSettingsResponse(rsp)
 }
 
+// ListVulnerableComponentsWithResponse Update actions, one per vulnerable component
+//
+// Ordered by exposure, then known exploitation, EPSS and CVSS. `q`
+// matches the component name, version and the CVE ids.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /vulnerabilities/components (the `ListVulnerableComponents` operationId).
+func (c *ClientWithResponses) ListVulnerableComponentsWithResponse(ctx context.Context, params *ListVulnerableComponentsParams, reqEditors ...RequestEditorFn) (*ListVulnerableComponentsResponse, error) {
+	rsp, err := c.ListVulnerableComponents(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListVulnerableComponentsResponse(rsp)
+}
+
+// GetVulnerableComponentWithResponse The vulnerabilities of one component and where it is
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /vulnerabilities/components/{id} (the `GetVulnerableComponent` operationId).
+func (c *ClientWithResponses) GetVulnerableComponentWithResponse(ctx context.Context, id PathId, reqEditors ...RequestEditorFn) (*GetVulnerableComponentResponse, error) {
+	rsp, err := c.GetVulnerableComponent(ctx, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetVulnerableComponentResponse(rsp)
+}
+
+// ListVulnerabilitiesWithResponse Open vulnerabilities, one per id
+//
+// Ordered by exposure, then known exploitation, EPSS and CVSS. `q`
+// matches the id, aliases, summary and component names.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /vulnerabilities/cves (the `ListVulnerabilities` operationId).
+func (c *ClientWithResponses) ListVulnerabilitiesWithResponse(ctx context.Context, params *ListVulnerabilitiesParams, reqEditors ...RequestEditorFn) (*ListVulnerabilitiesResponse, error) {
+	rsp, err := c.ListVulnerabilities(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListVulnerabilitiesResponse(rsp)
+}
+
+// GetVulnerabilityWithResponse One vulnerability with the components and places it affects
+//
+// `404` when no open finding has it.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /vulnerabilities/cves/{vulnId} (the `GetVulnerability` operationId).
+func (c *ClientWithResponses) GetVulnerabilityWithResponse(ctx context.Context, vulnId string, reqEditors ...RequestEditorFn) (*GetVulnerabilityResponse, error) {
+	rsp, err := c.GetVulnerability(ctx, vulnId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetVulnerabilityResponse(rsp)
+}
+
+// GetVulnerabilitySummaryWithResponse Vulnerability figures of the dashboard and the first update actions
+//
+// `actions` are the first 10 update actions (one per vulnerable
+// component), ordered by exposure, then known exploitation, EPSS and
+// CVSS. `actionsTotal` counts them all.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /vulnerabilities/summary (the `GetVulnerabilitySummary` operationId).
+func (c *ClientWithResponses) GetVulnerabilitySummaryWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetVulnerabilitySummaryResponse, error) {
+	rsp, err := c.GetVulnerabilitySummary(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetVulnerabilitySummaryResponse(rsp)
+}
+
 // ParseListAgentsResponse parses an HTTP response from a ListAgentsWithResponse call
 func ParseListAgentsResponse(rsp *http.Response) (*ListAgentsResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -16608,6 +18070,53 @@ func ParseListAssetProcessesResponse(rsp *http.Response) (*ListAssetProcessesRes
 			return nil, err
 		}
 		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest UnexpectedError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListAssetVulnerabilitiesResponse parses an HTTP response from a ListAssetVulnerabilitiesWithResponse call
+func ParseListAssetVulnerabilitiesResponse(rsp *http.Response) (*ListAssetVulnerabilitiesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListAssetVulnerabilitiesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AssetVulnList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
 		var dest Unauthorized
@@ -19293,6 +20802,234 @@ func ParseSetUpdateSettingsResponse(rsp *http.Response) (*SetUpdateSettingsRespo
 	return response, nil
 }
 
+// ParseListVulnerableComponentsResponse parses an HTTP response from a ListVulnerableComponentsWithResponse call
+func ParseListVulnerableComponentsResponse(rsp *http.Response) (*ListVulnerableComponentsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListVulnerableComponentsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest VulnComponentList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest UnexpectedError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetVulnerableComponentResponse parses an HTTP response from a GetVulnerableComponentWithResponse call
+func ParseGetVulnerableComponentResponse(rsp *http.Response) (*GetVulnerableComponentResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetVulnerableComponentResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest VulnComponentDetail
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest UnexpectedError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListVulnerabilitiesResponse parses an HTTP response from a ListVulnerabilitiesWithResponse call
+func ParseListVulnerabilitiesResponse(rsp *http.Response) (*ListVulnerabilitiesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListVulnerabilitiesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest VulnCveList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest UnexpectedError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetVulnerabilityResponse parses an HTTP response from a GetVulnerabilityWithResponse call
+func ParseGetVulnerabilityResponse(rsp *http.Response) (*GetVulnerabilityResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetVulnerabilityResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest VulnCveDetail
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest UnexpectedError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetVulnerabilitySummaryResponse parses an HTTP response from a GetVulnerabilitySummaryWithResponse call
+func ParseGetVulnerabilitySummaryResponse(rsp *http.Response) (*GetVulnerabilitySummaryResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetVulnerabilitySummaryResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest VulnSummary
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest UnexpectedError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 	// ListAgents List agents and scanners
@@ -19331,6 +21068,9 @@ type ServerInterface interface {
 	// ListAssetProcesses Processes of an asset
 	// (GET /assets/{id}/processes)
 	ListAssetProcesses(w http.ResponseWriter, r *http.Request, id PathId, params ListAssetProcessesParams)
+	// ListAssetVulnerabilities Open findings of an asset
+	// (GET /assets/{id}/vulnerabilities)
+	ListAssetVulnerabilities(w http.ResponseWriter, r *http.Request, id PathId)
 	// Login Start a session
 	// (POST /auth/login)
 	Login(w http.ResponseWriter, r *http.Request)
@@ -19490,6 +21230,21 @@ type ServerInterface interface {
 	// SetUpdateSettings Change the deployed version and update check interval
 	// (PUT /update-settings)
 	SetUpdateSettings(w http.ResponseWriter, r *http.Request)
+	// ListVulnerableComponents Update actions, one per vulnerable component
+	// (GET /vulnerabilities/components)
+	ListVulnerableComponents(w http.ResponseWriter, r *http.Request, params ListVulnerableComponentsParams)
+	// GetVulnerableComponent The vulnerabilities of one component and where it is
+	// (GET /vulnerabilities/components/{id})
+	GetVulnerableComponent(w http.ResponseWriter, r *http.Request, id PathId)
+	// ListVulnerabilities Open vulnerabilities, one per id
+	// (GET /vulnerabilities/cves)
+	ListVulnerabilities(w http.ResponseWriter, r *http.Request, params ListVulnerabilitiesParams)
+	// GetVulnerability One vulnerability with the components and places it affects
+	// (GET /vulnerabilities/cves/{vulnId})
+	GetVulnerability(w http.ResponseWriter, r *http.Request, vulnId string)
+	// GetVulnerabilitySummary Vulnerability figures of the dashboard and the first update actions
+	// (GET /vulnerabilities/summary)
+	GetVulnerabilitySummary(w http.ResponseWriter, r *http.Request)
 }
 
 // Unimplemented server implementation that returns http.StatusNotImplemented for each endpoint.
@@ -19565,6 +21320,12 @@ func (_ Unimplemented) ListAssetInstances(w http.ResponseWriter, r *http.Request
 // ListAssetProcesses Processes of an asset
 // (GET /assets/{id}/processes)
 func (_ Unimplemented) ListAssetProcesses(w http.ResponseWriter, r *http.Request, id PathId, params ListAssetProcessesParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListAssetVulnerabilities Open findings of an asset
+// (GET /assets/{id}/vulnerabilities)
+func (_ Unimplemented) ListAssetVulnerabilities(w http.ResponseWriter, r *http.Request, id PathId) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -19883,6 +21644,36 @@ func (_ Unimplemented) GetUpdateSettings(w http.ResponseWriter, r *http.Request)
 // SetUpdateSettings Change the deployed version and update check interval
 // (PUT /update-settings)
 func (_ Unimplemented) SetUpdateSettings(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListVulnerableComponents Update actions, one per vulnerable component
+// (GET /vulnerabilities/components)
+func (_ Unimplemented) ListVulnerableComponents(w http.ResponseWriter, r *http.Request, params ListVulnerableComponentsParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetVulnerableComponent The vulnerabilities of one component and where it is
+// (GET /vulnerabilities/components/{id})
+func (_ Unimplemented) GetVulnerableComponent(w http.ResponseWriter, r *http.Request, id PathId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListVulnerabilities Open vulnerabilities, one per id
+// (GET /vulnerabilities/cves)
+func (_ Unimplemented) ListVulnerabilities(w http.ResponseWriter, r *http.Request, params ListVulnerabilitiesParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetVulnerability One vulnerability with the components and places it affects
+// (GET /vulnerabilities/cves/{vulnId})
+func (_ Unimplemented) GetVulnerability(w http.ResponseWriter, r *http.Request, vulnId string) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetVulnerabilitySummary Vulnerability figures of the dashboard and the first update actions
+// (GET /vulnerabilities/summary)
+func (_ Unimplemented) GetVulnerabilitySummary(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -20800,6 +22591,32 @@ func (siw *ServerInterfaceWrapper) ListAssetProcesses(w http.ResponseWriter, r *
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListAssetProcesses(w, r, id, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListAssetVulnerabilities operation middleware
+func (siw *ServerInterfaceWrapper) ListAssetVulnerabilities(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id PathId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListAssetVulnerabilities(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -22960,6 +24777,268 @@ func (siw *ServerInterfaceWrapper) SetUpdateSettings(w http.ResponseWriter, r *h
 	handler.ServeHTTP(w, r)
 }
 
+// ListVulnerableComponents operation middleware
+func (siw *ServerInterfaceWrapper) ListVulnerableComponents(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListVulnerableComponentsParams
+
+	// ------------- Optional query parameter "q" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "q", r.URL.Query(), &params.Q, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "q"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "q", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "severity" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "severity", r.URL.Query(), &params.Severity, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "severity"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "severity", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "exposure" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "exposure", r.URL.Query(), &params.Exposure, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "exposure"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "exposure", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "kev" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "kev", r.URL.Query(), &params.Kev, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "kev"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "kev", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "offset" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "offset", r.URL.Query(), &params.Offset, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "offset"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "offset", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListVulnerableComponents(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetVulnerableComponent operation middleware
+func (siw *ServerInterfaceWrapper) GetVulnerableComponent(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id PathId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetVulnerableComponent(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListVulnerabilities operation middleware
+func (siw *ServerInterfaceWrapper) ListVulnerabilities(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListVulnerabilitiesParams
+
+	// ------------- Optional query parameter "q" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "q", r.URL.Query(), &params.Q, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "q"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "q", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "severity" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "severity", r.URL.Query(), &params.Severity, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "severity"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "severity", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "exposure" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "exposure", r.URL.Query(), &params.Exposure, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "exposure"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "exposure", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "kev" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "kev", r.URL.Query(), &params.Kev, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "kev"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "kev", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "offset" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "offset", r.URL.Query(), &params.Offset, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "offset"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "offset", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListVulnerabilities(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetVulnerability operation middleware
+func (siw *ServerInterfaceWrapper) GetVulnerability(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "vulnId" -------------
+	var vulnId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "vulnId", chi.URLParam(r, "vulnId"), &vulnId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "vulnId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetVulnerability(w, r, vulnId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetVulnerabilitySummary operation middleware
+func (siw *ServerInterfaceWrapper) GetVulnerabilitySummary(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetVulnerabilitySummary(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 type UnescapedCookieParamError struct {
 	ParamName string
 	Err       error
@@ -23267,6 +25346,24 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/feed-servers/{id}/rematch", wrapper.RematchFeedServer)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/vulnerabilities/summary", wrapper.GetVulnerabilitySummary)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/vulnerabilities/components", wrapper.ListVulnerableComponents)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/vulnerabilities/components/{id}", wrapper.GetVulnerableComponent)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/vulnerabilities/cves", wrapper.ListVulnerabilities)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/vulnerabilities/cves/{vulnId}", wrapper.GetVulnerability)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/assets/{id}/vulnerabilities", wrapper.ListAssetVulnerabilities)
 	})
 
 	return r
@@ -24188,6 +26285,73 @@ type ListAssetProcessesdefaultJSONResponse struct {
 }
 
 func (response ListAssetProcessesdefaultJSONResponse) VisitListAssetProcessesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAssetVulnerabilitiesRequestObject struct {
+	Id PathId `json:"id"`
+}
+
+type ListAssetVulnerabilitiesResponseObject interface {
+	VisitListAssetVulnerabilitiesResponse(w http.ResponseWriter) error
+}
+
+type ListAssetVulnerabilities200JSONResponse AssetVulnList
+
+func (response ListAssetVulnerabilities200JSONResponse) VisitListAssetVulnerabilitiesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAssetVulnerabilities401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response ListAssetVulnerabilities401JSONResponse) VisitListAssetVulnerabilitiesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAssetVulnerabilities404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ListAssetVulnerabilities404JSONResponse) VisitListAssetVulnerabilitiesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAssetVulnerabilitiesdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ListAssetVulnerabilitiesdefaultJSONResponse) VisitListAssetVulnerabilitiesResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -28037,6 +30201,326 @@ func (response SetUpdateSettingsdefaultJSONResponse) VisitSetUpdateSettingsRespo
 	return err
 }
 
+type ListVulnerableComponentsRequestObject struct {
+	Params ListVulnerableComponentsParams
+}
+
+type ListVulnerableComponentsResponseObject interface {
+	VisitListVulnerableComponentsResponse(w http.ResponseWriter) error
+}
+
+type ListVulnerableComponents200JSONResponse VulnComponentList
+
+func (response ListVulnerableComponents200JSONResponse) VisitListVulnerableComponentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListVulnerableComponents400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response ListVulnerableComponents400JSONResponse) VisitListVulnerableComponentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListVulnerableComponents401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response ListVulnerableComponents401JSONResponse) VisitListVulnerableComponentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListVulnerableComponentsdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ListVulnerableComponentsdefaultJSONResponse) VisitListVulnerableComponentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetVulnerableComponentRequestObject struct {
+	Id PathId `json:"id"`
+}
+
+type GetVulnerableComponentResponseObject interface {
+	VisitGetVulnerableComponentResponse(w http.ResponseWriter) error
+}
+
+type GetVulnerableComponent200JSONResponse VulnComponentDetail
+
+func (response GetVulnerableComponent200JSONResponse) VisitGetVulnerableComponentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetVulnerableComponent401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response GetVulnerableComponent401JSONResponse) VisitGetVulnerableComponentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetVulnerableComponent404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetVulnerableComponent404JSONResponse) VisitGetVulnerableComponentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetVulnerableComponentdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetVulnerableComponentdefaultJSONResponse) VisitGetVulnerableComponentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListVulnerabilitiesRequestObject struct {
+	Params ListVulnerabilitiesParams
+}
+
+type ListVulnerabilitiesResponseObject interface {
+	VisitListVulnerabilitiesResponse(w http.ResponseWriter) error
+}
+
+type ListVulnerabilities200JSONResponse VulnCveList
+
+func (response ListVulnerabilities200JSONResponse) VisitListVulnerabilitiesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListVulnerabilities400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response ListVulnerabilities400JSONResponse) VisitListVulnerabilitiesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListVulnerabilities401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response ListVulnerabilities401JSONResponse) VisitListVulnerabilitiesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListVulnerabilitiesdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ListVulnerabilitiesdefaultJSONResponse) VisitListVulnerabilitiesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetVulnerabilityRequestObject struct {
+	VulnId string `json:"vulnId"`
+}
+
+type GetVulnerabilityResponseObject interface {
+	VisitGetVulnerabilityResponse(w http.ResponseWriter) error
+}
+
+type GetVulnerability200JSONResponse VulnCveDetail
+
+func (response GetVulnerability200JSONResponse) VisitGetVulnerabilityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetVulnerability401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response GetVulnerability401JSONResponse) VisitGetVulnerabilityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetVulnerability404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetVulnerability404JSONResponse) VisitGetVulnerabilityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetVulnerabilitydefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetVulnerabilitydefaultJSONResponse) VisitGetVulnerabilityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetVulnerabilitySummaryRequestObject struct {
+}
+
+type GetVulnerabilitySummaryResponseObject interface {
+	VisitGetVulnerabilitySummaryResponse(w http.ResponseWriter) error
+}
+
+type GetVulnerabilitySummary200JSONResponse VulnSummary
+
+func (response GetVulnerabilitySummary200JSONResponse) VisitGetVulnerabilitySummaryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetVulnerabilitySummary401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response GetVulnerabilitySummary401JSONResponse) VisitGetVulnerabilitySummaryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetVulnerabilitySummarydefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetVulnerabilitySummarydefaultJSONResponse) VisitGetVulnerabilitySummaryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 	// ListAgents List agents and scanners
@@ -28075,6 +30559,9 @@ type StrictServerInterface interface {
 	// ListAssetProcesses Processes of an asset
 	// (GET /assets/{id}/processes)
 	ListAssetProcesses(ctx context.Context, request ListAssetProcessesRequestObject) (ListAssetProcessesResponseObject, error)
+	// ListAssetVulnerabilities Open findings of an asset
+	// (GET /assets/{id}/vulnerabilities)
+	ListAssetVulnerabilities(ctx context.Context, request ListAssetVulnerabilitiesRequestObject) (ListAssetVulnerabilitiesResponseObject, error)
 	// Login Start a session
 	// (POST /auth/login)
 	Login(ctx context.Context, request LoginRequestObject) (LoginResponseObject, error)
@@ -28234,6 +30721,21 @@ type StrictServerInterface interface {
 	// SetUpdateSettings Change the deployed version and update check interval
 	// (PUT /update-settings)
 	SetUpdateSettings(ctx context.Context, request SetUpdateSettingsRequestObject) (SetUpdateSettingsResponseObject, error)
+	// ListVulnerableComponents Update actions, one per vulnerable component
+	// (GET /vulnerabilities/components)
+	ListVulnerableComponents(ctx context.Context, request ListVulnerableComponentsRequestObject) (ListVulnerableComponentsResponseObject, error)
+	// GetVulnerableComponent The vulnerabilities of one component and where it is
+	// (GET /vulnerabilities/components/{id})
+	GetVulnerableComponent(ctx context.Context, request GetVulnerableComponentRequestObject) (GetVulnerableComponentResponseObject, error)
+	// ListVulnerabilities Open vulnerabilities, one per id
+	// (GET /vulnerabilities/cves)
+	ListVulnerabilities(ctx context.Context, request ListVulnerabilitiesRequestObject) (ListVulnerabilitiesResponseObject, error)
+	// GetVulnerability One vulnerability with the components and places it affects
+	// (GET /vulnerabilities/cves/{vulnId})
+	GetVulnerability(ctx context.Context, request GetVulnerabilityRequestObject) (GetVulnerabilityResponseObject, error)
+	// GetVulnerabilitySummary Vulnerability figures of the dashboard and the first update actions
+	// (GET /vulnerabilities/summary)
+	GetVulnerabilitySummary(ctx context.Context, request GetVulnerabilitySummaryRequestObject) (GetVulnerabilitySummaryResponseObject, error)
 }
 
 type StrictHandlerFunc func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error)
@@ -28590,6 +31092,32 @@ func (sh *strictHandler) ListAssetProcesses(w http.ResponseWriter, r *http.Reque
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ListAssetProcessesResponseObject); ok {
 		if err := validResponse.VisitListAssetProcessesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListAssetVulnerabilities operation middleware
+func (sh *strictHandler) ListAssetVulnerabilities(w http.ResponseWriter, r *http.Request, id PathId) {
+	var request ListAssetVulnerabilitiesRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListAssetVulnerabilities(ctx, request.(ListAssetVulnerabilitiesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListAssetVulnerabilities")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListAssetVulnerabilitiesResponseObject); ok {
+		if err := validResponse.VisitListAssetVulnerabilitiesResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -30054,6 +32582,134 @@ func (sh *strictHandler) SetUpdateSettings(w http.ResponseWriter, r *http.Reques
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(SetUpdateSettingsResponseObject); ok {
 		if err := validResponse.VisitSetUpdateSettingsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListVulnerableComponents operation middleware
+func (sh *strictHandler) ListVulnerableComponents(w http.ResponseWriter, r *http.Request, params ListVulnerableComponentsParams) {
+	var request ListVulnerableComponentsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListVulnerableComponents(ctx, request.(ListVulnerableComponentsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListVulnerableComponents")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListVulnerableComponentsResponseObject); ok {
+		if err := validResponse.VisitListVulnerableComponentsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetVulnerableComponent operation middleware
+func (sh *strictHandler) GetVulnerableComponent(w http.ResponseWriter, r *http.Request, id PathId) {
+	var request GetVulnerableComponentRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetVulnerableComponent(ctx, request.(GetVulnerableComponentRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetVulnerableComponent")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetVulnerableComponentResponseObject); ok {
+		if err := validResponse.VisitGetVulnerableComponentResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListVulnerabilities operation middleware
+func (sh *strictHandler) ListVulnerabilities(w http.ResponseWriter, r *http.Request, params ListVulnerabilitiesParams) {
+	var request ListVulnerabilitiesRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListVulnerabilities(ctx, request.(ListVulnerabilitiesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListVulnerabilities")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListVulnerabilitiesResponseObject); ok {
+		if err := validResponse.VisitListVulnerabilitiesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetVulnerability operation middleware
+func (sh *strictHandler) GetVulnerability(w http.ResponseWriter, r *http.Request, vulnId string) {
+	var request GetVulnerabilityRequestObject
+
+	request.VulnId = vulnId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetVulnerability(ctx, request.(GetVulnerabilityRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetVulnerability")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetVulnerabilityResponseObject); ok {
+		if err := validResponse.VisitGetVulnerabilityResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetVulnerabilitySummary operation middleware
+func (sh *strictHandler) GetVulnerabilitySummary(w http.ResponseWriter, r *http.Request) {
+	var request GetVulnerabilitySummaryRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetVulnerabilitySummary(ctx, request.(GetVulnerabilitySummaryRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetVulnerabilitySummary")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetVulnerabilitySummaryResponseObject); ok {
+		if err := validResponse.VisitGetVulnerabilitySummaryResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

@@ -68,6 +68,9 @@ type ProcessObservation struct {
 	Listen    []ListenAddr
 	// Container is the container name on a host; ignored for a pod scope.
 	Container string
+	// Packages are the OS packages owning the executable and the shared
+	// libraries the process maps; nil when the probe did not tell.
+	Packages []string
 	// ComponentID is the component of the executable, if known.
 	ComponentID string
 }

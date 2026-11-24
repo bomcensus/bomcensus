@@ -31,11 +31,12 @@ type targetOS struct {
 }
 
 type component struct {
-	Ref    string         `json:"ref"`
-	PURL   string         `json:"purl,omitempty"`
-	CPE    string         `json:"cpe,omitempty"`
-	Origin string         `json:"origin,omitempty"`
-	Source *sourcePackage `json:"source,omitempty"`
+	Ref        string         `json:"ref"`
+	PURL       string         `json:"purl,omitempty"`
+	CPE        string         `json:"cpe,omitempty"`
+	Origin     string         `json:"origin,omitempty"`
+	Modularity string         `json:"modularity,omitempty"`
+	Source     *sourcePackage `json:"source,omitempty"`
 }
 
 type sourcePackage struct {
@@ -143,7 +144,7 @@ func buildRequest(comps []store.Component) matchRequest {
 	const noOS = -1
 	plain := noOS
 	for _, c := range comps {
-		wc := component{Ref: c.ID, PURL: c.PURL, CPE: c.CPE}
+		wc := component{Ref: c.ID, PURL: c.PURL, CPE: c.CPE, Modularity: c.Modularity}
 		os, hasOS := osOf(c)
 		if hasOS && c.Origin != "" {
 			wc.Origin = string(c.Origin)

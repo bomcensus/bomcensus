@@ -193,14 +193,14 @@ func (c *collector) process(pid int) (*procInfo, bool) {
 	switch {
 	case err == nil:
 		c.fillExe(dir, target, p)
-		libs, err := c.mappedLibs(dir, p.Exe)
+		libs, mapped, err := c.mappedLibs(dir, p.Exe)
 		switch {
 		case err == nil:
-			p.Libs = libs
+			p.Libs, p.Mapped = libs, mapped
 		case gone(err):
 			return nil, false
 		case errors.Is(err, errMapsTruncated):
-			p.Libs = libs
+			p.Libs, p.Mapped = libs, mapped
 			c.mapsTruncated++
 		default:
 			c.mapsDenied++

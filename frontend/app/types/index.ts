@@ -116,6 +116,20 @@ export type {
   VulnAdvisory,
   ComponentMatchState,
   ComponentVulnerability,
+  Exposure,
+  ExposureCounts,
+  SeverityCounts,
+  FindingLayer,
+  FindingProcess,
+  VulnComponent,
+  VulnCve,
+  VulnLocation,
+  VulnComponentDetail,
+  VulnDetail,
+  VulnCveComponent,
+  VulnCveDetail,
+  AssetVuln,
+  VulnSummary,
 } from '~/api/gen/types.gen'
 
 // Request bodies with write-only fields (secrets) use the writable variant.

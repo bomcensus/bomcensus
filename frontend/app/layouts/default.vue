@@ -22,6 +22,7 @@ import {
   Radio,
   Server,
   Settings,
+  ShieldAlert,
   Sun,
   Terminal,
   X,
@@ -46,7 +47,10 @@ const nav: { title?: string; items: NavItem[] }[] = [
   },
   {
     title: '위험',
-    items: [{ to: '/processes', label: '프로세스', icon: Activity }],
+    items: [
+      { to: '/vulnerabilities', label: '취약점', icon: ShieldAlert },
+      { to: '/processes', label: '프로세스', icon: Activity },
+    ],
   },
   {
     title: '수집',

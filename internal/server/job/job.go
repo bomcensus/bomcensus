@@ -34,6 +34,9 @@ const (
 	// KindFeedMatch matches pending components against the active feed
 	// server (no arguments).
 	KindFeedMatch = "feed_match"
+	// KindFindingsRefresh computes the findings of assets whose inputs
+	// changed (no arguments).
+	KindFindingsRefresh = "findings_refresh"
 )
 
 // IngestReportArgs names a raw report stored by the upload handler.

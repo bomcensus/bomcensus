@@ -70,6 +70,8 @@ type Config struct {
 	BatchSize int
 	RunFor    time.Duration
 	Now       func() time.Time
+	// Matched, when set, is called after a run that stored results.
+	Matched func(ctx context.Context)
 }
 
 // Matcher runs the match job.
@@ -83,6 +85,7 @@ type Matcher struct {
 	now      func() time.Time
 	sleep    func(ctx context.Context, d time.Duration) error
 	compress bool
+	matched  func(ctx context.Context)
 }
 
 // New returns a Matcher. Store and Feed are required.
@@ -103,7 +106,7 @@ func New(cfg Config) (*Matcher, error) {
 		cfg.Now = time.Now
 	}
 	return &Matcher{st: cfg.Store, feed: cfg.Feed, queue: cfg.Queue, log: cfg.Logger, batch: cfg.BatchSize,
-		runFor: cfg.RunFor, now: cfg.Now, sleep: sleepCtx, compress: true}, nil
+		runFor: cfg.RunFor, now: cfg.Now, sleep: sleepCtx, compress: true, matched: cfg.Matched}, nil
 }
 
 func sleepCtx(ctx context.Context, d time.Duration) error {
@@ -170,6 +173,11 @@ func (m *Matcher) Run(ctx context.Context) error {
 	epoch := store.MatchEpoch{ServerID: srv.ID, Revision: data.Revision, Rules: data.RulesDigest}
 	deadline := m.now().Add(m.runFor)
 	total := 0
+	defer func() {
+		if total > 0 && m.matched != nil {
+			m.matched(context.WithoutCancel(ctx))
+		}
+	}()
 	for {
 		comps, err := m.st.PendingMatches(ctx, epoch, m.batch)
 		if err != nil {

@@ -4,9 +4,9 @@
 
 // Package manageapi implements the management operations of the console API:
 // agents, listen targets, Register Keys, releases and update settings, scan
-// targets, credentials, TLS settings and feed servers. Handlers are thin
-// mappings onto the store and the services; errors are returned as
-// *apierr.Error or store errors for the router to render.
+// targets, credentials, TLS settings and feed servers. Handlers are thin mappings onto the
+// store and the services; errors are returned as *apierr.Error or store
+// errors for the router to render.
 package manageapi
 
 import (

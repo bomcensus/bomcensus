@@ -106,7 +106,7 @@ func LinkOwned(pkgs []store.ComponentObservation, owned map[string]Owned) []stri
 		c := pkgs[i].Component
 		pkgs[i].Locations = nil
 		pkgs[i].InUse = false
-		for _, key := range ownerKeys(c) {
+		for _, key := range OwnerKeys(c) {
 			o, ok := owned[key]
 			if !ok {
 				continue
@@ -127,9 +127,9 @@ func LinkOwned(pkgs []store.ComponentObservation, owned map[string]Owned) []stri
 	return unmatched
 }
 
-// ownerKeys are the names an artifact's OwnerPackage may use for c: the
+// OwnerKeys are the names an artifact's OwnerPackage may use for c: the
 // package name, and "name:arch" as dpkg prints multi-arch packages.
-func ownerKeys(c store.Component) []string {
+func OwnerKeys(c store.Component) []string {
 	if c.Arch == "" {
 		return []string{c.Name}
 	}
@@ -143,7 +143,7 @@ func ownerKeys(c store.Component) []string {
 func FileHashes(arts []report.Artifact, pkgs []store.ComponentObservation) []FileHash {
 	byOwner := map[string]store.Component{}
 	for _, p := range pkgs {
-		for _, k := range ownerKeys(p.Component) {
+		for _, k := range OwnerKeys(p.Component) {
 			if _, ok := byOwner[k]; !ok {
 				byOwner[k] = p.Component
 			}

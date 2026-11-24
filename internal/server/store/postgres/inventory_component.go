@@ -96,6 +96,7 @@ func (d *DB) ivUpsertComponents(ctx context.Context, obs []*ivObs, at time.Time)
 		SourceVersion string `json:"source_version"`
 		Vendor        string `json:"vendor"`
 		Origin        string `json:"origin"`
+		Modularity    string `json:"modularity"`
 	}
 	seen := map[string]bool{}
 	var rows []row
@@ -107,7 +108,7 @@ func (d *DB) ivUpsertComponents(ctx context.Context, obs []*ivObs, at time.Time)
 		seen[o.ident] = true
 		c := o.comp
 		rows = append(rows, row{ivNewID(), o.ident, c.Type, c.Name, c.Version, c.Arch, c.Distro, c.PURL,
-			c.CPE, c.SourceName, c.SourceVersion, c.Vendor, string(c.Origin)})
+			c.CPE, c.SourceName, c.SourceVersion, c.Vendor, string(c.Origin), c.Modularity})
 		b, _ := hex.DecodeString(o.ident)
 		idents = append(idents, b)
 	}
@@ -120,12 +121,12 @@ func (d *DB) ivUpsertComponents(ctx context.Context, obs []*ivObs, at time.Time)
 	var created []string
 	res, err := d.q.Query(ctx, `
 		INSERT INTO components (id, ident, type, name, version, arch, distro, purl, cpe,
-			source_name, source_version, vendor, origin, created_at)
+			source_name, source_version, vendor, origin, modularity, created_at)
 		SELECT x.id, decode(x.ident, 'hex'), x.type, x.name, x.version, x.arch, x.distro, x.purl, x.cpe,
-			x.source_name, x.source_version, x.vendor, x.origin, $2
+			x.source_name, x.source_version, x.vendor, x.origin, x.modularity, $2
 		FROM jsonb_to_recordset($1::jsonb) AS x(id uuid, ident text, type text, name text, version text,
 			arch text, distro text, purl text, cpe text, source_name text, source_version text,
-			vendor text, origin text)
+			vendor text, origin text, modularity text)
 		ORDER BY x.ident
 		ON CONFLICT (ident) DO NOTHING
 		RETURNING id::text`, js, at)
@@ -143,6 +144,31 @@ func (d *DB) ivUpsertComponents(ctx context.Context, obs []*ivObs, at time.Time)
 	res.Close()
 	if err := res.Err(); err != nil {
 		return nil, err
+	}
+
+	// Components stored before the modularity label was kept get it from
+	// the next observation that has one, and are matched again.
+	var labeled []row
+	for _, r := range rows {
+		if r.Modularity != "" {
+			labeled = append(labeled, r)
+		}
+	}
+	if len(labeled) > 0 {
+		ljs, err := ivJSON(labeled)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := d.q.Exec(ctx, `
+			WITH upd AS (
+				UPDATE components c SET modularity = x.modularity
+				FROM jsonb_to_recordset($1::jsonb) AS x(ident text, modularity text)
+				WHERE c.ident = decode(x.ident, 'hex') AND c.modularity = ''
+				RETURNING c.id
+			)
+			DELETE FROM component_matches m USING upd WHERE m.component_id = upd.id`, ljs); err != nil {
+			return nil, err
+		}
 	}
 
 	// A separate statement sees rows committed by concurrent writers.
