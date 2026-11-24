@@ -133,9 +133,10 @@ app.kubernetes.io/part-of: bomcensus
 {{- end }}
 
 {{/*
-Secret name and key of the node agent's enrollment string. The bootstrap
-Job of the bomcensus-manager chart writes a scanner key only, so there is
-no bundled default.
+Secret name and key of the node agent's enrollment string. In a bundled
+install without a token or Secret of its own, the Secret written by the
+bomcensus-manager chart's bootstrap Job is used (a Register Key of kind
+agent).
 */}}
 {{- define "bomcensus-scanner.nodeAgentTokenSecretName" -}}
 {{- $e := .Values.nodeAgent.enrollment }}
@@ -145,6 +146,8 @@ no bundled default.
 {{- printf "%s-enrollment" (include "bomcensus-scanner.nodeAgentName" .) }}
 {{- else if $e.existingSecret.name }}
 {{- $e.existingSecret.name }}
+{{- else if .Values.bundled }}
+{{- printf "%s-node-agent-enrollment" .Release.Name }}
 {{- else }}
 {{- fail "nodeAgent needs the enrollment string of a Register Key of kind agent: set nodeAgent.enrollment.existingSecret.name (recommended) or nodeAgent.enrollment.token" }}
 {{- end }}

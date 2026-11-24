@@ -2,15 +2,16 @@
 // SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-bomcensus-Commercial
 // Additional terms apply. See LICENSING.md.
 
-// Package bootstrap prepares the enrollment of a scanner that is deployed
-// together with the server, for example by the bomcensus-manager Helm chart.
+// Package bootstrap prepares the enrollment of a scanner, and of the node
+// agents of its cluster, that are deployed together with the server, for
+// example by the bomcensus-manager Helm chart.
 //
 // An enrollment string carries the hash of the Agent TLS trust anchor, which
 // exists only after a server has started and bootstrapped its PKI. Scanner
-// waits for that, creates a Register Key of kind scanner and stores the
-// enrollment string in a Kubernetes Secret, where the scanner pod reads it.
-// Running it again keeps a stored string as long as it can still enroll, or
-// as long as a scanner enrolled with it is active.
+// and NodeAgent wait for that, create a Register Key of kind scanner or
+// agent and store the enrollment string in a Kubernetes Secret, where the
+// pods read it. Running them again keeps a stored string as long as it can
+// still enroll, or as long as an agent enrolled with it is active.
 package bootstrap
 
 import (
@@ -35,19 +36,37 @@ import (
 
 // Defaults of Options.
 const (
-	DefaultSecretKey    = "token"
-	DefaultKeyName      = "kubernetes scanner"
-	DefaultPollInterval = 5 * time.Second
+	DefaultSecretKey        = "token"
+	DefaultKeyName          = "kubernetes scanner"
+	DefaultNodeAgentKeyName = "kubernetes node agents"
+	DefaultPollInterval     = 5 * time.Second
 )
 
-// CreatedBy is the created_by value of the Register Keys made here.
-const CreatedBy = "bootstrap-scanner"
+// The created_by values of the Register Keys made here.
+const (
+	CreatedBy          = "bootstrap-scanner"
+	CreatedByNodeAgent = "bootstrap-node-agent"
+)
 
-// Labels put on the Secret written by Scanner.
-var secretLabels = map[string]string{
-	"app.kubernetes.io/managed-by": "bomcensus-server",
-	"app.kubernetes.io/component":  "scanner-enrollment",
+// kindSpec is what differs between the scanner and the node agents.
+type kindSpec struct {
+	kind      store.AgentKind
+	keyName   string
+	createdBy string
+	// labels are put on the Secret.
+	labels map[string]string
 }
+
+var (
+	scannerSpec = kindSpec{store.AgentKindScanner, DefaultKeyName, CreatedBy, map[string]string{
+		"app.kubernetes.io/managed-by": "bomcensus-server",
+		"app.kubernetes.io/component":  "scanner-enrollment",
+	}}
+	nodeAgentSpec = kindSpec{store.AgentKindAgent, DefaultNodeAgentKeyName, CreatedByNodeAgent, map[string]string{
+		"app.kubernetes.io/managed-by": "bomcensus-server",
+		"app.kubernetes.io/component":  "node-agent-enrollment",
+	}}
+)
 
 // Store is what Scanner needs from the database.
 type Store interface {
@@ -68,7 +87,8 @@ type Options struct {
 	Namespace  string
 	SecretName string
 	SecretKey  string
-	// KeyName is the name of a new Register Key (default DefaultKeyName).
+	// KeyName is the name of a new Register Key (default DefaultKeyName for
+	// a scanner, DefaultNodeAgentKeyName for node agents).
 	KeyName string
 	// MaxUses of a new Register Key; 0 means unlimited.
 	MaxUses int
@@ -108,6 +128,19 @@ type Result struct {
 // writes its string into the Secret, creating the Secret if needed. Waiting
 // ends with ctx.
 func Scanner(ctx context.Context, o Options) (Result, error) {
+	return ensure(ctx, o, scannerSpec)
+}
+
+// NodeAgent does for the node agents of the scanner's cluster what Scanner
+// does for the scanner: the Secret holds the enrollment string of a Register
+// Key of kind agent with automatic approval. MaxUses 0 (unlimited) suits a
+// DaemonSet: every node, also one added later, enrolls once and keeps its
+// identity on the node.
+func NodeAgent(ctx context.Context, o Options) (Result, error) {
+	return ensure(ctx, o, nodeAgentSpec)
+}
+
+func ensure(ctx context.Context, o Options, spec kindSpec) (Result, error) {
 	if o.Store == nil || o.Box == nil || o.Kube == nil {
 		return Result{}, errors.New("bootstrap: store, secret box and Kubernetes client are required")
 	}
@@ -121,7 +154,7 @@ func Scanner(ctx context.Context, o Options) (Result, error) {
 		o.SecretKey = DefaultSecretKey
 	}
 	if o.KeyName == "" {
-		o.KeyName = DefaultKeyName
+		o.KeyName = spec.keyName
 	}
 	if len(o.KeyName) > 200 {
 		return Result{}, errors.New("bootstrap: key name must be at most 200 characters")
@@ -150,7 +183,7 @@ func Scanner(ctx context.Context, o Options) (Result, error) {
 		return Result{}, fmt.Errorf("bootstrap: read secret %s/%s: %w", o.Namespace, o.SecretName, err)
 	}
 	if existing != nil {
-		id, why := usable(ctx, o, existing.Data[o.SecretKey], anchor)
+		id, why := usable(ctx, o, spec, existing.Data[o.SecretKey], anchor)
 		if why == "" {
 			o.Logger.Info("keeping the enrollment string", "secret", o.Namespace+"/"+o.SecretName, "key_id", id)
 			return Result{Outcome: Kept, KeyID: id}, nil
@@ -158,13 +191,13 @@ func Scanner(ctx context.Context, o Options) (Result, error) {
 		o.Logger.Info("replacing enrollment string", "secret", o.Namespace+"/"+o.SecretName, "reason", why)
 	}
 
-	tok, k, err := createKey(ctx, o, anchor)
+	tok, k, err := createKey(ctx, o, spec, anchor)
 	if err != nil {
 		return Result{}, err
 	}
 	o.Logger.Info("register key created", "key_id", k.ID, "name", k.Name, "target", k.Target,
 		"approval", k.Approval, "max_uses", k.MaxUses, "by", k.CreatedBy)
-	if err := writeSecret(ctx, o, existing, []byte(token.Format(tok))); err != nil {
+	if err := writeSecret(ctx, o, spec, existing, []byte(token.Format(tok))); err != nil {
 		// Without the Secret nobody holds the string; revoke the key so it
 		// does not linger as usable.
 		if rerr := o.Store.RevokeRegisterKey(context.WithoutCancel(ctx), k.ID, o.Now()); rerr != nil {
@@ -199,8 +232,8 @@ func waitAnchor(ctx context.Context, o Options) ([32]byte, error) {
 }
 
 // usable checks a stored enrollment string. It returns the key ID and an
-// empty reason when the string can still enroll a scanner.
-func usable(ctx context.Context, o Options, raw []byte, anchor [32]byte) (string, string) {
+// empty reason when the string can still enroll an agent of the kind.
+func usable(ctx context.Context, o Options, spec kindSpec, raw []byte, anchor [32]byte) (string, string) {
 	if len(raw) == 0 {
 		return "", "no enrollment string"
 	}
@@ -219,8 +252,8 @@ func usable(ctx context.Context, o Options, raw []byte, anchor [32]byte) (string
 		return id, "register key does not exist"
 	case err != nil:
 		return id, "register key lookup failed: " + err.Error()
-	case k.Target != store.AgentKindScanner:
-		return id, "register key is not for scanners"
+	case k.Target != spec.kind:
+		return id, "register key is not for " + string(spec.kind) + "s"
 	case !bytes.Equal(k.PublicKey, tok.PublicKey()):
 		return id, "register key does not match"
 	}
@@ -229,23 +262,23 @@ func usable(ctx context.Context, o Options, raw []byte, anchor [32]byte) (string
 		return id, ""
 	}
 	if errors.Is(err, store.ErrRegisterKeyExhausted) {
-		switch enrolled, lerr := enrolledWith(ctx, o.Store, id); {
+		switch enrolled, lerr := enrolledWith(ctx, o.Store, spec.kind, id); {
 		case lerr != nil:
-			return id, "scanner lookup failed: " + lerr.Error()
+			return id, string(spec.kind) + " lookup failed: " + lerr.Error()
 		case enrolled != "":
-			o.Logger.Info("register key is used up by an enrolled scanner", "key_id", id, "agent_id", enrolled)
+			o.Logger.Info("register key is used up by an enrolled "+string(spec.kind), "key_id", id, "agent_id", enrolled)
 			return id, ""
 		}
 	}
 	return id, err.Error()
 }
 
-// enrolledWith returns the ID of a scanner enrolled with the Register Key
-// that is not revoked, or "".
-func enrolledWith(ctx context.Context, st store.Agents, keyID string) (string, error) {
+// enrolledWith returns the ID of an agent of the kind enrolled with the
+// Register Key that is not revoked, or "".
+func enrolledWith(ctx context.Context, st store.Agents, kind store.AgentKind, keyID string) (string, error) {
 	const page = 500
 	for off := 0; ; off += page {
-		agents, total, err := st.ListAgents(ctx, store.AgentFilter{Kind: store.AgentKindScanner}, store.Page{Limit: page, Offset: off})
+		agents, total, err := st.ListAgents(ctx, store.AgentFilter{Kind: kind}, store.Page{Limit: page, Offset: off})
 		if err != nil {
 			return "", err
 		}
@@ -263,13 +296,13 @@ func enrolledWith(ctx context.Context, st store.Agents, keyID string) (string, e
 // createKey creates a Register Key the way the console does: a fresh token
 // under the current anchor, its ID and public key stored, retried on an ID
 // collision.
-func createKey(ctx context.Context, o Options, anchor [32]byte) (token.Token, store.RegisterKey, error) {
+func createKey(ctx context.Context, o Options, spec kindSpec, anchor [32]byte) (token.Token, store.RegisterKey, error) {
 	k := store.RegisterKey{
 		Name:      o.KeyName,
-		Target:    store.AgentKindScanner,
+		Target:    spec.kind,
 		MaxUses:   o.MaxUses,
 		Approval:  store.ApprovalAuto,
-		CreatedBy: CreatedBy,
+		CreatedBy: spec.createdBy,
 	}
 	for attempt := 0; ; attempt++ {
 		tok, err := token.New(anchor)
@@ -290,11 +323,11 @@ func createKey(ctx context.Context, o Options, anchor [32]byte) (token.Token, st
 
 // writeSecret stores the string in the Secret, creating it when existing is
 // nil. A concurrent change makes it fail; the caller runs again.
-func writeSecret(ctx context.Context, o Options, existing *corev1.Secret, value []byte) error {
+func writeSecret(ctx context.Context, o Options, spec kindSpec, existing *corev1.Secret, value []byte) error {
 	secrets := o.Kube.CoreV1().Secrets(o.Namespace)
 	if existing == nil {
 		s := &corev1.Secret{
-			ObjectMeta: metav1.ObjectMeta{Name: o.SecretName, Namespace: o.Namespace, Labels: secretLabels},
+			ObjectMeta: metav1.ObjectMeta{Name: o.SecretName, Namespace: o.Namespace, Labels: spec.labels},
 			Type:       corev1.SecretTypeOpaque,
 			Data:       map[string][]byte{o.SecretKey: value},
 		}
@@ -311,7 +344,7 @@ func writeSecret(ctx context.Context, o Options, existing *corev1.Secret, value 
 	if s.Labels == nil {
 		s.Labels = map[string]string{}
 	}
-	for k, v := range secretLabels {
+	for k, v := range spec.labels {
 		s.Labels[k] = v
 	}
 	if _, err := secrets.Update(ctx, s, metav1.UpdateOptions{}); err != nil {

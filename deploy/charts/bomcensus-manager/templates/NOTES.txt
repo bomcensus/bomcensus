@@ -73,6 +73,12 @@ In-cluster scanner:
   The Secret and the Register Key stay after "helm uninstall"; delete the
   Secret and revoke the key in the console when the scanner is gone.
 {{- end }}
+{{- if include "bomcensus-manager.nodeAgentBootstrap" . }}
+  The same Job creates a Register Key of kind agent (automatic approval,
+  unlimited uses) for the node agents and writes it into the Secret
+  {{ include "bomcensus-manager.nodeAgentSecret" . }}; the node agent pods start after it and enroll
+  on their own. The Secret and the key stay after "helm uninstall".
+{{- end }}
   Register this cluster in the console (Kubernetes) with the scanner and the
   in-cluster connection to start collecting.
 {{- end }}

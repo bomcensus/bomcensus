@@ -235,6 +235,8 @@
       "properties": {
         "keyName": {"type": "string", "minLength": 1, "maxLength": 200},
         "maxUses": {"type": "integer", "minimum": 0},
+        "nodeAgentKeyName": {"type": "string", "minLength": 1, "maxLength": 200},
+        "nodeAgentMaxUses": {"type": "integer", "minimum": 0},
         "timeout": {"type": "string", "pattern": "^([0-9]+(\\.[0-9]+)?(ns|us|ms|s|m|h))+$"},
         "backoffLimit": {"type": "integer", "minimum": 0},
         "resources": {"type": "object"}

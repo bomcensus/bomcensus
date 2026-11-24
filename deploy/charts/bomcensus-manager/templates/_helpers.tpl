@@ -163,6 +163,22 @@ Cluster's namespace, which several releases may share.
 {{- printf "%s-scanner-enrollment" .Release.Name }}
 {{- end }}
 
+{{/*
+Whether the bootstrap Job also creates the Register Key of the scanner
+chart's node agents. The Secret name is the default of the scanner chart
+(bomcensus-scanner.nodeAgentTokenSecretName) in a bundled install.
+*/}}
+{{- define "bomcensus-manager.nodeAgentBootstrap" -}}
+{{- $na := (.Values.scanner.nodeAgent | default dict) }}
+{{- $e := (get $na "enrollment" | default dict) }}
+{{- $secret := (get $e "existingSecret") | default dict }}
+{{- if and .Values.scanner.enabled (get $na "enabled") (not (get $e "token")) (not (get $secret "name")) }}true{{ end }}
+{{- end }}
+
+{{- define "bomcensus-manager.nodeAgentSecret" -}}
+{{- printf "%s-node-agent-enrollment" .Release.Name }}
+{{- end }}
+
 {{/* Environment of the server and of the bootstrap Job. */}}
 {{- define "bomcensus-manager.commonEnv" -}}
 - name: BOMCENSUS_DATABASE_URL

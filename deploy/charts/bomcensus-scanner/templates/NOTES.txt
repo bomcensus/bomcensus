@@ -38,13 +38,14 @@ Key with uses left.
 Node agent: DaemonSet {{ include "bomcensus-scanner.nodeAgentName" . }}, one agent per node
 ({{ if .Values.nodeAgent.tolerations }}tolerations set{{ else }}nodes with taints, such as control plane nodes, are left out{{ end }}).
 Enrollment: Secret {{ include "bomcensus-scanner.nodeAgentTokenSecretName" . }}, key {{ include "bomcensus-scanner.nodeAgentTokenSecretKey" . }}
-            (a Register Key of kind agent with a use for every node)
+            (a Register Key of kind agent with a use for every node{{ if and .Values.bundled (not .Values.nodeAgent.enrollment.token) (not .Values.nodeAgent.enrollment.existingSecret.name) }};
+            created by the bomcensus-manager bootstrap Job{{ end }})
 
 The pods need a namespace that admits privileged pods:
 
   kubectl label namespace {{ .Release.Namespace }} pod-security.kubernetes.io/enforce=privileged
 
-Every node enrolls on its own and waits for approval in the console:
+Every node enrolls on its own{{ if not (and .Values.bundled (not .Values.nodeAgent.enrollment.token) (not .Values.nodeAgent.enrollment.existingSecret.name)) }} and waits for approval in the console unless the key approves automatically{{ end }}:
 
   kubectl -n {{ .Release.Namespace }} get pods -l app.kubernetes.io/name=bomcensus-node-agent,app.kubernetes.io/instance={{ .Release.Name }}
   kubectl -n {{ .Release.Namespace }} logs POD -c enroll

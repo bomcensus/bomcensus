@@ -229,7 +229,9 @@ extraVolumeMounts: []
 # the agent Service of this release. Without scanner.enrollment.token or
 # scanner.enrollment.existingSecret.name, a Job of this chart
 # ("bomcensus-server bootstrap-scanner") creates a Register Key and writes
-# the enrollment string into the Secret <release>-scanner-enrollment.
+# the enrollment string into the Secret <release>-scanner-enrollment. The
+# same Job does it for scanner.nodeAgent (Secret
+# <release>-node-agent-enrollment).
 # All values of the bomcensus-scanner chart can be set here.
 scanner:
   enabled: false
@@ -241,6 +243,13 @@ scannerBootstrap:
   # raise it when scanner.persistence.enabled is false.
   keyName: in-cluster scanner
   maxUses: 1
+  # With scanner.nodeAgent.enabled and no scanner.nodeAgent.enrollment token
+  # or existingSecret, the Job also creates a Register Key of kind agent
+  # (automatic approval) for the node agents and writes it into the Secret
+  # <release>-node-agent-enrollment. 0 uses = unlimited: every node, also
+  # one added later, enrolls once and keeps its identity on the node.
+  nodeAgentKeyName: in-cluster node agents
+  nodeAgentMaxUses: 0
   # How long the Job waits for the database and for the server to create
   # the PKI.
   timeout: 15m

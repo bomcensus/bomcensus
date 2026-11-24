@@ -4,10 +4,13 @@
   Additional terms apply. See LICENSING.md.
 */ -}}
 
-{{- if include "bomcensus-manager.scannerBootstrap" . }}
+{{- $scannerKey := include "bomcensus-manager.scannerBootstrap" . }}
+{{- $nodeKey := include "bomcensus-manager.nodeAgentBootstrap" . }}
+{{- if or $scannerKey $nodeKey }}
 {{- $fullname := include "bomcensus-manager.fullname" . }}
 {{- $name := printf "%s-scanner-bootstrap" $fullname }}
 {{- $secret := include "bomcensus-manager.scannerSecret" . }}
+{{- $nodeSecret := include "bomcensus-manager.nodeAgentSecret" . }}
 {{- $b := .Values.scannerBootstrap }}
 apiVersion: v1
 kind: ServiceAccount
@@ -19,9 +22,9 @@ metadata:
     app.kubernetes.io/component: scanner-bootstrap
 automountServiceAccountToken: false
 ---
-# Only the enrollment Secret. create cannot be limited to a name by RBAC
+# Only the enrollment Secrets. create cannot be limited to a name by RBAC
 # (the name is not part of a create request), so it covers Secrets of the
-# namespace; get and update are limited to the one Secret.
+# namespace; get and update are limited to the Secrets written here.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -36,7 +39,13 @@ rules:
     verbs: ["create"]
   - apiGroups: [""]
     resources: ["secrets"]
-    resourceNames: [{{ $secret | quote }}]
+    resourceNames:
+      {{- if $scannerKey }}
+      - {{ $secret | quote }}
+      {{- end }}
+      {{- if $nodeKey }}
+      - {{ $nodeSecret | quote }}
+      {{- end }}
     verbs: ["get", "update"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -56,10 +65,10 @@ subjects:
     name: {{ $name }}
     namespace: {{ .Release.Namespace }}
 ---
-# Creates the scanner's Register Key once the server has bootstrapped its
-# PKI and writes the enrollment string into the Secret {{ $secret }}; the
-# scanner pod starts when the Secret exists. Running it again keeps a
-# string that can still enroll.
+# Creates the Register Key of the scanner{{ if $nodeKey }} and of the node agents{{ end }} once the server has
+# bootstrapped its PKI and writes the enrollment string into the Secret
+# {{ if $scannerKey }}{{ $secret }}{{ if $nodeKey }} and {{ end }}{{ end }}{{ if $nodeKey }}{{ $nodeSecret }}{{ end }}; the pods start when their Secret exists.
+# Running it again keeps a string that can still enroll.
 #
 # This is a plain Job, not a Helm hook: post-install hooks run only after
 # "helm install --wait" has seen every resource ready, and the scanner
@@ -99,9 +108,16 @@ spec:
           args:
             - bootstrap-scanner
             - --secret-namespace={{ .Release.Namespace }}
+            {{- if $scannerKey }}
             - --secret-name={{ $secret }}
             - --key-name={{ $b.keyName }}
             - --max-uses={{ $b.maxUses }}
+            {{- end }}
+            {{- if $nodeKey }}
+            - --node-agent-secret-name={{ $nodeSecret }}
+            - --node-agent-key-name={{ $b.nodeAgentKeyName }}
+            - --node-agent-max-uses={{ $b.nodeAgentMaxUses }}
+            {{- end }}
             - --timeout={{ $b.timeout }}
           env:
             {{- include "bomcensus-manager.commonEnv" . | nindent 12 }}

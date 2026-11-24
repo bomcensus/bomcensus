@@ -311,6 +311,8 @@ The Job is a plain Job and not a Helm hook, because `helm install --wait` runs p
 
 `bootstrap-scanner` flags: `--secret-name` (required), `--secret-namespace` (default: the pod's namespace), `--secret-key` (`token`), `--key-name`, `--max-uses` (1), `--timeout` (10m), `--kubeconfig` (default: in-cluster configuration).
 
+With `scanner.nodeAgent.enabled=true` (3.7) the same Job also creates a Register Key of kind agent, with automatic approval and unlimited uses (`scannerBootstrap.nodeAgentKeyName`, `scannerBootstrap.nodeAgentMaxUses`), and writes its enrollment string into the Secret `<release>-node-agent-enrollment`, unless `scanner.nodeAgent.enrollment.token` or `.existingSecret.name` is set. The node agent pods wait for that Secret like the scanner pod. The Job keeps and replaces the string by the same rules. Flags: `--node-agent-secret-name` (without it no node agent key is made), `--node-agent-secret-key` (`token`), `--node-agent-key-name`, `--node-agent-max-uses` (0). `--secret-name` may then be left out, for a scanner with its own enrollment string. The node agents' string is a credential that approves automatically: whoever can read the Secret can enroll agents, so restrict access to the namespace (3.7), or bound the key with `scannerBootstrap.nodeAgentMaxUses`.
+
 For a scanner in another cluster than the server, install `bomcensus-scanner` alone with `server.url` and an enrollment string from the console in `enrollment.existingSecret`.
 
 RBAC of the scanner: a ClusterRole with `get`/`list` on namespaces, nodes, pods and the `apps`/`batch` controllers; `rbac.exec=true` adds `pods/exec` (`create`, `get`), cluster-wide or, with `rbac.namespaces`, through Roles in those namespaces only (SECURITY.md §7.3). Without it only the image inventory is collected. `networkPolicy.enabled=true` restricts the scanner to DNS, the server's agent port and the API server.
@@ -321,7 +323,7 @@ Server, scanner and Job run as UID/GID 65532, non-root, with a read-only root fi
 
 ### 3.7 Node agent
 
-`nodeAgent.enabled=true` in the `bomcensus-scanner` chart adds a DaemonSet that runs the host agent on every selected node. It collects the node as the systemd installation (section 4) does, and each node enrolls as an agent with a Register Key of kind agent (`nodeAgent.enrollment`; the manager's bootstrap Job does not create one). Requirements: Kubernetes 1.29 or later, Linux nodes, and a namespace with Pod Security level `privileged`.
+`nodeAgent.enabled=true` in the `bomcensus-scanner` chart adds a DaemonSet that runs the host agent on every selected node. It collects the node as the systemd installation (section 4) does, and each node enrolls as an agent with a Register Key of kind agent (`nodeAgent.enrollment`). Installed with the manager chart (`scanner.nodeAgent.enabled=true`) the key is made by its bootstrap Job (3.5) and the nodes enroll without further steps; with the scanner chart alone, create the key in the console and give it as `nodeAgent.enrollment.existingSecret.name`. Requirements: Kubernetes 1.29 or later, Linux nodes, and a namespace with Pod Security level `privileged`.
 
 The pod reproduces the split of the systemd units (SECURITY.md §6.7):
 

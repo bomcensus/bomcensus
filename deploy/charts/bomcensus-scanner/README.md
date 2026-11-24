@@ -46,7 +46,11 @@ With `networkPolicy.enabled=true` the pod accepts no connections and may only re
 
 With `nodeAgent.enabled=true` the chart also installs a DaemonSet that runs the host agent on every selected node. It collects the node itself as the systemd agent does (OS packages, processes and their listening ports, files with version commands, the node's containers and their image content), and every node enrolls as an agent of its own. It does not need the scanner's RBAC and does not talk to the Kubernetes API.
 
-Requirements: Kubernetes 1.29 or later (the probe is a native sidecar container), Linux nodes, and a namespace that admits privileged pods (`pod-security.kubernetes.io/enforce=privileged`). Create a Register Key of kind *agent* with at least as many uses as there are nodes:
+Requirements: Kubernetes 1.29 or later (the probe is a native sidecar container), Linux nodes, and a namespace that admits privileged pods (`pod-security.kubernetes.io/enforce=privileged`).
+
+Installed by the `bomcensus-manager` chart (`scanner.nodeAgent.enabled=true`), the nodes enroll automatically: its bootstrap Job creates a Register Key of kind *agent* with automatic approval and unlimited uses and writes it into the Secret `<release>-node-agent-enrollment`, which is the default here when `bundled=true`. Nothing else to do except the namespace label below.
+
+Installed alone, create a Register Key of kind *agent* with at least as many uses as there are nodes:
 
 ```sh
 kubectl label namespace bomcensus pod-security.kubernetes.io/enforce=privileged
@@ -121,7 +125,7 @@ Anyone who can change the DaemonSet, create pods in its namespace or exec into i
 | `nodeAgent.image.tag` | `""` (appVersion) | |
 | `nodeAgent.image.pullPolicy` | `IfNotPresent` | |
 | `nodeAgent.enrollment.token` | `""` | Enrollment string of a Register Key of kind agent |
-| `nodeAgent.enrollment.existingSecret.name`, `key` | `""`, `token` | Secret with that string (required unless `token` is set) |
+| `nodeAgent.enrollment.existingSecret.name`, `key` | `""`, `token` | Secret with that string (required unless `token` is set or `bundled=true`, where it defaults to `<release>-node-agent-enrollment`) |
 | `nodeAgent.stateHostPath` | `/var/lib/bomcensus/node-agent` | Node directory holding the node's agent identity |
 | `nodeAgent.runAsUser`, `runAsGroup` | `65532` | User of the agent; the only peer the probe accepts |
 | `nodeAgent.logLevel` | `""` (`logLevel`) | |

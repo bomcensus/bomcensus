@@ -90,7 +90,9 @@ Without `scanner.enrollment.token` or `scanner.enrollment.existingSecret.name`, 
 
 The Job is a regular resource, not a Helm hook: `helm install --wait` runs post-install hooks only after every resource is ready, and the scanner cannot be ready before the Job has run.
 
-The enrollment Secret and the Register Key stay after `helm uninstall`; delete the Secret and revoke the key in the console when the scanner is gone.
+With `scanner.nodeAgent.enabled=true` and no `scanner.nodeAgent.enrollment.token` or `.existingSecret.name`, the same Job also creates a Register Key of kind agent (automatic approval, `scannerBootstrap.nodeAgentKeyName`, `scannerBootstrap.nodeAgentMaxUses`, default 0 = unlimited, so nodes added later enroll too) and writes it into the Secret `<release>-node-agent-enrollment`, which the node agent DaemonSet reads. It is kept and replaced by the same rules as the scanner's. The Job then needs `get`/`update` on that Secret as well.
+
+The enrollment Secrets and the Register Keys stay after `helm uninstall`; delete the Secrets and revoke the keys in the console when the scanner and the node agents are gone.
 
 After installation register the cluster in the console (Kubernetes) with the scanner and the in-cluster connection.
 
@@ -152,6 +154,8 @@ After installation register the cluster in the console (Kubernetes) with the sca
 | `scanner.*` | | Values of `bomcensus-scanner` |
 | `scannerBootstrap.keyName` | `in-cluster scanner` | Name of the Register Key |
 | `scannerBootstrap.maxUses` | `1` | Uses of the key; raise with `scanner.persistence.enabled=false` |
+| `scannerBootstrap.nodeAgentKeyName` | `in-cluster node agents` | Name of the node agents' Register Key |
+| `scannerBootstrap.nodeAgentMaxUses` | `0` | Uses of that key (0 = unlimited) |
 | `scannerBootstrap.timeout` | `15m` | Wait for the database and the PKI |
 | `scannerBootstrap.backoffLimit` | `4` | |
 | `scannerBootstrap.resources` | small | |

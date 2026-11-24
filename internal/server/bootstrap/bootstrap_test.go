@@ -342,3 +342,53 @@ func TestScannerOptions(t *testing.T) {
 		t.Error("missing secret name accepted")
 	}
 }
+
+// A scanner string in the node agents' Secret is replaced: the kinds differ.
+// Node agent keys are unlimited by default and are kept while usable.
+func TestNodeAgentCreatesAndKeeps(t *testing.T) {
+	e := newEnv(t)
+	e.bootstrapPKI(t)
+	const nodeSecret = "node-agent-enrollment"
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	scanner, err := Scanner(ctx, e.opts())
+	if err != nil {
+		t.Fatal(err)
+	}
+	o := e.opts()
+	o.SecretName = nodeSecret
+	o.MaxUses = 0
+	res, err := NodeAgent(ctx, o)
+	if err != nil || res.Outcome != Created || res.KeyID == scanner.KeyID {
+		t.Fatalf("NodeAgent = %+v, %v; want a new key", res, err)
+	}
+	s, err := e.kube.CoreV1().Secrets(testNS).Get(ctx, nodeSecret, metav1.GetOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.Labels["app.kubernetes.io/component"] != "node-agent-enrollment" {
+		t.Errorf("labels = %v", s.Labels)
+	}
+	k, err := e.db.GetRegisterKey(ctx, res.KeyID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if k.Target != store.AgentKindAgent || k.Approval != store.ApprovalAuto || k.MaxUses != 0 ||
+		k.Name != DefaultNodeAgentKeyName || k.CreatedBy != CreatedByNodeAgent {
+		t.Errorf("register key = %+v", k)
+	}
+	if again, err := NodeAgent(ctx, o); err != nil || again.Outcome != Kept || again.KeyID != res.KeyID {
+		t.Fatalf("second run = %+v, %v; want kept %s", again, err, res.KeyID)
+	}
+
+	// The scanner's string in the node agents' Secret is of the wrong kind.
+	wrong := e.opts()
+	wrong.SecretName = nodeSecret
+	if _, err := Scanner(ctx, wrong); err != nil {
+		t.Fatal(err)
+	}
+	if res, err := NodeAgent(ctx, o); err != nil || res.Outcome != Created {
+		t.Fatalf("NodeAgent over a scanner string = %+v, %v; want created", res, err)
+	}
+}
