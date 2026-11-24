@@ -8,6 +8,22 @@ bomcensus는 서버·컨테이너·쿠버네티스에 설치되고 실행 중인
 
 Linux Agent(connect·listen 모드), SSH를 통한 Agentless 수집, Kubernetes 인벤토리와 exec 수집, Agent 자동 업데이트, 웹 콘솔이 구현되어 있습니다. 모든 명령은 Windows(amd64, arm64)에서도 빌드되고 실행되며, Windows Agent는 현재 호스트 정보만 보고합니다. 취약점 대조, SBOM 내보내기, Windows 소프트웨어 수집, Windows 스캔 대상은 아직 구현되지 않았습니다.
 
+## 설치
+
+최신 stable 릴리즈를 명령 하나로 설치합니다. Linux 기준이며, 서버는 compose 플러그인이 있는 Docker가, Agent는 root 권한과 systemd가 필요합니다.
+
+```sh
+# 서버 (Docker Compose의 PostgreSQL + bomcensus)
+curl -fsSL https://github.com/bomcensus/bomcensus/releases/latest/download/install.sh \
+    | bash -s -- server --env AGENT_SERVER_NAMES=bomcensus.example.com
+
+# 호스트 Agent (Register Key의 enrollment 문자열 사용)
+curl -fsSL https://github.com/bomcensus/bomcensus/releases/latest/download/install.sh \
+    | sudo BOMCENSUS_TOKEN=bc1.... bash -s -- agent --server https://bomcensus.example.com:8443
+```
+
+`--rc`는 프리릴리즈까지 대상에 포함하고, `--version X.Y.Z`는 버전을 고정하며, `--attest prefer|required|disabled`는 GitHub CLI로 하는 빌드 출처(provenance) 검증을 조절합니다(기본 `prefer`: `gh`가 설치되어 있고 로그인된 경우에만 검증). 자세한 내용과 서버 옵션은 [DEPLOYMENT.md, Quick install](docs/DEPLOYMENT.md#quick-install) (영문)을 참고하십시오.
+
 ## 시작하기
 
 - `make demo-up`: 예제 데이터가 들어간 로컬 데모, http://localhost:8080 (admin / demo). [DEPLOYMENT.md §2.9](docs/DEPLOYMENT.md#29-demo) 참고 (영문)

@@ -398,6 +398,8 @@ jobs:
           }
           a=dist/release/assets
           verify "$a/bomcensus-$VERSION.tar"
+          verify "$a/install.sh"
+          verify "$a/bomcensus-compose_$VERSION.tar.gz"
           verify "$a/bomcensus-agent_${VERSION}_linux_amd64"
           verify "$a/bomcensus-release_${VERSION}_windows_amd64.exe"
           verify "oci://$IMAGE_REPO/server@$DIGEST_SERVER"

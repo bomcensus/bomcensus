@@ -19,6 +19,8 @@ Images are named after the GitHub repository (`ghcr.io/OWNER/REPO/<image>`) and 
 | `bomcensus-VERSION.tar`: agent bundle (agent, probe, updater, scanner for linux and windows, amd64 and arm64) | GitHub release, and inside the server image | Ed25519 manifest signature; the files inside are the signed binaries above | attestation |
 | `bomcensus-systemd_VERSION.tar.gz`: units, `install.sh`, `uninstall.sh` | GitHub release | — | attestation |
 | `bomcensus-windows_VERSION.zip`: `install.ps1`, `uninstall.ps1` | GitHub release | — | attestation |
+| `bomcensus-compose_VERSION.tar.gz`: `compose.yaml`, `.env.example`, `init.sh` of `deploy/docker` | GitHub release | — | attestation |
+| `install.sh`: the `curl \| bash` installer for the server and the agent (`scripts/install.sh`, see DEPLOYMENT.md, Quick install) | GitHub release | — | attestation |
 | `bomcensus-{manager,scanner}-VERSION.tgz` | GitHub release | — | attestation |
 | `SHA256SUMS` of all of the above | GitHub release | — | — |
 | `ghcr.io/bomcensus/bomcensus/{server,scanner,agent}:VERSION` (and `:latest` for releases that are not pre-releases), linux/amd64 and linux/arm64 | GitHub Container Registry | cosign (keyless) | attestation, BuildKit provenance and SBOM |

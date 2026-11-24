@@ -2,12 +2,40 @@
 
 This document describes how to build and run bomcensus. Each installation method has its own chapter; the configuration reference at the end applies to all of them.
 
+- [Quick install](#quick-install)
 - [1. Components and ports](#1-components-and-ports)
 - [2. Docker Compose](#2-docker-compose)
 - [3. Helm](#3-helm)
 - [4. systemd](#4-systemd)
 - [5. Windows services](#5-windows-services)
 - [6. Configuration reference](#6-configuration-reference)
+
+## Quick install
+
+`install.sh` installs the latest release of the server (Docker Compose, chapter 2) or of the Linux host agent (systemd, chapter 4) with one command. It is a release asset, so `releases/latest/download` always serves the script of the latest stable release:
+
+```sh
+# Server: PostgreSQL and the server from the released images, in /opt/bomcensus-server
+# (~/bomcensus-server when not root). The console password is asked on the terminal.
+curl -fsSL https://github.com/bomcensus/bomcensus/releases/latest/download/install.sh \
+    | bash -s -- server --env AGENT_SERVER_NAMES=bomcensus.example.com
+
+# Agent, as root, with the enrollment string of a Register Key:
+curl -fsSL https://github.com/bomcensus/bomcensus/releases/latest/download/install.sh \
+    | sudo BOMCENSUS_TOKEN=bc1.… bash -s -- agent --server https://bomcensus.example.com:8443
+```
+
+| Option | Meaning |
+|---|---|
+| `--rc` | Also consider pre-releases (`vX.Y.Z-rc.N`). The highest version of all releases is installed, so `v1.3.0-rc.2` is chosen over `v1.2.0`, and `v1.3.0` over `v1.3.0-rc.2`. Without it only stable releases are used. A script from a pre-release is not served by `releases/latest`; get it from the repository (`https://raw.githubusercontent.com/bomcensus/bomcensus/main/scripts/install.sh`) or from the release page. |
+| `--version X.Y.Z[-PRE]` | Install this version instead of the latest. |
+| `--attest prefer\|required\|disabled` | Verifies the build provenance of the downloads (and of the server image) with `gh attestation verify`, against this repository's `release.yml` and the release tag. `prefer` (default) verifies when `gh` is installed and logged in (`gh auth login` or `GH_TOKEN`; the command needs a login even for public repositories) and otherwise prints a warning and goes on. `required` stops when `gh` cannot verify. `disabled` skips the check. A verification that fails stops the installation in every mode. |
+
+Downloads are always checked against the release's `SHA256SUMS`; that detects a damaged download, not a tampered release, which is what the attestation is for. Attestation matters most for the agent: the installer runs as root, and the first updater is taken from the bundle (4.2).
+
+Server options: `--dir DIR`, `--admin-user NAME`, `--admin-password-file FILE` (first line; needed without a terminal), `--env NAME=VALUE` (any variable of `.env`, repeatable), `--no-start`. The script pulls the image (checked by digest), runs `init.sh` (2.4) and `docker compose up -d --wait`. Running it again upgrades the installation in `--dir` to the latest version (2.5): back up first (2.6). It refuses to upgrade an installation whose `.env` points to other images than the released ones, for example a local build with its own release keys.
+
+Agent options are those of the systemd installer (4.2): `--server`, `--token`, `--connect-mode`, `--listen`, `--server-name`, `--tls-verify`, `--unit-dir`, `--no-start`. Use `BOMCENSUS_TOKEN` instead of `--token` to keep the token out of the process list; with `sudo` it must be set on the `sudo` command line as above.
 
 ## 1. Components and ports
 

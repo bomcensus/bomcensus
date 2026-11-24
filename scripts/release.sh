@@ -15,6 +15,8 @@
 #            <command>_VERSION_windows_<arch>.exe   every command, Authenticode-signed
 #            bomcensus-systemd_VERSION.tar.gz       Linux host agent units and installer
 #            bomcensus-windows_VERSION.zip          Windows installer scripts
+#            bomcensus-compose_VERSION.tar.gz       Docker Compose files of the server
+#            install.sh                             curl | bash installer (server, agent)
 #            SHA256SUMS
 #   docker/  build context "dist" for deploy/docker/Dockerfile, with the same files
 #
@@ -232,6 +234,15 @@ cp deploy/windows/* LICENSE LICENSING.md "$work/$win/"
 touch -d "@$SOURCE_DATE_EPOCH" "$work/$win" "$work/$win"/*
 # Members in sorted order; zip -r would follow directory order.
 (cd "$work" && LC_ALL=C find "$win" | LC_ALL=C sort | zip -qX -@ "$OUT/assets/$win.zip")
+
+comp=bomcensus-compose_$VERSION
+mkdir -p "$work/$comp"
+cp deploy/docker/compose.yaml deploy/docker/.env.example deploy/docker/init.sh LICENSE LICENSING.md "$work/$comp/"
+touch -d "@$SOURCE_DATE_EPOCH" "$work/$comp" "$work/$comp"/*
+tar -C "$work" --sort=name --owner=0 --group=0 --numeric-owner \
+	--mtime="@$SOURCE_DATE_EPOCH" -cf - "$comp" | gzip -9n >"$OUT/assets/$comp.tar.gz"
+
+cp scripts/install.sh "$OUT/assets/install.sh"
 
 (cd "$OUT/assets" && sha256sum -- * >SHA256SUMS)
 
