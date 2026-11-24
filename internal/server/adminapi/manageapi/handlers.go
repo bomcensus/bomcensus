@@ -4,9 +4,9 @@
 
 // Package manageapi implements the management operations of the console API:
 // agents, listen targets, Register Keys, releases and update settings, scan
-// targets, credentials and TLS settings. Handlers are thin mappings onto the
-// store and the services; errors are returned as *apierr.Error or store
-// errors for the router to render.
+// targets, credentials, TLS settings and feed servers. Handlers are thin
+// mappings onto the store and the services; errors are returned as
+// *apierr.Error or store errors for the router to render.
 package manageapi
 
 import (
@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/bomcensus/bomcensus/internal/server/adminapi/apierr"
+	"github.com/bomcensus/bomcensus/internal/server/feedsvc"
 	"github.com/bomcensus/bomcensus/internal/server/pkisvc"
 	"github.com/bomcensus/bomcensus/internal/server/secret"
 	"github.com/bomcensus/bomcensus/internal/server/store"
@@ -84,6 +85,9 @@ type Config struct {
 	Secrets *secret.Box
 	// ScanRunner is optional; runScanTarget answers 503 without it.
 	ScanRunner ScanRunner
+	// Feed is optional; the feed operations that contact a server answer
+	// 503 without it.
+	Feed *feedsvc.Service
 	// Clusters is optional; StoreClusters{Store} by default.
 	Clusters ClusterCredentialUse
 	// PrincipalID returns the ID of the authenticated principal of the
@@ -101,6 +105,7 @@ type Handlers struct {
 	updates  *updatesvc.Service
 	secrets  *secret.Box
 	runner   ScanRunner
+	feed     *feedsvc.Service
 	clusters ClusterCredentialUse
 	who      func(ctx context.Context) string
 	log      *slog.Logger
@@ -126,7 +131,7 @@ func New(cfg Config) (*Handlers, error) {
 	}
 	return &Handlers{
 		st: cfg.Store, pki: cfg.PKI, updates: cfg.Updates, secrets: cfg.Secrets, runner: cfg.ScanRunner,
-		clusters: cfg.Clusters, who: cfg.PrincipalID, log: cfg.Logger, now: cfg.Now,
+		feed: cfg.Feed, clusters: cfg.Clusters, who: cfg.PrincipalID, log: cfg.Logger, now: cfg.Now,
 	}, nil
 }
 

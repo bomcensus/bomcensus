@@ -102,6 +102,13 @@ export type {
   PendingAnchor,
   TlsState,
   AgentAnchorChange,
+  // feed
+  FeedInstance,
+  FeedServerStatus,
+  FeedSource,
+  FeedServer,
+  FeedServerCreate,
+  FeedServerUpdate,
 } from '~/api/gen/types.gen'
 
 // Request bodies with write-only fields (secrets) use the writable variant.

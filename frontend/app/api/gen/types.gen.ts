@@ -1136,6 +1136,116 @@ export type AgentAnchorChange = {
     force?: boolean;
 };
 
+export type FeedInstance = {
+    /**
+     * Public key, `x25519 <base64>`.
+     */
+    instanceId: string;
+    createdAt: string;
+};
+
+/**
+ * `never`: not contacted yet (or a new key was just trusted).
+ * `connected`: the last contact succeeded. `key_changed`: the server
+ * presented another key than the stored one and is not used.
+ * `error`: the last contact failed (`lastError`).
+ *
+ */
+export type FeedServerStatus = 'never' | 'connected' | 'key_changed' | 'error';
+
+export type FeedSource = {
+    name: string;
+    /**
+     * Last successful collection.
+     */
+    updatedAt?: string;
+    /**
+     * Last collection that changed data.
+     */
+    changedAt?: string;
+    /**
+     * False when the last collection failed.
+     */
+    healthy?: boolean;
+};
+
+export type FeedServer = {
+    id: string;
+    name: string;
+    url: string;
+    /**
+     * The default server; it cannot be removed.
+     */
+    builtin: boolean;
+    /**
+     * Components are matched against this server.
+     */
+    active: boolean;
+    enabled: boolean;
+    /**
+     * Allow the server to count this installation's queries in its anonymous daily statistics.
+     */
+    telemetry: boolean;
+    /**
+     * Trusted server key, absent before the first contact.
+     */
+    serverKey?: string;
+    keyTrustedAt?: string;
+    /**
+     * Key the server presented in the `key_changed` state.
+     */
+    presentedKey?: string;
+    presentedAt?: string;
+    status: FeedServerStatus;
+    lastError?: string;
+    lastErrorAt?: string;
+    lastOkAt?: string;
+    /**
+     * The server's grade of this instance, e.g. `anonymous`.
+     */
+    grade?: string;
+    sessionExpiresAt?: string;
+    /**
+     * Data revision at the last status check.
+     */
+    revision?: number;
+    /**
+     * Matching rules digest at the last status check.
+     */
+    rulesDigest?: string;
+    sources: Array<FeedSource>;
+    statusCheckedAt?: string;
+    createdAt: string;
+};
+
+export type FeedServerList = {
+    items: Array<FeedServer>;
+    total: number;
+};
+
+export type FeedServerCreate = {
+    name: string;
+    url: string;
+    telemetry?: boolean;
+};
+
+export type FeedServerUpdate = {
+    name?: string;
+    enabled?: boolean;
+    telemetry?: boolean;
+    /**
+     * Only `true` is accepted; activating another server deactivates this one.
+     */
+    active?: boolean;
+};
+
+export type FeedServerTrustKey = {
+    /**
+     * The presented key, `x25519 <base64>`.
+     */
+    key: string;
+};
+
 /**
  * Secrets are encrypted at rest and never returned.
  * `ssh_key`: `username`, `privateKey` (OpenSSH or PEM), optional
@@ -3427,3 +3537,258 @@ export type ChangeAgentTlsAnchorResponses = {
 };
 
 export type ChangeAgentTlsAnchorResponse = ChangeAgentTlsAnchorResponses[keyof ChangeAgentTlsAnchorResponses];
+
+export type GetFeedInstanceData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/feed-instance';
+};
+
+export type GetFeedInstanceErrors = {
+    /**
+     * No valid session, or wrong credentials on login.
+     */
+    401: Error;
+    /**
+     * Unexpected error.
+     */
+    default: Error;
+};
+
+export type GetFeedInstanceError = GetFeedInstanceErrors[keyof GetFeedInstanceErrors];
+
+export type GetFeedInstanceResponses = {
+    /**
+     * Instance key
+     */
+    200: FeedInstance;
+};
+
+export type GetFeedInstanceResponse = GetFeedInstanceResponses[keyof GetFeedInstanceResponses];
+
+export type ListFeedServersData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/feed-servers';
+};
+
+export type ListFeedServersErrors = {
+    /**
+     * No valid session, or wrong credentials on login.
+     */
+    401: Error;
+    /**
+     * Unexpected error.
+     */
+    default: Error;
+};
+
+export type ListFeedServersError = ListFeedServersErrors[keyof ListFeedServersErrors];
+
+export type ListFeedServersResponses = {
+    /**
+     * Feed servers
+     */
+    200: FeedServerList;
+};
+
+export type ListFeedServersResponse = ListFeedServersResponses[keyof ListFeedServersResponses];
+
+export type CreateFeedServerData = {
+    body: FeedServerCreate;
+    path?: never;
+    query?: never;
+    url: '/feed-servers';
+};
+
+export type CreateFeedServerErrors = {
+    /**
+     * The request is malformed or a value is invalid.
+     */
+    400: Error;
+    /**
+     * No valid session, or wrong credentials on login.
+     */
+    401: Error;
+    /**
+     * The request conflicts with the current state.
+     */
+    409: Error;
+    /**
+     * Unexpected error.
+     */
+    default: Error;
+};
+
+export type CreateFeedServerError = CreateFeedServerErrors[keyof CreateFeedServerErrors];
+
+export type CreateFeedServerResponses = {
+    /**
+     * Feed server created
+     */
+    201: FeedServer;
+};
+
+export type CreateFeedServerResponse = CreateFeedServerResponses[keyof CreateFeedServerResponses];
+
+export type DeleteFeedServerData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/feed-servers/{id}';
+};
+
+export type DeleteFeedServerErrors = {
+    /**
+     * No valid session, or wrong credentials on login.
+     */
+    401: Error;
+    /**
+     * The resource does not exist.
+     */
+    404: Error;
+    /**
+     * The request conflicts with the current state.
+     */
+    409: Error;
+    /**
+     * Unexpected error.
+     */
+    default: Error;
+};
+
+export type DeleteFeedServerError = DeleteFeedServerErrors[keyof DeleteFeedServerErrors];
+
+export type DeleteFeedServerResponses = {
+    /**
+     * Feed server deleted
+     */
+    204: void;
+};
+
+export type DeleteFeedServerResponse = DeleteFeedServerResponses[keyof DeleteFeedServerResponses];
+
+export type UpdateFeedServerData = {
+    body: FeedServerUpdate;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/feed-servers/{id}';
+};
+
+export type UpdateFeedServerErrors = {
+    /**
+     * The request is malformed or a value is invalid.
+     */
+    400: Error;
+    /**
+     * No valid session, or wrong credentials on login.
+     */
+    401: Error;
+    /**
+     * The resource does not exist.
+     */
+    404: Error;
+    /**
+     * The request conflicts with the current state.
+     */
+    409: Error;
+    /**
+     * Unexpected error.
+     */
+    default: Error;
+};
+
+export type UpdateFeedServerError = UpdateFeedServerErrors[keyof UpdateFeedServerErrors];
+
+export type UpdateFeedServerResponses = {
+    /**
+     * Feed server updated
+     */
+    200: FeedServer;
+};
+
+export type UpdateFeedServerResponse = UpdateFeedServerResponses[keyof UpdateFeedServerResponses];
+
+export type TestFeedServerData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/feed-servers/{id}/test';
+};
+
+export type TestFeedServerErrors = {
+    /**
+     * No valid session, or wrong credentials on login.
+     */
+    401: Error;
+    /**
+     * The resource does not exist.
+     */
+    404: Error;
+    /**
+     * Unexpected error.
+     */
+    default: Error;
+};
+
+export type TestFeedServerError = TestFeedServerErrors[keyof TestFeedServerErrors];
+
+export type TestFeedServerResponses = {
+    /**
+     * Feed server after the test
+     */
+    200: FeedServer;
+};
+
+export type TestFeedServerResponse = TestFeedServerResponses[keyof TestFeedServerResponses];
+
+export type TrustFeedServerKeyData = {
+    body: FeedServerTrustKey;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/feed-servers/{id}/trust-key';
+};
+
+export type TrustFeedServerKeyErrors = {
+    /**
+     * The request is malformed or a value is invalid.
+     */
+    400: Error;
+    /**
+     * No valid session, or wrong credentials on login.
+     */
+    401: Error;
+    /**
+     * The resource does not exist.
+     */
+    404: Error;
+    /**
+     * The request conflicts with the current state.
+     */
+    409: Error;
+    /**
+     * Unexpected error.
+     */
+    default: Error;
+};
+
+export type TrustFeedServerKeyError = TrustFeedServerKeyErrors[keyof TrustFeedServerKeyErrors];
+
+export type TrustFeedServerKeyResponses = {
+    /**
+     * Feed server with the new key
+     */
+    200: FeedServer;
+};
+
+export type TrustFeedServerKeyResponse = TrustFeedServerKeyResponses[keyof TrustFeedServerKeyResponses];

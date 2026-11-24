@@ -33,6 +33,7 @@ import (
 	"github.com/bomcensus/bomcensus/internal/server/console"
 	"github.com/bomcensus/bomcensus/internal/server/dispatch"
 	"github.com/bomcensus/bomcensus/internal/server/enrollsvc"
+	"github.com/bomcensus/bomcensus/internal/server/feedsvc"
 	"github.com/bomcensus/bomcensus/internal/server/ingest"
 	"github.com/bomcensus/bomcensus/internal/server/job"
 	"github.com/bomcensus/bomcensus/internal/server/pkisvc"
@@ -148,6 +149,10 @@ func Run(ctx context.Context, cfg config.Config, log *slog.Logger, opts Options)
 		return err
 	}
 	ing := ingest.New(db, log.With("component", "ingest"), nil)
+	feed, err := feedsvc.New(feedsvc.Config{Store: db, Box: box, Version: version.Version, Logger: log.With("component", "feed")})
+	if err != nil {
+		return err
+	}
 
 	queue := job.NewRiver(db.Pool(), log.With("component", "queue"), job.RiverConfig{})
 	jobLog := log.With("component", "job")
@@ -186,6 +191,7 @@ func Run(ctx context.Context, cfg config.Config, log *slog.Logger, opts Options)
 		PKI:     pki,
 		Updates: upd,
 		Secrets: box,
+		Feed:    feed,
 		PrincipalID: func(ctx context.Context) string {
 			p, _ := auth.FromContext(ctx)
 			return p.ID
@@ -289,6 +295,7 @@ func Run(ctx context.Context, cfg config.Config, log *slog.Logger, opts Options)
 	})
 	g.Go(func() error { return background(gctx, "reverse dialing", reverse.Run) })
 	g.Go(func() error { return background(gctx, "pki maintenance", pki.Run) })
+	g.Go(func() error { return background(gctx, "feed connection", feed.Run) })
 	if scans != nil {
 		g.Go(func() error { return background(gctx, "scan service", scans.Run) })
 	}

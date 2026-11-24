@@ -2,7 +2,7 @@
 
 import { type Client, type ClientMeta, formDataBodySerializer, type Options as Options2, type RequestResult, type TDataShape } from './client';
 import { client } from './client.gen';
-import type { ApproveAgentData, ApproveAgentErrors, ApproveAgentResponses, ChangeAgentTlsAnchorData, ChangeAgentTlsAnchorErrors, ChangeAgentTlsAnchorResponses, CollectAssetData, CollectAssetErrors, CollectAssetResponses, CreateCredentialData, CreateCredentialErrors, CreateCredentialResponses, CreateK8sClusterData, CreateK8sClusterErrors, CreateK8sClusterResponses, CreateListenTargetData, CreateListenTargetErrors, CreateListenTargetResponses, CreateRegisterKeyData, CreateRegisterKeyErrors, CreateRegisterKeyResponses, CreateScanTargetData, CreateScanTargetErrors, CreateScanTargetResponses, DeleteCredentialData, DeleteCredentialErrors, DeleteCredentialResponses, DeleteK8sClusterData, DeleteK8sClusterErrors, DeleteK8sClusterResponses, DeleteListenTargetData, DeleteListenTargetErrors, DeleteListenTargetResponses, DeleteScanTargetData, DeleteScanTargetErrors, DeleteScanTargetResponses, GetAgentData, GetAgentErrors, GetAgentResponses, GetAssetData, GetAssetErrors, GetAssetResponses, GetComponentData, GetComponentErrors, GetComponentResponses, GetCurrentUserData, GetCurrentUserErrors, GetCurrentUserResponses, GetDashboardData, GetDashboardErrors, GetDashboardResponses, GetImageData, GetImageErrors, GetImageResponses, GetK8sClusterData, GetK8sClusterErrors, GetK8sClusterResponses, GetMetaData, GetMetaErrors, GetMetaResponses, GetRegisterKeyData, GetRegisterKeyErrors, GetRegisterKeyResponses, GetTlsSettingsData, GetTlsSettingsErrors, GetTlsSettingsResponses, GetUpdateSettingsData, GetUpdateSettingsErrors, GetUpdateSettingsResponses, ListAgentsData, ListAgentsErrors, ListAgentsResponses, ListAssetComponentsData, ListAssetComponentsErrors, ListAssetComponentsResponses, ListAssetGroupsData, ListAssetGroupsErrors, ListAssetGroupsResponses, ListAssetInstancesData, ListAssetInstancesErrors, ListAssetInstancesResponses, ListAssetProcessesData, ListAssetProcessesErrors, ListAssetProcessesResponses, ListAssetsData, ListAssetsErrors, ListAssetsResponses, ListComponentAssetsData, ListComponentAssetsErrors, ListComponentAssetsResponses, ListComponentsData, ListComponentsErrors, ListComponentsResponses, ListCredentialsData, ListCredentialsErrors, ListCredentialsResponses, ListImagesData, ListImagesErrors, ListImagesResponses, ListK8sClustersData, ListK8sClustersErrors, ListK8sClustersResponses, ListK8sWorkloadPodsData, ListK8sWorkloadPodsErrors, ListK8sWorkloadPodsResponses, ListK8sWorkloadsData, ListK8sWorkloadsErrors, ListK8sWorkloadsResponses, ListListenPortsData, ListListenPortsErrors, ListListenPortsResponses, ListListenTargetsData, ListListenTargetsErrors, ListListenTargetsResponses, ListProcessesData, ListProcessesErrors, ListProcessesResponses, ListRegisterKeysData, ListRegisterKeysErrors, ListRegisterKeysResponses, ListReleasesData, ListReleasesErrors, ListReleasesResponses, ListScanTargetsData, ListScanTargetsErrors, ListScanTargetsResponses, LoginData, LoginErrors, LoginResponses, LogoutData, LogoutErrors, LogoutResponses, RevokeAgentData, RevokeAgentErrors, RevokeAgentResponses, RevokeRegisterKeyData, RevokeRegisterKeyErrors, RevokeRegisterKeyResponses, RotateCredentialSecretData, RotateCredentialSecretErrors, RotateCredentialSecretResponses, RunScanTargetData, RunScanTargetErrors, RunScanTargetResponses, SetUpdateSettingsData, SetUpdateSettingsErrors, SetUpdateSettingsResponses, SyncK8sClusterData, SyncK8sClusterErrors, SyncK8sClusterResponses, UpdateAgentData, UpdateAgentErrors, UpdateAgentResponses, UpdateK8sClusterData, UpdateK8sClusterErrors, UpdateK8sClusterResponses, UpdateListenTargetData, UpdateListenTargetErrors, UpdateListenTargetResponses, UpdateScanTargetData, UpdateScanTargetErrors, UpdateScanTargetResponses, UpdateTlsEndpointData, UpdateTlsEndpointErrors, UpdateTlsEndpointResponses, UploadReleaseData, UploadReleaseErrors, UploadReleaseResponses } from './types.gen';
+import type { ApproveAgentData, ApproveAgentErrors, ApproveAgentResponses, ChangeAgentTlsAnchorData, ChangeAgentTlsAnchorErrors, ChangeAgentTlsAnchorResponses, CollectAssetData, CollectAssetErrors, CollectAssetResponses, CreateCredentialData, CreateCredentialErrors, CreateCredentialResponses, CreateFeedServerData, CreateFeedServerErrors, CreateFeedServerResponses, CreateK8sClusterData, CreateK8sClusterErrors, CreateK8sClusterResponses, CreateListenTargetData, CreateListenTargetErrors, CreateListenTargetResponses, CreateRegisterKeyData, CreateRegisterKeyErrors, CreateRegisterKeyResponses, CreateScanTargetData, CreateScanTargetErrors, CreateScanTargetResponses, DeleteCredentialData, DeleteCredentialErrors, DeleteCredentialResponses, DeleteFeedServerData, DeleteFeedServerErrors, DeleteFeedServerResponses, DeleteK8sClusterData, DeleteK8sClusterErrors, DeleteK8sClusterResponses, DeleteListenTargetData, DeleteListenTargetErrors, DeleteListenTargetResponses, DeleteScanTargetData, DeleteScanTargetErrors, DeleteScanTargetResponses, GetAgentData, GetAgentErrors, GetAgentResponses, GetAssetData, GetAssetErrors, GetAssetResponses, GetComponentData, GetComponentErrors, GetComponentResponses, GetCurrentUserData, GetCurrentUserErrors, GetCurrentUserResponses, GetDashboardData, GetDashboardErrors, GetDashboardResponses, GetFeedInstanceData, GetFeedInstanceErrors, GetFeedInstanceResponses, GetImageData, GetImageErrors, GetImageResponses, GetK8sClusterData, GetK8sClusterErrors, GetK8sClusterResponses, GetMetaData, GetMetaErrors, GetMetaResponses, GetRegisterKeyData, GetRegisterKeyErrors, GetRegisterKeyResponses, GetTlsSettingsData, GetTlsSettingsErrors, GetTlsSettingsResponses, GetUpdateSettingsData, GetUpdateSettingsErrors, GetUpdateSettingsResponses, ListAgentsData, ListAgentsErrors, ListAgentsResponses, ListAssetComponentsData, ListAssetComponentsErrors, ListAssetComponentsResponses, ListAssetGroupsData, ListAssetGroupsErrors, ListAssetGroupsResponses, ListAssetInstancesData, ListAssetInstancesErrors, ListAssetInstancesResponses, ListAssetProcessesData, ListAssetProcessesErrors, ListAssetProcessesResponses, ListAssetsData, ListAssetsErrors, ListAssetsResponses, ListComponentAssetsData, ListComponentAssetsErrors, ListComponentAssetsResponses, ListComponentsData, ListComponentsErrors, ListComponentsResponses, ListCredentialsData, ListCredentialsErrors, ListCredentialsResponses, ListFeedServersData, ListFeedServersErrors, ListFeedServersResponses, ListImagesData, ListImagesErrors, ListImagesResponses, ListK8sClustersData, ListK8sClustersErrors, ListK8sClustersResponses, ListK8sWorkloadPodsData, ListK8sWorkloadPodsErrors, ListK8sWorkloadPodsResponses, ListK8sWorkloadsData, ListK8sWorkloadsErrors, ListK8sWorkloadsResponses, ListListenPortsData, ListListenPortsErrors, ListListenPortsResponses, ListListenTargetsData, ListListenTargetsErrors, ListListenTargetsResponses, ListProcessesData, ListProcessesErrors, ListProcessesResponses, ListRegisterKeysData, ListRegisterKeysErrors, ListRegisterKeysResponses, ListReleasesData, ListReleasesErrors, ListReleasesResponses, ListScanTargetsData, ListScanTargetsErrors, ListScanTargetsResponses, LoginData, LoginErrors, LoginResponses, LogoutData, LogoutErrors, LogoutResponses, RevokeAgentData, RevokeAgentErrors, RevokeAgentResponses, RevokeRegisterKeyData, RevokeRegisterKeyErrors, RevokeRegisterKeyResponses, RotateCredentialSecretData, RotateCredentialSecretErrors, RotateCredentialSecretResponses, RunScanTargetData, RunScanTargetErrors, RunScanTargetResponses, SetUpdateSettingsData, SetUpdateSettingsErrors, SetUpdateSettingsResponses, SyncK8sClusterData, SyncK8sClusterErrors, SyncK8sClusterResponses, TestFeedServerData, TestFeedServerErrors, TestFeedServerResponses, TrustFeedServerKeyData, TrustFeedServerKeyErrors, TrustFeedServerKeyResponses, UpdateAgentData, UpdateAgentErrors, UpdateAgentResponses, UpdateFeedServerData, UpdateFeedServerErrors, UpdateFeedServerResponses, UpdateK8sClusterData, UpdateK8sClusterErrors, UpdateK8sClusterResponses, UpdateListenTargetData, UpdateListenTargetErrors, UpdateListenTargetResponses, UpdateScanTargetData, UpdateScanTargetErrors, UpdateScanTargetResponses, UpdateTlsEndpointData, UpdateTlsEndpointErrors, UpdateTlsEndpointResponses, UploadReleaseData, UploadReleaseErrors, UploadReleaseResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -901,6 +901,132 @@ export const changeAgentTlsAnchor = <ThrowOnError extends boolean = false>(optio
             type: 'apiKey'
         }],
     url: '/settings/tls/agent/anchor',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * The key that identifies this installation to feed servers
+ *
+ * The key is created on first use and cannot be changed.
+ */
+export const getFeedInstance = <ThrowOnError extends boolean = false>(options?: Options<GetFeedInstanceData, ThrowOnError>): RequestResult<GetFeedInstanceResponses, GetFeedInstanceErrors, ThrowOnError> => (options?.client ?? client).get<GetFeedInstanceResponses, GetFeedInstanceErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'bomcensus_session',
+            type: 'apiKey'
+        }],
+    url: '/feed-instance',
+    ...options
+});
+
+/**
+ * Feed servers, built-in first
+ */
+export const listFeedServers = <ThrowOnError extends boolean = false>(options?: Options<ListFeedServersData, ThrowOnError>): RequestResult<ListFeedServersResponses, ListFeedServersErrors, ThrowOnError> => (options?.client ?? client).get<ListFeedServersResponses, ListFeedServersErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'bomcensus_session',
+            type: 'apiKey'
+        }],
+    url: '/feed-servers',
+    ...options
+});
+
+/**
+ * Register a feed server
+ *
+ * The URL must use https (http is accepted for a loopback host). The
+ * server key is stored at the first contact. A new server is not
+ * active.
+ *
+ */
+export const createFeedServer = <ThrowOnError extends boolean = false>(options: Options<CreateFeedServerData, ThrowOnError>): RequestResult<CreateFeedServerResponses, CreateFeedServerErrors, ThrowOnError> => (options.client ?? client).post<CreateFeedServerResponses, CreateFeedServerErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'bomcensus_session',
+            type: 'apiKey'
+        }],
+    url: '/feed-servers',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Remove a feed server
+ *
+ * The built-in and the active server cannot be removed (`409`).
+ */
+export const deleteFeedServer = <ThrowOnError extends boolean = false>(options: Options<DeleteFeedServerData, ThrowOnError>): RequestResult<DeleteFeedServerResponses, DeleteFeedServerErrors, ThrowOnError> => (options.client ?? client).delete<DeleteFeedServerResponses, DeleteFeedServerErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'bomcensus_session',
+            type: 'apiKey'
+        }],
+    url: '/feed-servers/{id}',
+    ...options
+});
+
+/**
+ * Change a feed server
+ *
+ * Absent fields are left unchanged. `active: true` makes this the only
+ * active server; it must be enabled. The active server cannot be
+ * disabled (`409`).
+ *
+ */
+export const updateFeedServer = <ThrowOnError extends boolean = false>(options: Options<UpdateFeedServerData, ThrowOnError>): RequestResult<UpdateFeedServerResponses, UpdateFeedServerErrors, ThrowOnError> => (options.client ?? client).patch<UpdateFeedServerResponses, UpdateFeedServerErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'bomcensus_session',
+            type: 'apiKey'
+        }],
+    url: '/feed-servers/{id}',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Connect to a feed server and read its data status
+ *
+ * Runs a handshake in a session of its own, reads the data status and
+ * ends the session. On the first contact the server key is stored. The
+ * outcome is in `status` and `lastError` of the returned server.
+ *
+ */
+export const testFeedServer = <ThrowOnError extends boolean = false>(options: Options<TestFeedServerData, ThrowOnError>): RequestResult<TestFeedServerResponses, TestFeedServerErrors, ThrowOnError> => (options.client ?? client).post<TestFeedServerResponses, TestFeedServerErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'bomcensus_session',
+            type: 'apiKey'
+        }],
+    url: '/feed-servers/{id}/test',
+    ...options
+});
+
+/**
+ * Trust the key a feed server presented in place of the stored one
+ *
+ * Applies in the `key_changed` state. `key` must equal `presentedKey`,
+ * otherwise `409`.
+ *
+ */
+export const trustFeedServerKey = <ThrowOnError extends boolean = false>(options: Options<TrustFeedServerKeyData, ThrowOnError>): RequestResult<TrustFeedServerKeyResponses, TrustFeedServerKeyErrors, ThrowOnError> => (options.client ?? client).post<TrustFeedServerKeyResponses, TrustFeedServerKeyErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'bomcensus_session',
+            type: 'apiKey'
+        }],
+    url: '/feed-servers/{id}/trust-key',
     ...options,
     headers: {
         'Content-Type': 'application/json',

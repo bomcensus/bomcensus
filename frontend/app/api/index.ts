@@ -14,6 +14,8 @@ import type {
   K8sClusterCreate,
   K8sClusterUpdate,
   CredentialSecretUpdate,
+  FeedServerCreate,
+  FeedServerUpdate,
   ListenTargetCreate,
   ListenTargetUpdate,
   LoginRequest,
@@ -144,3 +146,16 @@ export const getTlsSettings = () => call(sdk.getTlsSettings())
 export const updateTlsEndpoint = (endpoint: TlsEndpointName, body: TlsEndpointUpdate) =>
   call(sdk.updateTlsEndpoint({ path: { endpoint }, body }))
 export const changeAgentTlsAnchor = (body: AgentAnchorChange) => call(sdk.changeAgentTlsAnchor({ body }))
+
+// ── feed ────────────────────────────────────────────────
+
+export const getFeedInstance = () => call(sdk.getFeedInstance())
+export const listFeedServers = () => call(sdk.listFeedServers())
+export const createFeedServer = (body: FeedServerCreate) => call(sdk.createFeedServer({ body }))
+export const updateFeedServer = (id: string, body: FeedServerUpdate) => call(sdk.updateFeedServer({ path: { id }, body }))
+export const deleteFeedServer = async (id: string) => {
+  await call(sdk.deleteFeedServer({ path: { id } }))
+}
+/** Contacts the server; the outcome is in the returned server's status and lastError. */
+export const testFeedServer = (id: string) => call(sdk.testFeedServer({ path: { id } }))
+export const trustFeedServerKey = (id: string, key: string) => call(sdk.trustFeedServerKey({ path: { id }, body: { key } }))

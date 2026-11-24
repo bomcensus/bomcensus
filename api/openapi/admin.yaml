@@ -59,6 +59,8 @@ tags:
     description: Agentless scan targets and credentials
   - name: settings
     description: TLS configuration
+  - name: feed
+    description: Vulnerability feed servers and the instance key
 
 paths:
   /meta:
@@ -1757,6 +1759,180 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /feed-instance:
+    get:
+      tags: [feed]
+      operationId: getFeedInstance
+      summary: The key that identifies this installation to feed servers
+      description: The key is created on first use and cannot be changed.
+      responses:
+        "200":
+          description: Instance key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FeedInstance"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /feed-servers:
+    get:
+      tags: [feed]
+      operationId: listFeedServers
+      summary: Feed servers, built-in first
+      responses:
+        "200":
+          description: Feed servers
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FeedServerList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+    post:
+      tags: [feed]
+      operationId: createFeedServer
+      summary: Register a feed server
+      description: |
+        The URL must use https (http is accepted for a loopback host). The
+        server key is stored at the first contact. A new server is not
+        active.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FeedServerCreate"
+      responses:
+        "201":
+          description: Feed server created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FeedServer"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /feed-servers/{id}:
+    parameters:
+      - $ref: "#/components/parameters/PathId"
+    patch:
+      tags: [feed]
+      operationId: updateFeedServer
+      summary: Change a feed server
+      description: |
+        Absent fields are left unchanged. `active: true` makes this the only
+        active server; it must be enabled. The active server cannot be
+        disabled (`409`).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FeedServerUpdate"
+      responses:
+        "200":
+          description: Feed server updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FeedServer"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+    delete:
+      tags: [feed]
+      operationId: deleteFeedServer
+      summary: Remove a feed server
+      description: The built-in and the active server cannot be removed (`409`).
+      responses:
+        "204":
+          description: Feed server deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /feed-servers/{id}/test:
+    parameters:
+      - $ref: "#/components/parameters/PathId"
+    post:
+      tags: [feed]
+      operationId: testFeedServer
+      summary: Connect to a feed server and read its data status
+      description: |
+        Runs a handshake in a session of its own, reads the data status and
+        ends the session. On the first contact the server key is stored. The
+        outcome is in `status` and `lastError` of the returned server.
+      responses:
+        "200":
+          description: Feed server after the test
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FeedServer"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /feed-servers/{id}/trust-key:
+    parameters:
+      - $ref: "#/components/parameters/PathId"
+    post:
+      tags: [feed]
+      operationId: trustFeedServerKey
+      summary: Trust the key a feed server presented in place of the stored one
+      description: |
+        Applies in the `key_changed` state. `key` must equal `presentedKey`,
+        otherwise `409`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FeedServerTrustKey"
+      responses:
+        "200":
+          description: Feed server with the new key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FeedServer"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/Conflict"
         default:
@@ -3593,3 +3769,156 @@ components:
           description: "`activate` even though some agents have not synchronized."
           type: boolean
           default: false
+
+    # ── feed ────────────────────────────────────────────────────────────
+
+    FeedInstance:
+      type: object
+      required: [instanceId, createdAt]
+      properties:
+        instanceId:
+          description: Public key, `x25519 <base64>`.
+          type: string
+          example: x25519 35i1AJE2RhGaEaNDtsBJZlCtYi9bgQngHhcBvJ8NJEQ=
+        createdAt:
+          type: string
+          format: date-time
+    FeedServerStatus:
+      description: |
+        `never`: not contacted yet (or a new key was just trusted).
+        `connected`: the last contact succeeded. `key_changed`: the server
+        presented another key than the stored one and is not used.
+        `error`: the last contact failed (`lastError`).
+      type: string
+      enum: [never, connected, key_changed, error]
+    FeedSource:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          example: osv/Debian
+        updatedAt:
+          description: Last successful collection.
+          type: string
+          format: date-time
+        changedAt:
+          description: Last collection that changed data.
+          type: string
+          format: date-time
+        healthy:
+          description: False when the last collection failed.
+          type: boolean
+    FeedServer:
+      type: object
+      required: [id, name, url, builtin, active, enabled, telemetry, status, sources, createdAt]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        url:
+          type: string
+        builtin:
+          description: The default server; it cannot be removed.
+          type: boolean
+        active:
+          description: Components are matched against this server.
+          type: boolean
+        enabled:
+          type: boolean
+        telemetry:
+          description: Allow the server to count this installation's queries in its anonymous daily statistics.
+          type: boolean
+        serverKey:
+          description: Trusted server key, absent before the first contact.
+          type: string
+        keyTrustedAt:
+          type: string
+          format: date-time
+        presentedKey:
+          description: Key the server presented in the `key_changed` state.
+          type: string
+        presentedAt:
+          type: string
+          format: date-time
+        status:
+          $ref: "#/components/schemas/FeedServerStatus"
+        lastError:
+          type: string
+        lastErrorAt:
+          type: string
+          format: date-time
+        lastOkAt:
+          type: string
+          format: date-time
+        grade:
+          description: The server's grade of this instance, e.g. `anonymous`.
+          type: string
+        sessionExpiresAt:
+          type: string
+          format: date-time
+        revision:
+          description: Data revision at the last status check.
+          type: integer
+          format: int64
+        rulesDigest:
+          description: Matching rules digest at the last status check.
+          type: string
+        sources:
+          type: array
+          items:
+            $ref: "#/components/schemas/FeedSource"
+        statusCheckedAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+    FeedServerList:
+      type: object
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/FeedServer"
+        total:
+          type: integer
+    FeedServerCreate:
+      type: object
+      required: [name, url]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        url:
+          type: string
+          minLength: 1
+          maxLength: 512
+          example: https://feed.corp.example
+        telemetry:
+          type: boolean
+          default: true
+    FeedServerUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        enabled:
+          type: boolean
+        telemetry:
+          type: boolean
+        active:
+          description: Only `true` is accepted; activating another server deactivates this one.
+          type: boolean
+    FeedServerTrustKey:
+      type: object
+      required: [key]
+      properties:
+        key:
+          description: The presented key, `x25519 <base64>`.
+          type: string

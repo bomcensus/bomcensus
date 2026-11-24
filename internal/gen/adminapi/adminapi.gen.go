@@ -358,6 +358,30 @@ func (e ExeState) Valid() bool {
 	}
 }
 
+// Defines values for FeedServerStatus.
+const (
+	FeedServerStatusConnected  FeedServerStatus = "connected"
+	FeedServerStatusError      FeedServerStatus = "error"
+	FeedServerStatusKeyChanged FeedServerStatus = "key_changed"
+	FeedServerStatusNever      FeedServerStatus = "never"
+)
+
+// Valid indicates whether the value is a known member of the FeedServerStatus enum.
+func (e FeedServerStatus) Valid() bool {
+	switch e {
+	case FeedServerStatusConnected:
+		return true
+	case FeedServerStatusError:
+		return true
+	case FeedServerStatusKeyChanged:
+		return true
+	case FeedServerStatusNever:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for K8sConnection.
 const (
 	K8sConnectionInCluster  K8sConnection = "in_cluster"
@@ -2169,6 +2193,113 @@ type Features struct {
 	Vulnerabilities bool `json:"vulnerabilities"`
 }
 
+// FeedInstance defines model for FeedInstance.
+type FeedInstance struct {
+	CreatedAt time.Time `json:"createdAt"`
+
+	// InstanceId Public key, `x25519 <base64>`.
+	//
+	// Example: x25519 35i1AJE2RhGaEaNDtsBJZlCtYi9bgQngHhcBvJ8NJEQ=
+	InstanceId string `json:"instanceId"`
+}
+
+// FeedServer defines model for FeedServer.
+type FeedServer struct {
+	// Active Components are matched against this server.
+	Active bool `json:"active"`
+
+	// Builtin The default server; it cannot be removed.
+	Builtin   bool      `json:"builtin"`
+	CreatedAt time.Time `json:"createdAt"`
+	Enabled   bool      `json:"enabled"`
+
+	// Grade The server's grade of this instance, e.g. `anonymous`.
+	Grade        *string    `json:"grade,omitempty"`
+	Id           string     `json:"id"`
+	KeyTrustedAt *time.Time `json:"keyTrustedAt,omitempty"`
+	LastError    *string    `json:"lastError,omitempty"`
+	LastErrorAt  *time.Time `json:"lastErrorAt,omitempty"`
+	LastOkAt     *time.Time `json:"lastOkAt,omitempty"`
+	Name         string     `json:"name"`
+	PresentedAt  *time.Time `json:"presentedAt,omitempty"`
+
+	// PresentedKey Key the server presented in the `key_changed` state.
+	PresentedKey *string `json:"presentedKey,omitempty"`
+
+	// Revision Data revision at the last status check.
+	Revision *int64 `json:"revision,omitempty"`
+
+	// RulesDigest Matching rules digest at the last status check.
+	RulesDigest *string `json:"rulesDigest,omitempty"`
+
+	// ServerKey Trusted server key, absent before the first contact.
+	ServerKey        *string      `json:"serverKey,omitempty"`
+	SessionExpiresAt *time.Time   `json:"sessionExpiresAt,omitempty"`
+	Sources          []FeedSource `json:"sources"`
+
+	// Status `never`: not contacted yet (or a new key was just trusted).
+	// `connected`: the last contact succeeded. `key_changed`: the server
+	// presented another key than the stored one and is not used.
+	// `error`: the last contact failed (`lastError`).
+	Status          FeedServerStatus `json:"status"`
+	StatusCheckedAt *time.Time       `json:"statusCheckedAt,omitempty"`
+
+	// Telemetry Allow the server to count this installation's queries in its anonymous daily statistics.
+	Telemetry bool   `json:"telemetry"`
+	Url       string `json:"url"`
+}
+
+// FeedServerCreate defines model for FeedServerCreate.
+type FeedServerCreate struct {
+	Name      string `json:"name"`
+	Telemetry *bool  `json:"telemetry,omitempty"`
+
+	// Url Example: https://feed.corp.example
+	Url string `json:"url"`
+}
+
+// FeedServerList defines model for FeedServerList.
+type FeedServerList struct {
+	Items []FeedServer `json:"items"`
+	Total int          `json:"total"`
+}
+
+// FeedServerStatus `never`: not contacted yet (or a new key was just trusted).
+// `connected`: the last contact succeeded. `key_changed`: the server
+// presented another key than the stored one and is not used.
+// `error`: the last contact failed (`lastError`).
+type FeedServerStatus string
+
+// FeedServerTrustKey defines model for FeedServerTrustKey.
+type FeedServerTrustKey struct {
+	// Key The presented key, `x25519 <base64>`.
+	Key string `json:"key"`
+}
+
+// FeedServerUpdate defines model for FeedServerUpdate.
+type FeedServerUpdate struct {
+	// Active Only `true` is accepted; activating another server deactivates this one.
+	Active    *bool   `json:"active,omitempty"`
+	Enabled   *bool   `json:"enabled,omitempty"`
+	Name      *string `json:"name,omitempty"`
+	Telemetry *bool   `json:"telemetry,omitempty"`
+}
+
+// FeedSource defines model for FeedSource.
+type FeedSource struct {
+	// ChangedAt Last collection that changed data.
+	ChangedAt *time.Time `json:"changedAt,omitempty"`
+
+	// Healthy False when the last collection failed.
+	Healthy *bool `json:"healthy,omitempty"`
+
+	// Name Example: osv/Debian
+	Name string `json:"name"`
+
+	// UpdatedAt Last successful collection.
+	UpdatedAt *time.Time `json:"updatedAt,omitempty"`
+}
+
 // ImageComponent defines model for ImageComponent.
 type ImageComponent struct {
 	Component SoftwareComponent `json:"component"`
@@ -3157,6 +3288,15 @@ type CreateCredentialJSONRequestBody = CredentialCreate
 // RotateCredentialSecretJSONRequestBody defines body for RotateCredentialSecret for application/json ContentType.
 type RotateCredentialSecretJSONRequestBody = CredentialSecretUpdate
 
+// CreateFeedServerJSONRequestBody defines body for CreateFeedServer for application/json ContentType.
+type CreateFeedServerJSONRequestBody = FeedServerCreate
+
+// UpdateFeedServerJSONRequestBody defines body for UpdateFeedServer for application/json ContentType.
+type UpdateFeedServerJSONRequestBody = FeedServerUpdate
+
+// TrustFeedServerKeyJSONRequestBody defines body for TrustFeedServerKey for application/json ContentType.
+type TrustFeedServerKeyJSONRequestBody = FeedServerTrustKey
+
 // CreateK8sClusterJSONRequestBody defines body for CreateK8sCluster for application/json ContentType.
 type CreateK8sClusterJSONRequestBody = K8sClusterCreate
 
@@ -3450,6 +3590,98 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /dashboard (the `GetDashboard` operationId).
 	GetDashboard(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetFeedInstance The key that identifies this installation to feed servers
+	//
+	// The key is created on first use and cannot be changed.
+	//
+	// Corresponds with GET /feed-instance (the `GetFeedInstance` operationId).
+	GetFeedInstance(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListFeedServers Feed servers, built-in first
+	//
+	// Corresponds with GET /feed-servers (the `ListFeedServers` operationId).
+	ListFeedServers(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateFeedServerWithBody Register a feed server
+	//
+	// The URL must use https (http is accepted for a loopback host). The
+	// server key is stored at the first contact. A new server is not
+	// active.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /feed-servers (the `CreateFeedServer` operationId).
+	CreateFeedServerWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateFeedServer Register a feed server
+	//
+	// The URL must use https (http is accepted for a loopback host). The
+	// server key is stored at the first contact. A new server is not
+	// active.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /feed-servers (the `CreateFeedServer` operationId).
+	CreateFeedServer(ctx context.Context, body CreateFeedServerJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteFeedServer Remove a feed server
+	//
+	// The built-in and the active server cannot be removed (`409`).
+	//
+	// Corresponds with DELETE /feed-servers/{id} (the `DeleteFeedServer` operationId).
+	DeleteFeedServer(ctx context.Context, id PathId, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateFeedServerWithBody Change a feed server
+	//
+	// Absent fields are left unchanged. `active: true` makes this the only
+	// active server; it must be enabled. The active server cannot be
+	// disabled (`409`).
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PATCH /feed-servers/{id} (the `UpdateFeedServer` operationId).
+	UpdateFeedServerWithBody(ctx context.Context, id PathId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateFeedServer Change a feed server
+	//
+	// Absent fields are left unchanged. `active: true` makes this the only
+	// active server; it must be enabled. The active server cannot be
+	// disabled (`409`).
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PATCH /feed-servers/{id} (the `UpdateFeedServer` operationId).
+	UpdateFeedServer(ctx context.Context, id PathId, body UpdateFeedServerJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// TestFeedServer Connect to a feed server and read its data status
+	//
+	// Runs a handshake in a session of its own, reads the data status and
+	// ends the session. On the first contact the server key is stored. The
+	// outcome is in `status` and `lastError` of the returned server.
+	//
+	// Corresponds with POST /feed-servers/{id}/test (the `TestFeedServer` operationId).
+	TestFeedServer(ctx context.Context, id PathId, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// TrustFeedServerKeyWithBody Trust the key a feed server presented in place of the stored one
+	//
+	// Applies in the `key_changed` state. `key` must equal `presentedKey`,
+	// otherwise `409`.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /feed-servers/{id}/trust-key (the `TrustFeedServerKey` operationId).
+	TrustFeedServerKeyWithBody(ctx context.Context, id PathId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// TrustFeedServerKey Trust the key a feed server presented in place of the stored one
+	//
+	// Applies in the `key_changed` state. `key` must equal `presentedKey`,
+	// otherwise `409`.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /feed-servers/{id}/trust-key (the `TrustFeedServerKey` operationId).
+	TrustFeedServerKey(ctx context.Context, id PathId, body TrustFeedServerKeyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListImages Container images, aggregated by digest
 	//
@@ -4258,6 +4490,198 @@ func (c *Client) RotateCredentialSecret(ctx context.Context, id PathId, body Rot
 // Corresponds with GET /dashboard (the `GetDashboard` operationId).
 func (c *Client) GetDashboard(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetDashboardRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetFeedInstance The key that identifies this installation to feed servers
+//
+// The key is created on first use and cannot be changed.
+//
+// Corresponds with GET /feed-instance (the `GetFeedInstance` operationId).
+func (c *Client) GetFeedInstance(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetFeedInstanceRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListFeedServers Feed servers, built-in first
+//
+// Corresponds with GET /feed-servers (the `ListFeedServers` operationId).
+func (c *Client) ListFeedServers(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListFeedServersRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateFeedServerWithBody Register a feed server
+//
+// The URL must use https (http is accepted for a loopback host). The
+// server key is stored at the first contact. A new server is not
+// active.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /feed-servers (the `CreateFeedServer` operationId).
+func (c *Client) CreateFeedServerWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateFeedServerRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateFeedServer Register a feed server
+//
+// The URL must use https (http is accepted for a loopback host). The
+// server key is stored at the first contact. A new server is not
+// active.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /feed-servers (the `CreateFeedServer` operationId).
+func (c *Client) CreateFeedServer(ctx context.Context, body CreateFeedServerJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateFeedServerRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DeleteFeedServer Remove a feed server
+//
+// The built-in and the active server cannot be removed (`409`).
+//
+// Corresponds with DELETE /feed-servers/{id} (the `DeleteFeedServer` operationId).
+func (c *Client) DeleteFeedServer(ctx context.Context, id PathId, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteFeedServerRequest(c.Server, id)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateFeedServerWithBody Change a feed server
+//
+// Absent fields are left unchanged. `active: true` makes this the only
+// active server; it must be enabled. The active server cannot be
+// disabled (`409`).
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PATCH /feed-servers/{id} (the `UpdateFeedServer` operationId).
+func (c *Client) UpdateFeedServerWithBody(ctx context.Context, id PathId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateFeedServerRequestWithBody(c.Server, id, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateFeedServer Change a feed server
+//
+// Absent fields are left unchanged. `active: true` makes this the only
+// active server; it must be enabled. The active server cannot be
+// disabled (`409`).
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PATCH /feed-servers/{id} (the `UpdateFeedServer` operationId).
+func (c *Client) UpdateFeedServer(ctx context.Context, id PathId, body UpdateFeedServerJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateFeedServerRequest(c.Server, id, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// TestFeedServer Connect to a feed server and read its data status
+//
+// Runs a handshake in a session of its own, reads the data status and
+// ends the session. On the first contact the server key is stored. The
+// outcome is in `status` and `lastError` of the returned server.
+//
+// Corresponds with POST /feed-servers/{id}/test (the `TestFeedServer` operationId).
+func (c *Client) TestFeedServer(ctx context.Context, id PathId, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewTestFeedServerRequest(c.Server, id)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// TrustFeedServerKeyWithBody Trust the key a feed server presented in place of the stored one
+//
+// Applies in the `key_changed` state. `key` must equal `presentedKey`,
+// otherwise `409`.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /feed-servers/{id}/trust-key (the `TrustFeedServerKey` operationId).
+func (c *Client) TrustFeedServerKeyWithBody(ctx context.Context, id PathId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewTrustFeedServerKeyRequestWithBody(c.Server, id, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// TrustFeedServerKey Trust the key a feed server presented in place of the stored one
+//
+// Applies in the `key_changed` state. `key` must equal `presentedKey`,
+// otherwise `409`.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /feed-servers/{id}/trust-key (the `TrustFeedServerKey` operationId).
+func (c *Client) TrustFeedServerKey(ctx context.Context, id PathId, body TrustFeedServerKeyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewTrustFeedServerKeyRequest(c.Server, id, body)
 	if err != nil {
 		return nil, err
 	}
@@ -6760,6 +7184,262 @@ func NewGetDashboardRequest(server string) (*http.Request, error) {
 	return req, nil
 }
 
+// NewGetFeedInstanceRequest constructs an http.Request for the GetFeedInstance method
+func NewGetFeedInstanceRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/feed-instance")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListFeedServersRequest constructs an http.Request for the ListFeedServers method
+func NewListFeedServersRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/feed-servers")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateFeedServerRequest calls the generic CreateFeedServer builder with application/json body
+func NewCreateFeedServerRequest(server string, body CreateFeedServerJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateFeedServerRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewCreateFeedServerRequestWithBody constructs an http.Request for the CreateFeedServer method, with any body, and a specified content type
+func NewCreateFeedServerRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/feed-servers")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDeleteFeedServerRequest constructs an http.Request for the DeleteFeedServer method
+func NewDeleteFeedServerRequest(server string, id PathId) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/feed-servers/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUpdateFeedServerRequest calls the generic UpdateFeedServer builder with application/json body
+func NewUpdateFeedServerRequest(server string, id PathId, body UpdateFeedServerJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateFeedServerRequestWithBody(server, id, "application/json", bodyReader)
+}
+
+// NewUpdateFeedServerRequestWithBody constructs an http.Request for the UpdateFeedServer method, with any body, and a specified content type
+func NewUpdateFeedServerRequestWithBody(server string, id PathId, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/feed-servers/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPatch, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewTestFeedServerRequest constructs an http.Request for the TestFeedServer method
+func NewTestFeedServerRequest(server string, id PathId) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/feed-servers/%s/test", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewTrustFeedServerKeyRequest calls the generic TrustFeedServerKey builder with application/json body
+func NewTrustFeedServerKeyRequest(server string, id PathId, body TrustFeedServerKeyJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewTrustFeedServerKeyRequestWithBody(server, id, "application/json", bodyReader)
+}
+
+// NewTrustFeedServerKeyRequestWithBody constructs an http.Request for the TrustFeedServerKey method, with any body, and a specified content type
+func NewTrustFeedServerKeyRequestWithBody(server string, id PathId, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/feed-servers/%s/trust-key", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewListImagesRequest constructs an http.Request for the ListImages method
 func NewListImagesRequest(server string, params *ListImagesParams) (*http.Request, error) {
 	var err error
@@ -9027,6 +9707,106 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /dashboard (the `GetDashboard` operationId).
 	GetDashboardWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetDashboardResponse, error)
 
+	// GetFeedInstanceWithResponse The key that identifies this installation to feed servers
+	//
+	// The key is created on first use and cannot be changed.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /feed-instance (the `GetFeedInstance` operationId).
+	GetFeedInstanceWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetFeedInstanceResponse, error)
+
+	// ListFeedServersWithResponse Feed servers, built-in first
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /feed-servers (the `ListFeedServers` operationId).
+	ListFeedServersWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListFeedServersResponse, error)
+
+	// CreateFeedServerWithBodyWithResponse Register a feed server
+	//
+	// The URL must use https (http is accepted for a loopback host). The
+	// server key is stored at the first contact. A new server is not
+	// active.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /feed-servers (the `CreateFeedServer` operationId).
+	CreateFeedServerWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateFeedServerResponse, error)
+
+	// CreateFeedServerWithResponse Register a feed server
+	//
+	// The URL must use https (http is accepted for a loopback host). The
+	// server key is stored at the first contact. A new server is not
+	// active.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /feed-servers (the `CreateFeedServer` operationId).
+	CreateFeedServerWithResponse(ctx context.Context, body CreateFeedServerJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateFeedServerResponse, error)
+
+	// DeleteFeedServerWithResponse Remove a feed server
+	//
+	// The built-in and the active server cannot be removed (`409`).
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /feed-servers/{id} (the `DeleteFeedServer` operationId).
+	DeleteFeedServerWithResponse(ctx context.Context, id PathId, reqEditors ...RequestEditorFn) (*DeleteFeedServerResponse, error)
+
+	// UpdateFeedServerWithBodyWithResponse Change a feed server
+	//
+	// Absent fields are left unchanged. `active: true` makes this the only
+	// active server; it must be enabled. The active server cannot be
+	// disabled (`409`).
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PATCH /feed-servers/{id} (the `UpdateFeedServer` operationId).
+	UpdateFeedServerWithBodyWithResponse(ctx context.Context, id PathId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateFeedServerResponse, error)
+
+	// UpdateFeedServerWithResponse Change a feed server
+	//
+	// Absent fields are left unchanged. `active: true` makes this the only
+	// active server; it must be enabled. The active server cannot be
+	// disabled (`409`).
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PATCH /feed-servers/{id} (the `UpdateFeedServer` operationId).
+	UpdateFeedServerWithResponse(ctx context.Context, id PathId, body UpdateFeedServerJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateFeedServerResponse, error)
+
+	// TestFeedServerWithResponse Connect to a feed server and read its data status
+	//
+	// Runs a handshake in a session of its own, reads the data status and
+	// ends the session. On the first contact the server key is stored. The
+	// outcome is in `status` and `lastError` of the returned server.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /feed-servers/{id}/test (the `TestFeedServer` operationId).
+	TestFeedServerWithResponse(ctx context.Context, id PathId, reqEditors ...RequestEditorFn) (*TestFeedServerResponse, error)
+
+	// TrustFeedServerKeyWithBodyWithResponse Trust the key a feed server presented in place of the stored one
+	//
+	// Applies in the `key_changed` state. `key` must equal `presentedKey`,
+	// otherwise `409`.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /feed-servers/{id}/trust-key (the `TrustFeedServerKey` operationId).
+	TrustFeedServerKeyWithBodyWithResponse(ctx context.Context, id PathId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*TrustFeedServerKeyResponse, error)
+
+	// TrustFeedServerKeyWithResponse Trust the key a feed server presented in place of the stored one
+	//
+	// Applies in the `key_changed` state. `key` must equal `presentedKey`,
+	// otherwise `409`.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /feed-servers/{id}/trust-key (the `TrustFeedServerKey` operationId).
+	TrustFeedServerKeyWithResponse(ctx context.Context, id PathId, body TrustFeedServerKeyJSONRequestBody, reqEditors ...RequestEditorFn) (*TrustFeedServerKeyResponse, error)
+
 	// ListImagesWithResponse Container images, aggregated by digest
 	//
 	// `q` matches digest and current and previous tags. Sort `tag` uses the first current tag, else the most recently seen previous tag.
@@ -10921,6 +11701,461 @@ func (r GetDashboardResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r GetDashboardResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetFeedInstanceResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *FeedInstance
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *UnexpectedError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetFeedInstanceResponse) GetJSON200() *FeedInstance {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetFeedInstanceResponse) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r GetFeedInstanceResponse) GetJSONDefault() *UnexpectedError {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetFeedInstanceResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetFeedInstanceResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetFeedInstanceResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetFeedInstanceResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListFeedServersResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *FeedServerList
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *UnexpectedError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListFeedServersResponse) GetJSON200() *FeedServerList {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ListFeedServersResponse) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r ListFeedServersResponse) GetJSONDefault() *UnexpectedError {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ListFeedServersResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListFeedServersResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListFeedServersResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListFeedServersResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type CreateFeedServerResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *FeedServer
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *BadRequest
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Conflict
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *UnexpectedError
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r CreateFeedServerResponse) GetJSON201() *FeedServer {
+	return r.JSON201
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r CreateFeedServerResponse) GetJSON400() *BadRequest {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r CreateFeedServerResponse) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r CreateFeedServerResponse) GetJSON409() *Conflict {
+	return r.JSON409
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r CreateFeedServerResponse) GetJSONDefault() *UnexpectedError {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r CreateFeedServerResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateFeedServerResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateFeedServerResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CreateFeedServerResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type DeleteFeedServerResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Conflict
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *UnexpectedError
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r DeleteFeedServerResponse) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r DeleteFeedServerResponse) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r DeleteFeedServerResponse) GetJSON409() *Conflict {
+	return r.JSON409
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r DeleteFeedServerResponse) GetJSONDefault() *UnexpectedError {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r DeleteFeedServerResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteFeedServerResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteFeedServerResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeleteFeedServerResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type UpdateFeedServerResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *FeedServer
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *BadRequest
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Conflict
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *UnexpectedError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r UpdateFeedServerResponse) GetJSON200() *FeedServer {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r UpdateFeedServerResponse) GetJSON400() *BadRequest {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r UpdateFeedServerResponse) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r UpdateFeedServerResponse) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r UpdateFeedServerResponse) GetJSON409() *Conflict {
+	return r.JSON409
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r UpdateFeedServerResponse) GetJSONDefault() *UnexpectedError {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r UpdateFeedServerResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateFeedServerResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateFeedServerResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r UpdateFeedServerResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type TestFeedServerResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *FeedServer
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *UnexpectedError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r TestFeedServerResponse) GetJSON200() *FeedServer {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r TestFeedServerResponse) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r TestFeedServerResponse) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r TestFeedServerResponse) GetJSONDefault() *UnexpectedError {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r TestFeedServerResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r TestFeedServerResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r TestFeedServerResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r TestFeedServerResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type TrustFeedServerKeyResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *FeedServer
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *BadRequest
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Conflict
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *UnexpectedError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r TrustFeedServerKeyResponse) GetJSON200() *FeedServer {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r TrustFeedServerKeyResponse) GetJSON400() *BadRequest {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r TrustFeedServerKeyResponse) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r TrustFeedServerKeyResponse) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r TrustFeedServerKeyResponse) GetJSON409() *Conflict {
+	return r.JSON409
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r TrustFeedServerKeyResponse) GetJSONDefault() *UnexpectedError {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r TrustFeedServerKeyResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r TrustFeedServerKeyResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r TrustFeedServerKeyResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r TrustFeedServerKeyResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -13437,6 +14672,166 @@ func (c *ClientWithResponses) GetDashboardWithResponse(ctx context.Context, reqE
 	return ParseGetDashboardResponse(rsp)
 }
 
+// GetFeedInstanceWithResponse The key that identifies this installation to feed servers
+//
+// The key is created on first use and cannot be changed.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /feed-instance (the `GetFeedInstance` operationId).
+func (c *ClientWithResponses) GetFeedInstanceWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetFeedInstanceResponse, error) {
+	rsp, err := c.GetFeedInstance(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetFeedInstanceResponse(rsp)
+}
+
+// ListFeedServersWithResponse Feed servers, built-in first
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /feed-servers (the `ListFeedServers` operationId).
+func (c *ClientWithResponses) ListFeedServersWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListFeedServersResponse, error) {
+	rsp, err := c.ListFeedServers(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListFeedServersResponse(rsp)
+}
+
+// CreateFeedServerWithBodyWithResponse Register a feed server
+//
+// The URL must use https (http is accepted for a loopback host). The
+// server key is stored at the first contact. A new server is not
+// active.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /feed-servers (the `CreateFeedServer` operationId).
+func (c *ClientWithResponses) CreateFeedServerWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateFeedServerResponse, error) {
+	rsp, err := c.CreateFeedServerWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateFeedServerResponse(rsp)
+}
+
+// CreateFeedServerWithResponse Register a feed server
+//
+// The URL must use https (http is accepted for a loopback host). The
+// server key is stored at the first contact. A new server is not
+// active.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /feed-servers (the `CreateFeedServer` operationId).
+func (c *ClientWithResponses) CreateFeedServerWithResponse(ctx context.Context, body CreateFeedServerJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateFeedServerResponse, error) {
+	rsp, err := c.CreateFeedServer(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateFeedServerResponse(rsp)
+}
+
+// DeleteFeedServerWithResponse Remove a feed server
+//
+// The built-in and the active server cannot be removed (`409`).
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /feed-servers/{id} (the `DeleteFeedServer` operationId).
+func (c *ClientWithResponses) DeleteFeedServerWithResponse(ctx context.Context, id PathId, reqEditors ...RequestEditorFn) (*DeleteFeedServerResponse, error) {
+	rsp, err := c.DeleteFeedServer(ctx, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteFeedServerResponse(rsp)
+}
+
+// UpdateFeedServerWithBodyWithResponse Change a feed server
+//
+// Absent fields are left unchanged. `active: true` makes this the only
+// active server; it must be enabled. The active server cannot be
+// disabled (`409`).
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PATCH /feed-servers/{id} (the `UpdateFeedServer` operationId).
+func (c *ClientWithResponses) UpdateFeedServerWithBodyWithResponse(ctx context.Context, id PathId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateFeedServerResponse, error) {
+	rsp, err := c.UpdateFeedServerWithBody(ctx, id, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateFeedServerResponse(rsp)
+}
+
+// UpdateFeedServerWithResponse Change a feed server
+//
+// Absent fields are left unchanged. `active: true` makes this the only
+// active server; it must be enabled. The active server cannot be
+// disabled (`409`).
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PATCH /feed-servers/{id} (the `UpdateFeedServer` operationId).
+func (c *ClientWithResponses) UpdateFeedServerWithResponse(ctx context.Context, id PathId, body UpdateFeedServerJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateFeedServerResponse, error) {
+	rsp, err := c.UpdateFeedServer(ctx, id, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateFeedServerResponse(rsp)
+}
+
+// TestFeedServerWithResponse Connect to a feed server and read its data status
+//
+// Runs a handshake in a session of its own, reads the data status and
+// ends the session. On the first contact the server key is stored. The
+// outcome is in `status` and `lastError` of the returned server.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /feed-servers/{id}/test (the `TestFeedServer` operationId).
+func (c *ClientWithResponses) TestFeedServerWithResponse(ctx context.Context, id PathId, reqEditors ...RequestEditorFn) (*TestFeedServerResponse, error) {
+	rsp, err := c.TestFeedServer(ctx, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseTestFeedServerResponse(rsp)
+}
+
+// TrustFeedServerKeyWithBodyWithResponse Trust the key a feed server presented in place of the stored one
+//
+// Applies in the `key_changed` state. `key` must equal `presentedKey`,
+// otherwise `409`.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /feed-servers/{id}/trust-key (the `TrustFeedServerKey` operationId).
+func (c *ClientWithResponses) TrustFeedServerKeyWithBodyWithResponse(ctx context.Context, id PathId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*TrustFeedServerKeyResponse, error) {
+	rsp, err := c.TrustFeedServerKeyWithBody(ctx, id, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseTrustFeedServerKeyResponse(rsp)
+}
+
+// TrustFeedServerKeyWithResponse Trust the key a feed server presented in place of the stored one
+//
+// Applies in the `key_changed` state. `key` must equal `presentedKey`,
+// otherwise `409`.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /feed-servers/{id}/trust-key (the `TrustFeedServerKey` operationId).
+func (c *ClientWithResponses) TrustFeedServerKeyWithResponse(ctx context.Context, id PathId, body TrustFeedServerKeyJSONRequestBody, reqEditors ...RequestEditorFn) (*TrustFeedServerKeyResponse, error) {
+	rsp, err := c.TrustFeedServerKey(ctx, id, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseTrustFeedServerKeyResponse(rsp)
+}
+
 // ListImagesWithResponse Container images, aggregated by digest
 //
 // `q` matches digest and current and previous tags. Sort `tag` uses the first current tag, else the most recently seen previous tag.
@@ -15270,6 +16665,359 @@ func ParseGetDashboardResponse(rsp *http.Response) (*GetDashboardResponse, error
 	return response, nil
 }
 
+// ParseGetFeedInstanceResponse parses an HTTP response from a GetFeedInstanceWithResponse call
+func ParseGetFeedInstanceResponse(rsp *http.Response) (*GetFeedInstanceResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetFeedInstanceResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest FeedInstance
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest UnexpectedError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListFeedServersResponse parses an HTTP response from a ListFeedServersWithResponse call
+func ParseListFeedServersResponse(rsp *http.Response) (*ListFeedServersResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListFeedServersResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest FeedServerList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest UnexpectedError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateFeedServerResponse parses an HTTP response from a CreateFeedServerWithResponse call
+func ParseCreateFeedServerResponse(rsp *http.Response) (*CreateFeedServerResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateFeedServerResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest FeedServer
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest UnexpectedError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteFeedServerResponse parses an HTTP response from a DeleteFeedServerWithResponse call
+func ParseDeleteFeedServerResponse(rsp *http.Response) (*DeleteFeedServerResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteFeedServerResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest UnexpectedError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateFeedServerResponse parses an HTTP response from a UpdateFeedServerWithResponse call
+func ParseUpdateFeedServerResponse(rsp *http.Response) (*UpdateFeedServerResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateFeedServerResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest FeedServer
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest UnexpectedError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseTestFeedServerResponse parses an HTTP response from a TestFeedServerWithResponse call
+func ParseTestFeedServerResponse(rsp *http.Response) (*TestFeedServerResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &TestFeedServerResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest FeedServer
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest UnexpectedError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseTrustFeedServerKeyResponse parses an HTTP response from a TrustFeedServerKeyWithResponse call
+func ParseTrustFeedServerKeyResponse(rsp *http.Response) (*TrustFeedServerKeyResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &TrustFeedServerKeyResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest FeedServer
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest UnexpectedError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseListImagesResponse parses an HTTP response from a ListImagesWithResponse call
 func ParseListImagesResponse(rsp *http.Response) (*ListImagesResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -16990,6 +18738,27 @@ type ServerInterface interface {
 	// GetDashboard Counts shown on the dashboard
 	// (GET /dashboard)
 	GetDashboard(w http.ResponseWriter, r *http.Request)
+	// GetFeedInstance The key that identifies this installation to feed servers
+	// (GET /feed-instance)
+	GetFeedInstance(w http.ResponseWriter, r *http.Request)
+	// ListFeedServers Feed servers, built-in first
+	// (GET /feed-servers)
+	ListFeedServers(w http.ResponseWriter, r *http.Request)
+	// CreateFeedServer Register a feed server
+	// (POST /feed-servers)
+	CreateFeedServer(w http.ResponseWriter, r *http.Request)
+	// DeleteFeedServer Remove a feed server
+	// (DELETE /feed-servers/{id})
+	DeleteFeedServer(w http.ResponseWriter, r *http.Request, id PathId)
+	// UpdateFeedServer Change a feed server
+	// (PATCH /feed-servers/{id})
+	UpdateFeedServer(w http.ResponseWriter, r *http.Request, id PathId)
+	// TestFeedServer Connect to a feed server and read its data status
+	// (POST /feed-servers/{id}/test)
+	TestFeedServer(w http.ResponseWriter, r *http.Request, id PathId)
+	// TrustFeedServerKey Trust the key a feed server presented in place of the stored one
+	// (POST /feed-servers/{id}/trust-key)
+	TrustFeedServerKey(w http.ResponseWriter, r *http.Request, id PathId)
 	// ListImages Container images, aggregated by digest
 	// (GET /images)
 	ListImages(w http.ResponseWriter, r *http.Request, params ListImagesParams)
@@ -17230,6 +18999,48 @@ func (_ Unimplemented) RotateCredentialSecret(w http.ResponseWriter, r *http.Req
 // GetDashboard Counts shown on the dashboard
 // (GET /dashboard)
 func (_ Unimplemented) GetDashboard(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetFeedInstance The key that identifies this installation to feed servers
+// (GET /feed-instance)
+func (_ Unimplemented) GetFeedInstance(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListFeedServers Feed servers, built-in first
+// (GET /feed-servers)
+func (_ Unimplemented) ListFeedServers(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// CreateFeedServer Register a feed server
+// (POST /feed-servers)
+func (_ Unimplemented) CreateFeedServer(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// DeleteFeedServer Remove a feed server
+// (DELETE /feed-servers/{id})
+func (_ Unimplemented) DeleteFeedServer(w http.ResponseWriter, r *http.Request, id PathId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// UpdateFeedServer Change a feed server
+// (PATCH /feed-servers/{id})
+func (_ Unimplemented) UpdateFeedServer(w http.ResponseWriter, r *http.Request, id PathId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// TestFeedServer Connect to a feed server and read its data status
+// (POST /feed-servers/{id}/test)
+func (_ Unimplemented) TestFeedServer(w http.ResponseWriter, r *http.Request, id PathId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// TrustFeedServerKey Trust the key a feed server presented in place of the stored one
+// (POST /feed-servers/{id}/trust-key)
+func (_ Unimplemented) TrustFeedServerKey(w http.ResponseWriter, r *http.Request, id PathId) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -18822,6 +20633,152 @@ func (siw *ServerInterfaceWrapper) GetDashboard(w http.ResponseWriter, r *http.R
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetDashboard(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetFeedInstance operation middleware
+func (siw *ServerInterfaceWrapper) GetFeedInstance(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetFeedInstance(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListFeedServers operation middleware
+func (siw *ServerInterfaceWrapper) ListFeedServers(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListFeedServers(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateFeedServer operation middleware
+func (siw *ServerInterfaceWrapper) CreateFeedServer(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateFeedServer(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteFeedServer operation middleware
+func (siw *ServerInterfaceWrapper) DeleteFeedServer(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id PathId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteFeedServer(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateFeedServer operation middleware
+func (siw *ServerInterfaceWrapper) UpdateFeedServer(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id PathId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateFeedServer(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// TestFeedServer operation middleware
+func (siw *ServerInterfaceWrapper) TestFeedServer(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id PathId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.TestFeedServer(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// TrustFeedServerKey operation middleware
+func (siw *ServerInterfaceWrapper) TrustFeedServerKey(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id PathId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.TrustFeedServerKey(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -20588,6 +22545,27 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/settings/tls/agent/anchor", wrapper.ChangeAgentTlsAnchor)
 	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/feed-instance", wrapper.GetFeedInstance)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/feed-servers", wrapper.ListFeedServers)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/feed-servers", wrapper.CreateFeedServer)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/feed-servers/{id}", wrapper.DeleteFeedServer)
+	})
+	r.Group(func(r chi.Router) {
+		r.Patch(options.BaseURL+"/feed-servers/{id}", wrapper.UpdateFeedServer)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/feed-servers/{id}/test", wrapper.TestFeedServer)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/feed-servers/{id}/trust-key", wrapper.TrustFeedServerKey)
+	})
 
 	return r
 }
@@ -22281,6 +24259,525 @@ type GetDashboarddefaultJSONResponse struct {
 }
 
 func (response GetDashboarddefaultJSONResponse) VisitGetDashboardResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetFeedInstanceRequestObject struct {
+}
+
+type GetFeedInstanceResponseObject interface {
+	VisitGetFeedInstanceResponse(w http.ResponseWriter) error
+}
+
+type GetFeedInstance200JSONResponse FeedInstance
+
+func (response GetFeedInstance200JSONResponse) VisitGetFeedInstanceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetFeedInstance401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response GetFeedInstance401JSONResponse) VisitGetFeedInstanceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetFeedInstancedefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetFeedInstancedefaultJSONResponse) VisitGetFeedInstanceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListFeedServersRequestObject struct {
+}
+
+type ListFeedServersResponseObject interface {
+	VisitListFeedServersResponse(w http.ResponseWriter) error
+}
+
+type ListFeedServers200JSONResponse FeedServerList
+
+func (response ListFeedServers200JSONResponse) VisitListFeedServersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListFeedServers401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response ListFeedServers401JSONResponse) VisitListFeedServersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListFeedServersdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ListFeedServersdefaultJSONResponse) VisitListFeedServersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateFeedServerRequestObject struct {
+	Body *CreateFeedServerJSONRequestBody
+}
+
+type CreateFeedServerResponseObject interface {
+	VisitCreateFeedServerResponse(w http.ResponseWriter) error
+}
+
+type CreateFeedServer201JSONResponse FeedServer
+
+func (response CreateFeedServer201JSONResponse) VisitCreateFeedServerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateFeedServer400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response CreateFeedServer400JSONResponse) VisitCreateFeedServerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateFeedServer401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response CreateFeedServer401JSONResponse) VisitCreateFeedServerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateFeedServer409JSONResponse struct{ ConflictJSONResponse }
+
+func (response CreateFeedServer409JSONResponse) VisitCreateFeedServerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateFeedServerdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response CreateFeedServerdefaultJSONResponse) VisitCreateFeedServerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteFeedServerRequestObject struct {
+	Id PathId `json:"id"`
+}
+
+type DeleteFeedServerResponseObject interface {
+	VisitDeleteFeedServerResponse(w http.ResponseWriter) error
+}
+
+type DeleteFeedServer204Response struct {
+}
+
+func (response DeleteFeedServer204Response) VisitDeleteFeedServerResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteFeedServer401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response DeleteFeedServer401JSONResponse) VisitDeleteFeedServerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteFeedServer404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response DeleteFeedServer404JSONResponse) VisitDeleteFeedServerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteFeedServer409JSONResponse struct{ ConflictJSONResponse }
+
+func (response DeleteFeedServer409JSONResponse) VisitDeleteFeedServerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteFeedServerdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response DeleteFeedServerdefaultJSONResponse) VisitDeleteFeedServerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateFeedServerRequestObject struct {
+	Id   PathId `json:"id"`
+	Body *UpdateFeedServerJSONRequestBody
+}
+
+type UpdateFeedServerResponseObject interface {
+	VisitUpdateFeedServerResponse(w http.ResponseWriter) error
+}
+
+type UpdateFeedServer200JSONResponse FeedServer
+
+func (response UpdateFeedServer200JSONResponse) VisitUpdateFeedServerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateFeedServer400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response UpdateFeedServer400JSONResponse) VisitUpdateFeedServerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateFeedServer401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response UpdateFeedServer401JSONResponse) VisitUpdateFeedServerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateFeedServer404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response UpdateFeedServer404JSONResponse) VisitUpdateFeedServerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateFeedServer409JSONResponse struct{ ConflictJSONResponse }
+
+func (response UpdateFeedServer409JSONResponse) VisitUpdateFeedServerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateFeedServerdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response UpdateFeedServerdefaultJSONResponse) VisitUpdateFeedServerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TestFeedServerRequestObject struct {
+	Id PathId `json:"id"`
+}
+
+type TestFeedServerResponseObject interface {
+	VisitTestFeedServerResponse(w http.ResponseWriter) error
+}
+
+type TestFeedServer200JSONResponse FeedServer
+
+func (response TestFeedServer200JSONResponse) VisitTestFeedServerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TestFeedServer401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response TestFeedServer401JSONResponse) VisitTestFeedServerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TestFeedServer404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response TestFeedServer404JSONResponse) VisitTestFeedServerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TestFeedServerdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response TestFeedServerdefaultJSONResponse) VisitTestFeedServerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TrustFeedServerKeyRequestObject struct {
+	Id   PathId `json:"id"`
+	Body *TrustFeedServerKeyJSONRequestBody
+}
+
+type TrustFeedServerKeyResponseObject interface {
+	VisitTrustFeedServerKeyResponse(w http.ResponseWriter) error
+}
+
+type TrustFeedServerKey200JSONResponse FeedServer
+
+func (response TrustFeedServerKey200JSONResponse) VisitTrustFeedServerKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TrustFeedServerKey400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response TrustFeedServerKey400JSONResponse) VisitTrustFeedServerKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TrustFeedServerKey401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response TrustFeedServerKey401JSONResponse) VisitTrustFeedServerKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TrustFeedServerKey404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response TrustFeedServerKey404JSONResponse) VisitTrustFeedServerKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TrustFeedServerKey409JSONResponse struct{ ConflictJSONResponse }
+
+func (response TrustFeedServerKey409JSONResponse) VisitTrustFeedServerKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TrustFeedServerKeydefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response TrustFeedServerKeydefaultJSONResponse) VisitTrustFeedServerKeyResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -24767,6 +27264,27 @@ type StrictServerInterface interface {
 	// GetDashboard Counts shown on the dashboard
 	// (GET /dashboard)
 	GetDashboard(ctx context.Context, request GetDashboardRequestObject) (GetDashboardResponseObject, error)
+	// GetFeedInstance The key that identifies this installation to feed servers
+	// (GET /feed-instance)
+	GetFeedInstance(ctx context.Context, request GetFeedInstanceRequestObject) (GetFeedInstanceResponseObject, error)
+	// ListFeedServers Feed servers, built-in first
+	// (GET /feed-servers)
+	ListFeedServers(ctx context.Context, request ListFeedServersRequestObject) (ListFeedServersResponseObject, error)
+	// CreateFeedServer Register a feed server
+	// (POST /feed-servers)
+	CreateFeedServer(ctx context.Context, request CreateFeedServerRequestObject) (CreateFeedServerResponseObject, error)
+	// DeleteFeedServer Remove a feed server
+	// (DELETE /feed-servers/{id})
+	DeleteFeedServer(ctx context.Context, request DeleteFeedServerRequestObject) (DeleteFeedServerResponseObject, error)
+	// UpdateFeedServer Change a feed server
+	// (PATCH /feed-servers/{id})
+	UpdateFeedServer(ctx context.Context, request UpdateFeedServerRequestObject) (UpdateFeedServerResponseObject, error)
+	// TestFeedServer Connect to a feed server and read its data status
+	// (POST /feed-servers/{id}/test)
+	TestFeedServer(ctx context.Context, request TestFeedServerRequestObject) (TestFeedServerResponseObject, error)
+	// TrustFeedServerKey Trust the key a feed server presented in place of the stored one
+	// (POST /feed-servers/{id}/trust-key)
+	TrustFeedServerKey(ctx context.Context, request TrustFeedServerKeyRequestObject) (TrustFeedServerKeyResponseObject, error)
 	// ListImages Container images, aggregated by digest
 	// (GET /images)
 	ListImages(ctx context.Context, request ListImagesRequestObject) (ListImagesResponseObject, error)
@@ -25520,6 +28038,203 @@ func (sh *strictHandler) GetDashboard(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetDashboardResponseObject); ok {
 		if err := validResponse.VisitGetDashboardResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetFeedInstance operation middleware
+func (sh *strictHandler) GetFeedInstance(w http.ResponseWriter, r *http.Request) {
+	var request GetFeedInstanceRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetFeedInstance(ctx, request.(GetFeedInstanceRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetFeedInstance")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetFeedInstanceResponseObject); ok {
+		if err := validResponse.VisitGetFeedInstanceResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListFeedServers operation middleware
+func (sh *strictHandler) ListFeedServers(w http.ResponseWriter, r *http.Request) {
+	var request ListFeedServersRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListFeedServers(ctx, request.(ListFeedServersRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListFeedServers")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListFeedServersResponseObject); ok {
+		if err := validResponse.VisitListFeedServersResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateFeedServer operation middleware
+func (sh *strictHandler) CreateFeedServer(w http.ResponseWriter, r *http.Request) {
+	var request CreateFeedServerRequestObject
+
+	var body CreateFeedServerJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateFeedServer(ctx, request.(CreateFeedServerRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateFeedServer")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateFeedServerResponseObject); ok {
+		if err := validResponse.VisitCreateFeedServerResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteFeedServer operation middleware
+func (sh *strictHandler) DeleteFeedServer(w http.ResponseWriter, r *http.Request, id PathId) {
+	var request DeleteFeedServerRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteFeedServer(ctx, request.(DeleteFeedServerRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteFeedServer")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteFeedServerResponseObject); ok {
+		if err := validResponse.VisitDeleteFeedServerResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateFeedServer operation middleware
+func (sh *strictHandler) UpdateFeedServer(w http.ResponseWriter, r *http.Request, id PathId) {
+	var request UpdateFeedServerRequestObject
+
+	request.Id = id
+
+	var body UpdateFeedServerJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateFeedServer(ctx, request.(UpdateFeedServerRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateFeedServer")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateFeedServerResponseObject); ok {
+		if err := validResponse.VisitUpdateFeedServerResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// TestFeedServer operation middleware
+func (sh *strictHandler) TestFeedServer(w http.ResponseWriter, r *http.Request, id PathId) {
+	var request TestFeedServerRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.TestFeedServer(ctx, request.(TestFeedServerRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "TestFeedServer")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(TestFeedServerResponseObject); ok {
+		if err := validResponse.VisitTestFeedServerResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// TrustFeedServerKey operation middleware
+func (sh *strictHandler) TrustFeedServerKey(w http.ResponseWriter, r *http.Request, id PathId) {
+	var request TrustFeedServerKeyRequestObject
+
+	request.Id = id
+
+	var body TrustFeedServerKeyJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.TrustFeedServerKey(ctx, request.(TrustFeedServerKeyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "TrustFeedServerKey")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(TrustFeedServerKeyResponseObject); ok {
+		if err := validResponse.VisitTrustFeedServerKeyResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

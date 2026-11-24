@@ -28,6 +28,7 @@ import (
 	"github.com/bomcensus/bomcensus/internal/pki"
 	"github.com/bomcensus/bomcensus/internal/release"
 	"github.com/bomcensus/bomcensus/internal/server/adminapi/apierr"
+	"github.com/bomcensus/bomcensus/internal/server/feedsvc"
 	"github.com/bomcensus/bomcensus/internal/server/pkisvc"
 	"github.com/bomcensus/bomcensus/internal/server/secret"
 	"github.com/bomcensus/bomcensus/internal/server/store"
@@ -90,8 +91,12 @@ func newEnv(t *testing.T, withRunner bool) *env {
 	if err != nil {
 		t.Fatal(err)
 	}
+	fs, err := feedsvc.New(feedsvc.Config{Store: db, Box: box, RequestTimeout: 5 * time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
 	e := &env{t: t, db: db, box: box, pki: ps}
-	cfg := Config{Store: db, PKI: ps, Updates: us, Secrets: box,
+	cfg := Config{Store: db, PKI: ps, Updates: us, Secrets: box, Feed: fs,
 		PrincipalID: func(context.Context) string { return "admin-1" }}
 	if withRunner {
 		e.runner = &fakeRunner{}
