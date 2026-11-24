@@ -329,3 +329,50 @@ func TestRunErrors(t *testing.T) {
 		t.Fatalf("saved %+v", st.batches)
 	}
 }
+
+func TestDistroRating(t *testing.T) {
+	adv := func(sev ...string) []store.VulnAdvisory {
+		var out []store.VulnAdvisory
+		for _, s := range sev {
+			out = append(out, store.VulnAdvisory{Source: "osv", ID: "X", Severity: s})
+		}
+		return out
+	}
+	for _, c := range []struct {
+		advs []store.VulnAdvisory
+		want string
+	}{
+		{adv("unimportant"), store.SeverityNegligible},
+		{adv(" Unimportant "), store.SeverityNegligible},
+		{adv("low*"), "low"},
+		{adv("Moderate"), "medium"},
+		{adv("important"), "high"},
+		{adv("unimportant", "", "medium"), "medium"},
+		{adv("not yet assigned"), ""},
+		{adv("end-of-life"), ""},
+		{adv(""), ""},
+		{nil, ""},
+	} {
+		if got := DistroRating(c.advs); got != c.want {
+			t.Errorf("DistroRating(%+v) = %q, want %q", c.advs, got, c.want)
+		}
+	}
+}
+
+func TestConvertRatesPackageMatches(t *testing.T) {
+	res := &matchResult{
+		Targets: []targetResult{{ID: "t0", Components: []componentResult{{Ref: "c1", Status: "checked", Matches: []match{
+			{VulnID: "CVE-1", Method: "package", Advisories: []store.VulnAdvisory{{Source: "osv", ID: "DEBIAN-CVE-1", Severity: "unimportant"}}},
+			{VulnID: "CVE-1", Method: "cpe", Advisories: []store.VulnAdvisory{{Source: "nvd", ID: "CVE-1", Severity: "unimportant"}}},
+		}}}}},
+		Vulnerabilities: map[string]vulnerability{"CVE-1": {ID: "CVE-1"}},
+	}
+	b, err := convert(res, []store.Component{{ID: "c1"}}, store.MatchEpoch{}, time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	vs := b.Components[0].Vulns
+	if vs[0].Severity != store.SeverityNegligible || vs[1].Severity != "" {
+		t.Fatalf("severities %q %q", vs[0].Severity, vs[1].Severity)
+	}
+}

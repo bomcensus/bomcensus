@@ -107,12 +107,69 @@ func hasExposure(c store.ExposureCounts, e gen.Exposure) bool {
 	return true
 }
 
-func severityOf(score *float64) *gen.Severity {
-	if score == nil {
+func severityCountsDTO(c store.SeverityCounts) gen.SeverityCounts {
+	return gen.SeverityCounts{Critical: c.Critical, High: c.High, Medium: c.Medium, Low: c.Low,
+		Negligible: c.Negligible, Unknown: c.Unknown}
+}
+
+// topSeverity is the highest rating of an aggregate. Vulnerabilities
+// without a rating may be anything: with one, a rating no higher than
+// negligible is not given.
+func topSeverity(c store.SeverityCounts) *gen.Severity {
+	switch {
+	case c.Critical > 0:
+		return severityPtr("critical")
+	case c.High > 0:
+		return severityPtr("high")
+	case c.Medium > 0:
+		return severityPtr("medium")
+	case c.Low > 0:
+		return severityPtr("low")
+	case c.Unknown > 0:
 		return nil
+	case c.Negligible > 0:
+		return severityPtr(store.SeverityNegligible)
 	}
-	s := gen.Severity(vulnsvc.Rating(*score))
-	return &s
+	return nil
+}
+
+func countSeverity(c *store.SeverityCounts, s string) {
+	switch s {
+	case "critical":
+		c.Critical++
+	case "high":
+		c.High++
+	case "medium":
+		c.Medium++
+	case "low":
+		c.Low++
+	case store.SeverityNegligible:
+		c.Negligible++
+	default:
+		c.Unknown++
+	}
+}
+
+// negligibleOnly tells whether all n vulnerabilities of an aggregate are
+// rated negligible.
+func negligibleOnly(c store.SeverityCounts, n int) bool { return n > 0 && c.Negligible == n }
+
+func isNegligible(s *gen.Severity) bool { return s != nil && *s == gen.SeverityNegligible }
+
+func negligibleFinding(f store.OpenFinding) bool {
+	return store.MatchSeverity(f.Match, f.Meta) == store.SeverityNegligible
+}
+
+// negligibleLast orders what is rated negligible after the rest; whatever
+// else ranks an item, the distribution says it does not matter there.
+func negligibleLast(a, b bool) int {
+	switch {
+	case a == b:
+		return 0
+	case a:
+		return 1
+	}
+	return -1
 }
 
 func severityPtr(s string) *gen.Severity {
@@ -159,10 +216,8 @@ func componentUnitDTO(r store.VulnComponentRow) gen.VulnComponent {
 	out := gen.VulnComponent{
 		ComponentId: r.Component.ID, Name: r.Component.Name, Version: r.Component.Version,
 		Type: gen.ComponentType(r.Component.Type), Purl: optStr(r.Component.PURL),
-		Cves: len(r.VulnIDs), Kev: len(r.KEVVulnIDs),
-		SeverityCounts: gen.SeverityCounts{Critical: r.Severity.Critical, High: r.Severity.High, Medium: r.Severity.Medium,
-			Low: r.Severity.Low, Unknown: r.Severity.Unknown},
-		Score: r.MaxScore, Severity: severityOf(r.MaxScore), Epss: r.MaxEPSS,
+		Cves: len(r.VulnIDs), Kev: len(r.KEVVulnIDs), SeverityCounts: severityCountsDTO(r.Severity),
+		Score: r.MaxScore, Severity: topSeverity(r.Severity), Epss: r.MaxEPSS,
 		Exposure: gen.Exposure(maxExposure(r.Exposure)), ExposureCounts: exposureCountsDTO(r.Exposure),
 		Assets: r.Assets, FixedVersions: r.FixedVersions, Processes: make([]gen.ProcessCount, 0, len(r.Processes)),
 	}
@@ -188,9 +243,12 @@ func componentUnitDTO(r store.VulnComponentRow) gen.VulnComponent {
 }
 
 // sortUnits orders update actions by exposure, then known exploitation,
-// EPSS, CVSS and name.
+// EPSS, CVSS and name; those rated only negligible come last.
 func sortUnits(rows []store.VulnComponentRow) {
 	slices.SortStableFunc(rows, func(a, b store.VulnComponentRow) int {
+		if c := negligibleLast(negligibleOnly(a.Severity, len(a.VulnIDs)), negligibleOnly(b.Severity, len(b.VulnIDs))); c != 0 {
+			return c
+		}
 		return cmpRank(
 			exposureLevel[maxExposure(a.Exposure)], exposureLevel[maxExposure(b.Exposure)],
 			len(a.KEVVulnIDs) > 0, len(b.KEVVulnIDs) > 0, a.MaxEPSS, b.MaxEPSS, a.MaxScore, b.MaxScore,
@@ -234,7 +292,7 @@ func cmpDesc(a, b *float64) int {
 func unitMatches(r store.VulnComponentRow, q *string, sev *gen.Severity, exp *gen.Exposure, kev *bool) bool {
 	if sev != nil {
 		n := map[gen.Severity]int{gen.SeverityCritical: r.Severity.Critical, gen.SeverityHigh: r.Severity.High, gen.SeverityMedium: r.Severity.Medium,
-			gen.SeverityLow: r.Severity.Low, gen.SeverityNone: r.Severity.Unknown}[*sev]
+			gen.SeverityLow: r.Severity.Low, gen.SeverityNegligible: r.Severity.Negligible, gen.SeverityNone: r.Severity.Unknown}[*sev]
 		if n == 0 {
 			return false
 		}
@@ -275,7 +333,7 @@ func pageSlice[T any](items []T, limit, offset *int) ([]T, error) {
 // ListVulnerableComponents implements gen.StrictServerInterface.
 func (h *Handlers) ListVulnerableComponents(ctx context.Context, req gen.ListVulnerableComponentsRequestObject) (gen.ListVulnerableComponentsResponseObject, error) {
 	prm := req.Params
-	rows, err := h.cfg.Store.VulnComponents(ctx, h.viewOptions(prm.IncludeDeferred))
+	rows, err := h.cfg.Store.VulnComponents(ctx, h.viewOptions(prm.IncludeDeferred, prm.IncludeNegligible, prm.Severity))
 	if err != nil {
 		return nil, err
 	}
@@ -318,19 +376,10 @@ func unitOf(c store.Component, fs []store.OpenFinding) store.VulnComponentRow {
 	for id, f := range vulns {
 		r.VulnIDs = append(r.VulnIDs, id)
 		m := f.Meta
-		switch m.Severity {
-		case "critical":
-			r.Severity.Critical++
+		sev := store.MatchSeverity(f.Match, m)
+		countSeverity(&r.Severity, sev)
+		if sev == "critical" || sev == "high" {
 			r.HotVulnIDs = append(r.HotVulnIDs, id)
-		case "high":
-			r.Severity.High++
-			r.HotVulnIDs = append(r.HotVulnIDs, id)
-		case "medium":
-			r.Severity.Medium++
-		case "low":
-			r.Severity.Low++
-		default:
-			r.Severity.Unknown++
 		}
 		if m.KEV != nil {
 			r.KEVVulnIDs = append(r.KEVVulnIDs, id)
@@ -507,7 +556,7 @@ func (h *Handlers) GetVulnerableComponent(ctx context.Context, req gen.GetVulner
 		for _, e := range a.places {
 			countExposure(&ec, e)
 		}
-		v := cveDTO(a.f.Meta, 1, len(a.assets), ec)
+		v := cveDTO(a.f.Meta, store.MatchSeverity(a.f.Match, a.f.Meta), 1, len(a.assets), ec)
 		fs := gen.FixState(a.f.Match.FixState)
 		v.FixState, v.FixedVersion = &fs, optStr(a.f.Match.FixedVersion)
 		p := processesDTO(a.f.Processes)
@@ -526,9 +575,10 @@ func (h *Handlers) GetVulnerableComponent(ctx context.Context, req gen.GetVulner
 
 // ── vulnerabilities ─────────────────────────────────────────────────────
 
-func cveDTO(m store.VulnMeta, components, assets int, ec store.ExposureCounts) gen.VulnCve {
+// cveDTO describes a vulnerability rated sev (store.MatchSeverity).
+func cveDTO(m store.VulnMeta, sev string, components, assets int, ec store.ExposureCounts) gen.VulnCve {
 	return gen.VulnCve{
-		VulnId: m.ID, Summary: optStr(m.Summary), Severity: severityPtr(m.Severity), Score: m.MaxScore,
+		VulnId: m.ID, Summary: optStr(m.Summary), Severity: severityPtr(sev), Score: m.MaxScore,
 		Kev: m.KEV != nil, KevAdded: kevDate(m.KEV), Epss: m.EPSS, EpssPercentile: m.EPSSPercentile,
 		Components: components, Assets: assets, Exposure: gen.Exposure(maxExposure(ec)), ExposureCounts: exposureCountsDTO(ec),
 	}
@@ -536,6 +586,9 @@ func cveDTO(m store.VulnMeta, components, assets int, ec store.ExposureCounts) g
 
 func sortCves(vs []gen.VulnCve) {
 	slices.SortStableFunc(vs, func(a, b gen.VulnCve) int {
+		if c := negligibleLast(isNegligible(a.Severity), isNegligible(b.Severity)); c != 0 {
+			return c
+		}
 		return cmpRank(exposureLevel[string(a.Exposure)], exposureLevel[string(b.Exposure)], a.Kev, b.Kev,
 			a.Epss, b.Epss, a.Score, b.Score, a.VulnId, b.VulnId)
 	})
@@ -544,14 +597,14 @@ func sortCves(vs []gen.VulnCve) {
 // ListVulnerabilities implements gen.StrictServerInterface.
 func (h *Handlers) ListVulnerabilities(ctx context.Context, req gen.ListVulnerabilitiesRequestObject) (gen.ListVulnerabilitiesResponseObject, error) {
 	prm := req.Params
-	rows, err := h.cfg.Store.VulnCves(ctx, h.viewOptions(prm.IncludeDeferred))
+	rows, err := h.cfg.Store.VulnCves(ctx, h.viewOptions(prm.IncludeDeferred, prm.IncludeNegligible, prm.Severity))
 	if err != nil {
 		return nil, err
 	}
 	var items []gen.VulnCve
 	for _, r := range rows {
-		if prm.Severity != nil && string(*prm.Severity) != r.Meta.Severity &&
-			!(*prm.Severity == gen.SeverityNone && r.Meta.Severity == "") {
+		if prm.Severity != nil && string(*prm.Severity) != r.Severity &&
+			!(*prm.Severity == gen.SeverityNone && r.Severity == "") {
 			continue
 		}
 		if prm.Exposure != nil && !hasExposure(r.Exposure, *prm.Exposure) {
@@ -563,7 +616,7 @@ func (h *Handlers) ListVulnerabilities(ctx context.Context, req gen.ListVulnerab
 		if !textMatches(prm.Q, append(append([]string{r.Meta.ID, r.Meta.Summary}, r.Meta.Aliases...), r.ComponentNames...)...) {
 			continue
 		}
-		v := cveDTO(r.Meta, r.Components, r.Assets, r.Exposure)
+		v := cveDTO(r.Meta, r.Severity, r.Components, r.Assets, r.Exposure)
 		if r.Deferred > 0 {
 			n := r.Deferred
 			v.Deferred = &n
@@ -620,6 +673,12 @@ func (h *Handlers) GetVulnerability(ctx context.Context, req gen.GetVulnerabilit
 		Vulnerability: vulnDetailDTO(fs[0].Meta),
 		Locations:     locationsOf(fs),
 	}
+	// The rating of the vulnerability is the highest of its matches.
+	var sev store.SeverityCounts
+	for _, f := range fs {
+		countSeverity(&sev, store.MatchSeverity(f.Match, f.Meta))
+	}
+	out.Vulnerability.Severity = topSeverity(sev)
 	type agg struct {
 		f        store.OpenFinding
 		assets   map[string]bool
@@ -654,6 +713,7 @@ func (h *Handlers) GetVulnerability(ctx context.Context, req gen.GetVulnerabilit
 			Purl: optStr(a.f.Component.PURL), Method: gen.VulnCveComponentMethod(m.Method), Ecosystem: optStr(m.Ecosystem),
 			FixState: gen.FixState(m.FixState), FixedVersion: optStr(m.FixedVersion), Platforms: m.Platforms,
 			Advisories: make([]gen.VulnAdvisory, 0, len(m.Advisories)), Assets: len(a.assets), Exposure: gen.Exposure(a.f.Exposure),
+			Severity: severityPtr(store.MatchSeverity(m, a.f.Meta)),
 		}
 		findings, deferred, rules := a.findings, a.deferred, a.rules.dto(h.cfg.Now())
 		c.Findings, c.Deferred, c.Rules = &findings, &deferred, &rules
@@ -674,6 +734,9 @@ func (h *Handlers) GetVulnerability(ctx context.Context, req gen.GetVulnerabilit
 		out.Components = append(out.Components, c)
 	}
 	slices.SortStableFunc(out.Components, func(a, b gen.VulnCveComponent) int {
+		if c := negligibleLast(isNegligible(a.Severity), isNegligible(b.Severity)); c != 0 {
+			return c
+		}
 		return cmp.Compare(exposureLevel[string(b.Exposure)], exposureLevel[string(a.Exposure)])
 	})
 	return out, nil
@@ -698,7 +761,7 @@ func (h *Handlers) ListAssetVulnerabilities(ctx context.Context, req gen.ListAss
 			ComponentId: f.Component.ID, ComponentName: f.Component.Name, ComponentVersion: f.Component.Version,
 			ComponentPurl: optStr(f.Component.PURL),
 			Container:     optStr(f.Container), Layer: gen.FindingLayer(layerOf(f.Layer)), ImageDigest: optStr(f.ImageDigest),
-			VulnId: f.VulnID, Summary: optStr(f.Meta.Summary), Severity: severityPtr(f.Meta.Severity), Score: f.Meta.MaxScore,
+			VulnId: f.VulnID, Summary: optStr(f.Meta.Summary), Severity: severityPtr(store.MatchSeverity(f.Match, f.Meta)), Score: f.Meta.MaxScore,
 			Kev: f.Meta.KEV != nil, Epss: f.Meta.EPSS, Exposure: gen.Exposure(f.Exposure), FixState: gen.FixState(f.Match.FixState),
 			FixedVersion: optStr(f.Match.FixedVersion), Processes: processesDTO(f.Processes), FirstSeen: f.FirstSeen,
 			Triage:       findingTriageDTO(f, h.cfg.Now()),
@@ -706,6 +769,9 @@ func (h *Handlers) ListAssetVulnerabilities(ctx context.Context, req gen.ListAss
 		})
 	}
 	slices.SortStableFunc(out.Items, func(a, b gen.AssetVuln) int {
+		if c := negligibleLast(isNegligible(a.Severity), isNegligible(b.Severity)); c != 0 {
+			return c
+		}
 		return cmpRank(placeRank(string(a.Exposure), a.Reachability), placeRank(string(b.Exposure), b.Reachability), a.Kev, b.Kev,
 			a.Epss, b.Epss, a.Score, b.Score, a.ComponentName+" "+a.VulnId, b.ComponentName+" "+b.VulnId)
 	})
@@ -724,6 +790,9 @@ func (h *Handlers) GetVulnerabilitySummary(ctx context.Context, _ gen.GetVulnera
 	sortUnits(rows)
 	var out gen.GetVulnerabilitySummary200JSONResponse
 	if out.Deferred, err = h.cfg.Store.CountDeferred(ctx, now); err != nil {
+		return nil, err
+	}
+	if out.Negligible, err = h.cfg.Store.CountNegligible(ctx, now); err != nil {
 		return nil, err
 	}
 	cves, kev, urgent := map[string]bool{}, map[string]bool{}, map[string]bool{}

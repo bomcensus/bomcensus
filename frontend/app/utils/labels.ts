@@ -221,6 +221,7 @@ export const severityLabel: Record<Severity, string> = {
   high: 'High',
   medium: 'Medium',
   low: 'Low',
+  negligible: 'Negligible',
   none: 'None',
 }
 

@@ -72,6 +72,10 @@ type VulnAdvisory struct {
 	Severity string `json:"severity,omitempty"`
 }
 
+// SeverityNegligible is the rating of a match the distribution considers
+// negligible (Debian "unimportant"). Only matches carry it, never CVSS.
+const SeverityNegligible = "negligible"
+
 // ComponentVuln is one vulnerability matched to a component.
 type ComponentVuln struct {
 	VulnID       string
@@ -85,6 +89,19 @@ type ComponentVuln struct {
 	Advisories   []VulnAdvisory
 	// Symbols are the vulnerable Go functions, empty when not known.
 	Symbols []GoImport
+	// Severity is the distribution's rating of a package match (critical,
+	// high, medium, low, negligible), empty when its advisories have none.
+	Severity string
+}
+
+// MatchSeverity is the rating a match is ranked by: the distribution's
+// rating when it has one, which knows how the package is built, otherwise
+// the CVSS rating of the vulnerability.
+func MatchSeverity(v ComponentVuln, m VulnMeta) string {
+	if v.Severity != "" {
+		return v.Severity
+	}
+	return m.Severity
 }
 
 // ComponentMatch is the outcome of matching one component.

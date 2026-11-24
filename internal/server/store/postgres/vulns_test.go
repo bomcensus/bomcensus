@@ -6,6 +6,8 @@ package postgres
 
 import (
 	"errors"
+	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -43,7 +45,7 @@ func TestMatches(t *testing.T) {
 		Components: []store.ComponentMatch{
 			{ComponentID: ids["openssl"], OSKey: "ubuntu:24.04", Status: store.MatchChecked, Vulns: []store.ComponentVuln{
 				{VulnID: "CVE-2024-0001", Method: "package", Ecosystem: "ubuntu:24.04", FixState: "fixed", FixedVersion: "3.0.13-0ubuntu3.1",
-					Advisories: []store.VulnAdvisory{{Source: "osv", ID: "UBUNTU-CVE-2024-0001", Severity: "high"}}},
+					Advisories: []store.VulnAdvisory{{Source: "osv", ID: "UBUNTU-CVE-2024-0001", Severity: "high"}}, Severity: "high"},
 				{VulnID: "CVE-2024-0002", Method: "cpe", Ecosystem: "nvd", FixState: "unknown", CPEMatch: "range", RangeSource: "nvd",
 					Platforms: []string{"cpe:2.3:o:microsoft:windows:-:*:*:*:*:*:*:*"}},
 			}},
@@ -74,11 +76,32 @@ func TestMatches(t *testing.T) {
 	v := vulns[0]
 	if v.VulnID != "CVE-2024-0001" || v.FixedVersion != "3.0.13-0ubuntu3.1" || *v.Meta.MaxScore != 9.8 || *v.Meta.EPSS != 0.97354 ||
 		v.Meta.KEV == nil || v.Meta.KEV.RequiredAction != "patch" || !v.Meta.Published.Equal(published) ||
-		len(v.Advisories) != 1 || v.Advisories[0].Severity != "high" || len(v.Meta.CVSS) != 1 || v.Meta.Aliases[0] != "GHSA-x" {
+		len(v.Advisories) != 1 || v.Advisories[0].Severity != "high" || len(v.Meta.CVSS) != 1 || v.Meta.Aliases[0] != "GHSA-x" ||
+		v.Severity != "high" || store.MatchSeverity(v.ComponentVuln, v.Meta) != "high" {
 		t.Fatalf("first vuln %+v", v)
 	}
 	if w := vulns[1]; w.CPEMatch != "range" || len(w.Platforms) != 1 || w.Meta.MaxScore != nil || w.Meta.KEV != nil {
 		t.Fatalf("second vuln %+v", w)
+	}
+
+	// The migration rates existing package matches from their advisories.
+	if _, err := db.q.Exec(ctx, `UPDATE component_vulns SET severity = '',
+		advisories = CASE method WHEN 'package' THEN '[{"source":"osv","id":"DEBIAN-CVE-2024-0001","severity":"unimportant"},{"source":"osv","id":"DSA-1"}]'::jsonb
+			ELSE '[{"source":"nvd","id":"CVE-2024-0002","severity":"high"}]'::jsonb END
+		WHERE component_id = $1`, ids["openssl"]); err != nil {
+		t.Fatal(err)
+	}
+	src, err := os.ReadFile("migrations/0096_match_severity.sql")
+	ivMust(t, err)
+	up := strings.SplitN(strings.SplitN(string(src), "-- +goose Up", 2)[1], "-- +goose Down", 2)[0]
+	up = up[strings.Index(up, "UPDATE"):]
+	if _, err := db.q.Exec(ctx, up); err != nil {
+		t.Fatal(err)
+	}
+	vulns, err = db.ListComponentVulns(ctx, ids["openssl"])
+	ivMust(t, err)
+	if vulns[0].Severity != store.SeverityNegligible || vulns[1].Severity != "" {
+		t.Fatalf("migrated severities %q %q", vulns[0].Severity, vulns[1].Severity)
 	}
 
 	// A newer revision makes both pending again; matching replaces the

@@ -9,9 +9,9 @@ import (
 	"time"
 )
 
-// SeverityCounts counts vulnerabilities by rating.
+// SeverityCounts counts vulnerabilities by rating (MatchSeverity).
 type SeverityCounts struct {
-	Critical, High, Medium, Low, Unknown int
+	Critical, High, Medium, Low, Negligible, Unknown int
 }
 
 // ExposureCounts counts locations (asset and container) by exposure.
@@ -49,7 +49,9 @@ type VulnComponentRow struct {
 
 // VulnCveRow aggregates the open findings of one vulnerability.
 type VulnCveRow struct {
-	Meta       VulnMeta
+	Meta VulnMeta
+	// Severity is the highest MatchSeverity of its open findings.
+	Severity   string
 	Components int
 	// ComponentNames are the names of the affected components (for search).
 	ComponentNames []string
@@ -64,6 +66,8 @@ type VulnViewOptions struct {
 	At time.Time
 	// IncludeDeferred keeps findings that an active rule defers.
 	IncludeDeferred bool
+	// IncludeNegligible keeps findings the distribution rates negligible.
+	IncludeNegligible bool
 }
 
 // OpenFindingFilter selects open findings; at least one of the ID fields
@@ -156,8 +160,11 @@ type VulnViews interface {
 	// ImageVulns lists the vulnerabilities of one image's content.
 	ImageVulns(ctx context.Context, digest string, at time.Time) ([]ImageVuln, error)
 	// CountDeferred counts the vulnerabilities whose open findings an
-	// active rule defers.
+	// active rule defers, negligible ones aside.
 	CountDeferred(ctx context.Context, at time.Time) (int, error)
+	// CountNegligible counts the vulnerabilities whose open findings that
+	// are not deferred are all rated negligible.
+	CountNegligible(ctx context.Context, at time.Time) (int, error)
 	// OpenFindings lists the open findings f selects.
 	OpenFindings(ctx context.Context, f OpenFindingFilter) ([]OpenFinding, error)
 	// GetVulnMeta returns ErrNotFound for an unknown id.

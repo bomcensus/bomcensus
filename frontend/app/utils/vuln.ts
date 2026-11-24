@@ -10,6 +10,7 @@ export const severityText: Record<Severity, string> = {
   high: 'text-high',
   medium: 'text-medium',
   low: 'text-low',
+  negligible: 'text-ink-3',
   none: 'text-ink-3',
 }
 

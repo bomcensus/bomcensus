@@ -23,8 +23,11 @@ import (
 	"github.com/bomcensus/bomcensus/internal/server/vulnsvc"
 )
 
-func (h *Handlers) viewOptions(includeDeferred *bool) store.VulnViewOptions {
-	return store.VulnViewOptions{At: h.cfg.Now(), IncludeDeferred: includeDeferred != nil && *includeDeferred}
+// viewOptions are the options of a list; asking for negligible ones by
+// severity includes them.
+func (h *Handlers) viewOptions(includeDeferred, includeNegligible *bool, sev *gen.Severity) store.VulnViewOptions {
+	return store.VulnViewOptions{At: h.cfg.Now(), IncludeDeferred: includeDeferred != nil && *includeDeferred,
+		IncludeNegligible: (includeNegligible != nil && *includeNegligible) || (sev != nil && *sev == gen.SeverityNegligible)}
 }
 
 func triageRuleDTO(r store.TriageRule, now time.Time) gen.TriageRule {
@@ -293,21 +296,23 @@ func mapKeys[K comparable, V any](m map[K]V) func(func(K) bool) {
 func processDTO(r store.VulnProcessRow) gen.VulnProcess {
 	return gen.VulnProcess{
 		Exe: r.Exe, Assets: r.Assets, Processes: r.Processes, Listening: r.Listening, Components: r.Components,
-		Cves: len(r.VulnIDs), Kev: r.KEV, Score: r.MaxScore, Severity: severityOf(r.MaxScore),
-		SeverityCounts: gen.SeverityCounts{Critical: r.Severity.Critical, High: r.Severity.High, Medium: r.Severity.Medium,
-			Low: r.Severity.Low, Unknown: r.Severity.Unknown},
+		Cves: len(r.VulnIDs), Kev: r.KEV, Score: r.MaxScore, Severity: topSeverity(r.Severity),
+		SeverityCounts: severityCountsDTO(r.Severity),
 	}
 }
 
 // ListVulnerableProcesses implements gen.StrictServerInterface.
 func (h *Handlers) ListVulnerableProcesses(ctx context.Context, req gen.ListVulnerableProcessesRequestObject) (gen.ListVulnerableProcessesResponseObject, error) {
 	prm := req.Params
-	rows, err := h.cfg.Store.VulnProcesses(ctx, h.viewOptions(prm.IncludeDeferred))
+	rows, err := h.cfg.Store.VulnProcesses(ctx, h.viewOptions(prm.IncludeDeferred, prm.IncludeNegligible, nil))
 	if err != nil {
 		return nil, err
 	}
 	rows = slices.DeleteFunc(rows, func(r store.VulnProcessRow) bool { return !textMatches(prm.Q, r.Exe) })
 	slices.SortStableFunc(rows, func(a, b store.VulnProcessRow) int {
+		if c := negligibleLast(negligibleOnly(a.Severity, len(a.VulnIDs)), negligibleOnly(b.Severity, len(b.VulnIDs))); c != 0 {
+			return c
+		}
 		if (a.Listening > 0) != (b.Listening > 0) {
 			if a.Listening > 0 {
 				return -1
@@ -344,9 +349,17 @@ func (h *Handlers) GetVulnerableProcess(ctx context.Context, req gen.GetVulnerab
 	if len(fs) == 0 {
 		return nil, apierr.NotFound("vulnerable process")
 	}
+	// Negligible findings are left out as the list leaves them out, unless
+	// the executable has no others.
+	o := store.VulnViewOptions{At: now}
+	if shown := slices.DeleteFunc(slices.Clone(fs), negligibleFinding); len(shown) > 0 {
+		fs = shown
+	} else {
+		o.IncludeNegligible = true
+	}
 	// The process row, as the list computes it.
 	var row store.VulnProcessRow
-	rows, err := h.cfg.Store.VulnProcesses(ctx, store.VulnViewOptions{At: now})
+	rows, err := h.cfg.Store.VulnProcesses(ctx, o)
 	if err != nil {
 		return nil, err
 	}
@@ -385,22 +398,24 @@ func imageDTO(r store.VulnImageRow) gen.VulnImage {
 	}
 	return gen.VulnImage{
 		Digest: r.Digest, Tags: tags, Components: r.Components, Cves: len(r.VulnIDs), Kev: r.KEV,
-		Score: r.MaxScore, Severity: severityOf(r.MaxScore), Epss: r.MaxEPSS,
-		SeverityCounts: gen.SeverityCounts{Critical: r.Severity.Critical, High: r.Severity.High, Medium: r.Severity.Medium,
-			Low: r.Severity.Low, Unknown: r.Severity.Unknown},
-		Containers: r.Containers, Assets: r.Assets,
+		Score: r.MaxScore, Severity: topSeverity(r.Severity), Epss: r.MaxEPSS,
+		SeverityCounts: severityCountsDTO(r.Severity),
+		Containers:     r.Containers, Assets: r.Assets,
 	}
 }
 
 // ListVulnerableImages implements gen.StrictServerInterface.
 func (h *Handlers) ListVulnerableImages(ctx context.Context, req gen.ListVulnerableImagesRequestObject) (gen.ListVulnerableImagesResponseObject, error) {
 	prm := req.Params
-	rows, err := h.cfg.Store.VulnImages(ctx, h.viewOptions(prm.IncludeDeferred))
+	rows, err := h.cfg.Store.VulnImages(ctx, h.viewOptions(prm.IncludeDeferred, prm.IncludeNegligible, nil))
 	if err != nil {
 		return nil, err
 	}
 	rows = slices.DeleteFunc(rows, func(r store.VulnImageRow) bool { return !textMatches(prm.Q, append([]string{r.Digest}, r.Tags...)...) })
 	slices.SortStableFunc(rows, func(a, b store.VulnImageRow) int {
+		if c := negligibleLast(negligibleOnly(a.Severity, len(a.VulnIDs)), negligibleOnly(b.Severity, len(b.VulnIDs))); c != 0 {
+			return c
+		}
 		if (a.Containers > 0) != (b.Containers > 0) {
 			if a.Containers > 0 {
 				return -1
@@ -430,7 +445,7 @@ func (h *Handlers) GetVulnerableImage(ctx context.Context, req gen.GetVulnerable
 	if len(vs) == 0 {
 		return nil, apierr.NotFound("vulnerable image")
 	}
-	rows, err := h.cfg.Store.VulnImages(ctx, store.VulnViewOptions{At: now, IncludeDeferred: true})
+	rows, err := h.cfg.Store.VulnImages(ctx, store.VulnViewOptions{At: now, IncludeDeferred: true, IncludeNegligible: true})
 	if err != nil {
 		return nil, err
 	}
@@ -466,7 +481,7 @@ func (h *Handlers) GetVulnerableImage(ctx context.Context, req gen.GetVulnerable
 			c.fixes = append(c.fixes, v.Match.FixedVersion)
 		}
 		c.dto.Cves = append(c.dto.Cves, gen.VulnImageCve{VulnId: v.Meta.ID, Summary: optStr(v.Meta.Summary),
-			Severity: severityPtr(v.Meta.Severity), Score: v.Meta.MaxScore, Kev: v.Meta.KEV != nil, Epss: v.Meta.EPSS,
+			Severity: severityPtr(store.MatchSeverity(v.Match, v.Meta)), Score: v.Meta.MaxScore, Kev: v.Meta.KEV != nil, Epss: v.Meta.EPSS,
 			FixState: gen.FixState(v.Match.FixState), FixedVersion: optStr(v.Match.FixedVersion), Deferred: v.Deferred})
 	}
 	out := gen.GetVulnerableImage200JSONResponse{Image: img}
@@ -481,11 +496,18 @@ func (h *Handlers) GetVulnerableImage(ctx context.Context, req gen.GetVulnerable
 			c.dto.FixedVersion = &v
 		}
 		slices.SortStableFunc(c.dto.Cves, func(a, b gen.VulnImageCve) int {
+			if c := negligibleLast(isNegligible(a.Severity), isNegligible(b.Severity)); c != 0 {
+				return c
+			}
 			return cmpRank(0, 0, a.Kev, b.Kev, a.Epss, b.Epss, a.Score, b.Score, a.VulnId, b.VulnId)
 		})
 		out.Components = append(out.Components, c.dto)
 	}
+	// Cves are sorted, negligible last: the first one ranks the component.
 	slices.SortStableFunc(out.Components, func(a, b gen.VulnImageComponent) int {
+		if c := negligibleLast(len(a.Cves) > 0 && isNegligible(a.Cves[0].Severity), len(b.Cves) > 0 && isNegligible(b.Cves[0].Severity)); c != 0 {
+			return c
+		}
 		var sa, sb *float64
 		if len(a.Cves) > 0 {
 			sa = a.Cves[0].Score

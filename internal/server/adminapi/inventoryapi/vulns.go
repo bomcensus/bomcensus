@@ -63,10 +63,7 @@ func componentVulnDTO(r store.ComponentVulnRow) gen.ComponentVulnerability {
 	if v.Platforms == nil {
 		v.Platforms = []string{}
 	}
-	if r.Meta.Severity != "" {
-		s := gen.Severity(r.Meta.Severity)
-		v.Severity = &s
-	}
+	v.Severity = severityPtr(store.MatchSeverity(r.ComponentVuln, r.Meta))
 	if r.Meta.KEV != nil {
 		if t, err := time.Parse(time.DateOnly, r.Meta.KEV.DateAdded); err == nil {
 			v.KevAdded = &openapi_types.Date{Time: t}

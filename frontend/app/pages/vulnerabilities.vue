@@ -36,8 +36,9 @@ const q = ref('')
 const severity = ref('')
 const exposure = ref('')
 const kevOnly = ref(false)
-// Deferred findings are hidden unless asked for.
+// Deferred findings, and those the distribution rates negligible, are hidden unless asked for.
 const hideDeferred = ref(true)
+const hideNegligible = ref(true)
 // The search goes to the server once typing pauses.
 const qDebounced = ref('')
 let qTimer: ReturnType<typeof setTimeout> | undefined
@@ -52,10 +53,11 @@ const filters = computed(() => ({
   exposure: (exposure.value || undefined) as Exposure | undefined,
   kev: kevOnly.value ? true : undefined,
   includeDeferred: hideDeferred.value ? undefined : true,
+  includeNegligible: hideNegligible.value ? undefined : true,
   limit: 500,
 }))
 
-const severityOptions = (['critical', 'high', 'medium', 'low'] as const).map((s) => ({ value: s, label: severityLabel[s] }))
+const severityOptions = (['critical', 'high', 'medium', 'low', 'negligible'] as const).map((s) => ({ value: s, label: severityLabel[s] }))
 const exposureOptions = (['listening', 'running', 'installed', 'unknown'] as const).map((e) => ({ value: e, label: exposureLabel[e] }))
 
 const { data: summary, refresh: refreshSummary } = useLoad('vulns:summary', getVulnerabilitySummary)
@@ -177,6 +179,10 @@ const tabModel = computed({ get: () => view.value as string, set: (v: string) =>
       <label class="inline-flex items-center gap-1.5 text-sm">
         <input v-model="hideDeferred" type="checkbox" class="size-[15px] accent-(--accent)" /> 유예 숨김
         <span v-if="summary?.deferred" class="mono text-xs text-ink-3">{{ summary.deferred }}</span>
+      </label>
+      <label class="inline-flex items-center gap-1.5 text-sm" title="배포판이 영향이 없거나 보안 문제가 아니라고 평가한 항목 (Debian unimportant)">
+        <input v-model="hideNegligible" type="checkbox" class="size-[15px] accent-(--accent)" /> Negligible 숨김
+        <span v-if="summary?.negligible" class="mono text-xs text-ink-3">{{ summary.negligible }}</span>
       </label>
     </FilterBar>
 
@@ -328,6 +334,7 @@ const tabModel = computed({ get: () => view.value as string, set: (v: string) =>
                     <td class="hidden px-3 py-2 text-xs text-ink-2 md:table-cell">
                       {{ c.method === 'cpe' ? `CPE ${c.cpeMatch === 'exact' ? '일치' : '범위'}${c.rangeSource ? ` · ${c.rangeSource}` : ''}` : c.advisories.map((a) => a.id).join(', ') }}
                       <div v-if="c.platforms.length" class="text-ink-3">조건: {{ c.platforms.join(', ') }}</div>
+                      <div v-if="c.severity === 'negligible'" class="text-ink-3">배포판 평가: Negligible</div>
                     </td>
                     <td class="px-3 py-2"><ExposureMeter :exposure="c.exposure" /></td>
                     <td class="mono py-2 pl-3 pr-3.5 text-right">{{ c.assets }}</td>
@@ -390,7 +397,7 @@ const tabModel = computed({ get: () => view.value as string, set: (v: string) =>
                   <span class="mono">{{ compDetail.component.cves }}</span>
                   <span class="ml-2 inline-flex gap-1.5">
                     <span
-                      v-for="s in (['critical', 'high', 'medium', 'low'] as const).filter((s) => compDetail!.component.severityCounts[s] > 0)"
+                      v-for="s in (['critical', 'high', 'medium', 'low', 'negligible'] as const).filter((s) => compDetail!.component.severityCounts[s] > 0)"
                       :key="s"
                       class="text-xs"
                       :class="severityText[s]"

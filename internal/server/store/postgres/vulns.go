@@ -83,6 +83,7 @@ type vuVulnRow struct {
 	Platforms    []string             `json:"platforms"`
 	Advisories   []store.VulnAdvisory `json:"advisories"`
 	Symbols      []store.GoImport     `json:"symbols"`
+	Severity     string               `json:"severity"`
 }
 
 type vuMatchRow struct {
@@ -128,7 +129,7 @@ func (d *DB) SaveMatches(ctx context.Context, b store.MatchBatch) error {
 			}
 			vulns = append(vulns, vuVulnRow{ComponentID: c.ComponentID, VulnID: v.VulnID, Method: v.Method, Ecosystem: v.Ecosystem,
 				FixState: v.FixState, FixedVersion: v.FixedVersion, CPEMatch: v.CPEMatch, RangeSource: v.RangeSource,
-				Platforms: vuStrings(v.Platforms), Advisories: adv, Symbols: vuSymbols(v.Symbols)})
+				Platforms: vuStrings(v.Platforms), Advisories: adv, Symbols: vuSymbols(v.Symbols), Severity: v.Severity})
 		}
 	}
 	metaJSON, err := json.Marshal(metas)
@@ -174,12 +175,12 @@ func (d *DB) SaveMatches(ctx context.Context, b store.MatchBatch) error {
 		if len(vulns) > 0 {
 			if _, err := tx.q.Exec(ctx, `
 				INSERT INTO component_vulns (component_id, vuln_id, method, ecosystem, fix_state, fixed_version,
-					cpe_match, range_source, platforms, advisories, symbols)
+					cpe_match, range_source, platforms, advisories, symbols, severity)
 				SELECT x.component_id, x.vuln_id, x.method, x.ecosystem, x.fix_state, x.fixed_version,
-					x.cpe_match, x.range_source, x.platforms, x.advisories, x.symbols
+					x.cpe_match, x.range_source, x.platforms, x.advisories, x.symbols, x.severity
 				FROM jsonb_to_recordset($1::text::jsonb) AS x(component_id uuid, vuln_id text, method text, ecosystem text,
 					fix_state text, fixed_version text, cpe_match text, range_source text, platforms text[], advisories jsonb,
-					symbols jsonb)
+					symbols jsonb, severity text)
 				ON CONFLICT DO NOTHING`,
 				string(vulnJSON)); err != nil {
 				return mgErr("save component vulnerabilities", err)
@@ -366,7 +367,7 @@ func vuF64(f *float32) *float64 {
 func (d *DB) ListComponentVulns(ctx context.Context, componentID string) ([]store.ComponentVulnRow, error) {
 	rows, err := d.q.Query(ctx, `
 		SELECT `+vuMetaCols+`, v.method, v.ecosystem, v.fix_state, v.fixed_version, v.cpe_match, v.range_source,
-			v.platforms, v.advisories::text
+			v.platforms, v.advisories::text, v.severity
 		FROM component_vulns v JOIN vuln_meta m ON m.vuln_id = v.vuln_id
 		WHERE v.component_id = $1
 		ORDER BY m.kev_added IS NULL, m.max_score DESC NULLS LAST, m.epss DESC NULLS LAST, v.vuln_id, v.method`,
@@ -380,7 +381,7 @@ func (d *DB) ListComponentVulns(ctx context.Context, componentID string) ([]stor
 		var r store.ComponentVulnRow
 		var adv []byte
 		if err := vuScanMeta(rows, &r.Meta, &r.Method, &r.Ecosystem, &r.FixState, &r.FixedVersion, &r.CPEMatch,
-			&r.RangeSource, &r.Platforms, &adv); err != nil {
+			&r.RangeSource, &r.Platforms, &adv, &r.Severity); err != nil {
 			return nil, mgErr("list component vulnerabilities", err)
 		}
 		if err := json.Unmarshal(adv, &r.Advisories); err != nil {

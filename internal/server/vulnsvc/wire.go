@@ -207,9 +207,13 @@ func convert(res *matchResult, comps []store.Component, epoch store.MatchEpoch, 
 					return store.MatchBatch{}, fmt.Errorf("vulnsvc: match names %s without its details", mt.VulnID)
 				}
 				used[mt.VulnID] = true
-				cm.Vulns = append(cm.Vulns, store.ComponentVuln{VulnID: mt.VulnID, Method: mt.Method, Ecosystem: mt.Ecosystem,
+				cv := store.ComponentVuln{VulnID: mt.VulnID, Method: mt.Method, Ecosystem: mt.Ecosystem,
 					FixState: mt.FixState, FixedVersion: mt.FixedVersion, CPEMatch: mt.CPEMatch, RangeSource: mt.RangeSource,
-					Platforms: mt.Platforms, Advisories: mt.Advisories, Symbols: goImports(mt.Symbols)})
+					Platforms: mt.Platforms, Advisories: mt.Advisories, Symbols: goImports(mt.Symbols)}
+				if mt.Method == "package" {
+					cv.Severity = DistroRating(mt.Advisories)
+				}
+				cm.Vulns = append(cm.Vulns, cv)
 			}
 			b.Components = append(b.Components, cm)
 		}
@@ -261,6 +265,39 @@ func Rating(score float64) string {
 		return "low"
 	}
 	return "none"
+}
+
+// distroRatings maps the ratings distributions give a package (Debian
+// urgency, and the plain words other converters use) to severities. Debian
+// marks "unimportant" what does not affect its binary packages or is not a
+// security problem in Debian's context. "not yet assigned" and
+// "end-of-life" are not ratings.
+var distroRatings = map[string]string{
+	"unimportant": store.SeverityNegligible,
+	"negligible":  store.SeverityNegligible,
+	"low":         "low",
+	"medium":      "medium",
+	"moderate":    "medium",
+	"high":        "high",
+	"important":   "high",
+	"critical":    "critical",
+}
+
+// severityRank orders severities, highest first.
+var severityRank = map[string]int{"critical": 5, "high": 4, "medium": 3, "low": 2, store.SeverityNegligible: 1}
+
+// DistroRating is the distribution's rating of a match: the highest rating
+// among its advisories, empty when none has one. Debian appends "*" to
+// urgencies that are not final.
+func DistroRating(advs []store.VulnAdvisory) string {
+	best := ""
+	for _, a := range advs {
+		s := distroRatings[strings.TrimRight(strings.ToLower(strings.TrimSpace(a.Severity)), "*")]
+		if severityRank[s] > severityRank[best] {
+			best = s
+		}
+	}
+	return best
 }
 
 // goImports keeps the imports that name a package and functions, with names

@@ -840,11 +840,12 @@ func (e SectionName) Valid() bool {
 
 // Defines values for Severity.
 const (
-	SeverityCritical Severity = "critical"
-	SeverityHigh     Severity = "high"
-	SeverityLow      Severity = "low"
-	SeverityMedium   Severity = "medium"
-	SeverityNone     Severity = "none"
+	SeverityCritical   Severity = "critical"
+	SeverityHigh       Severity = "high"
+	SeverityLow        Severity = "low"
+	SeverityMedium     Severity = "medium"
+	SeverityNegligible Severity = "negligible"
+	SeverityNone       Severity = "none"
 )
 
 // Valid indicates whether the value is a known member of the Severity enum.
@@ -857,6 +858,8 @@ func (e Severity) Valid() bool {
 	case SeverityLow:
 		return true
 	case SeverityMedium:
+		return true
+	case SeverityNegligible:
 		return true
 	case SeverityNone:
 		return true
@@ -2284,7 +2287,12 @@ type AssetVuln struct {
 	Reachability *Reachability `json:"reachability,omitempty"`
 	Score        *float64      `json:"score,omitempty"`
 
-	// Severity CVSS rating of the highest base score.
+	// Severity Rating of a match: the distribution's rating of a package match when
+	// its advisories have one (Debian urgency), otherwise the CVSS rating
+	// of the highest base score. `negligible` comes from distributions
+	// only (Debian `unimportant`: the binary packages are not affected,
+	// or it is not a security problem there). On a vulnerability or an
+	// aggregate, the highest rating of its matches.
 	Severity *Severity `json:"severity,omitempty"`
 	Summary  *string   `json:"summary,omitempty"`
 
@@ -2422,7 +2430,12 @@ type ComponentVulnerability struct {
 	// Score Highest CVSS base score.
 	Score *float64 `json:"score,omitempty"`
 
-	// Severity CVSS rating of the highest base score.
+	// Severity Rating of a match: the distribution's rating of a package match when
+	// its advisories have one (Debian urgency), otherwise the CVSS rating
+	// of the highest base score. `negligible` comes from distributions
+	// only (Debian `unimportant`: the binary packages are not affected,
+	// or it is not a security problem there). On a vulnerability or an
+	// aggregate, the highest rating of its matches.
 	Severity *Severity `json:"severity,omitempty"`
 	Summary  *string   `json:"summary,omitempty"`
 
@@ -3359,16 +3372,22 @@ type SectionCoverageLevel string
 // SectionName defines model for SectionName.
 type SectionName string
 
-// Severity CVSS rating of the highest base score.
+// Severity Rating of a match: the distribution's rating of a package match when
+// its advisories have one (Debian urgency), otherwise the CVSS rating
+// of the highest base score. `negligible` comes from distributions
+// only (Debian `unimportant`: the binary packages are not affected,
+// or it is not a security problem there). On a vulnerability or an
+// aggregate, the highest rating of its matches.
 type Severity string
 
-// SeverityCounts Vulnerabilities by rating; `unknown` have no CVSS score.
+// SeverityCounts Vulnerabilities by rating; `unknown` have no rating.
 type SeverityCounts struct {
-	Critical int `json:"critical"`
-	High     int `json:"high"`
-	Low      int `json:"low"`
-	Medium   int `json:"medium"`
-	Unknown  int `json:"unknown"`
+	Critical   int `json:"critical"`
+	High       int `json:"high"`
+	Low        int `json:"low"`
+	Medium     int `json:"medium"`
+	Negligible int `json:"negligible"`
+	Unknown    int `json:"unknown"`
 }
 
 // SoftwareComponent defines model for SoftwareComponent.
@@ -3601,10 +3620,15 @@ type VulnComponent struct {
 	Purl      *string        `json:"purl,omitempty"`
 	Score     *float64       `json:"score,omitempty"`
 
-	// Severity CVSS rating of the highest base score.
+	// Severity Rating of a match: the distribution's rating of a package match when
+	// its advisories have one (Debian urgency), otherwise the CVSS rating
+	// of the highest base score. `negligible` comes from distributions
+	// only (Debian `unimportant`: the binary packages are not affected,
+	// or it is not a security problem there). On a vulnerability or an
+	// aggregate, the highest rating of its matches.
 	Severity *Severity `json:"severity,omitempty"`
 
-	// SeverityCounts Vulnerabilities by rating; `unknown` have no CVSS score.
+	// SeverityCounts Vulnerabilities by rating; `unknown` have no rating.
 	SeverityCounts SeverityCounts `json:"severityCounts"`
 	Type           ComponentType  `json:"type"`
 
@@ -3661,7 +3685,12 @@ type VulnCve struct {
 	Rules *[]TriageRule `json:"rules,omitempty"`
 	Score *float64      `json:"score,omitempty"`
 
-	// Severity CVSS rating of the highest base score.
+	// Severity Rating of a match: the distribution's rating of a package match when
+	// its advisories have one (Debian urgency), otherwise the CVSS rating
+	// of the highest base score. `negligible` comes from distributions
+	// only (Debian `unimportant`: the binary packages are not affected,
+	// or it is not a security problem there). On a vulnerability or an
+	// aggregate, the highest rating of its matches.
 	Severity *Severity `json:"severity,omitempty"`
 	Summary  *string   `json:"summary,omitempty"`
 	VulnId   string    `json:"vulnId"`
@@ -3693,9 +3722,17 @@ type VulnCveComponent struct {
 	RangeSource  *VulnCveComponentRangeSource `json:"rangeSource,omitempty"`
 
 	// Rules The triage rules deciding its findings.
-	Rules   *[]TriageRule `json:"rules,omitempty"`
-	Type    ComponentType `json:"type"`
-	Version string        `json:"version"`
+	Rules *[]TriageRule `json:"rules,omitempty"`
+
+	// Severity Rating of a match: the distribution's rating of a package match when
+	// its advisories have one (Debian urgency), otherwise the CVSS rating
+	// of the highest base score. `negligible` comes from distributions
+	// only (Debian `unimportant`: the binary packages are not affected,
+	// or it is not a security problem there). On a vulnerability or an
+	// aggregate, the highest rating of its matches.
+	Severity *Severity     `json:"severity,omitempty"`
+	Type     ComponentType `json:"type"`
+	Version  string        `json:"version"`
 }
 
 // VulnCveComponentCpeMatch defines model for VulnCveComponent.CpeMatch.
@@ -3734,7 +3771,12 @@ type VulnDetail struct {
 	References     []string    `json:"references"`
 	Score          *float64    `json:"score,omitempty"`
 
-	// Severity CVSS rating of the highest base score.
+	// Severity Rating of a match: the distribution's rating of a package match when
+	// its advisories have one (Debian urgency), otherwise the CVSS rating
+	// of the highest base score. `negligible` comes from distributions
+	// only (Debian `unimportant`: the binary packages are not affected,
+	// or it is not a security problem there). On a vulnerability or an
+	// aggregate, the highest rating of its matches.
 	Severity *Severity `json:"severity,omitempty"`
 	Summary  *string   `json:"summary,omitempty"`
 	VulnId   string    `json:"vulnId"`
@@ -3753,10 +3795,15 @@ type VulnImage struct {
 	Kev        int      `json:"kev"`
 	Score      *float64 `json:"score,omitempty"`
 
-	// Severity CVSS rating of the highest base score.
+	// Severity Rating of a match: the distribution's rating of a package match when
+	// its advisories have one (Debian urgency), otherwise the CVSS rating
+	// of the highest base score. `negligible` comes from distributions
+	// only (Debian `unimportant`: the binary packages are not affected,
+	// or it is not a security problem there). On a vulnerability or an
+	// aggregate, the highest rating of its matches.
 	Severity *Severity `json:"severity,omitempty"`
 
-	// SeverityCounts Vulnerabilities by rating; `unknown` have no CVSS score.
+	// SeverityCounts Vulnerabilities by rating; `unknown` have no rating.
 	SeverityCounts SeverityCounts `json:"severityCounts"`
 	Tags           []string       `json:"tags"`
 }
@@ -3784,7 +3831,12 @@ type VulnImageCve struct {
 	Kev          bool     `json:"kev"`
 	Score        *float64 `json:"score,omitempty"`
 
-	// Severity CVSS rating of the highest base score.
+	// Severity Rating of a match: the distribution's rating of a package match when
+	// its advisories have one (Debian urgency), otherwise the CVSS rating
+	// of the highest base score. `negligible` comes from distributions
+	// only (Debian `unimportant`: the binary packages are not affected,
+	// or it is not a security problem there). On a vulnerability or an
+	// aggregate, the highest rating of its matches.
 	Severity *Severity `json:"severity,omitempty"`
 	Summary  *string   `json:"summary,omitempty"`
 	VulnId   string    `json:"vulnId"`
@@ -3849,10 +3901,15 @@ type VulnProcess struct {
 	Processes int      `json:"processes"`
 	Score     *float64 `json:"score,omitempty"`
 
-	// Severity CVSS rating of the highest base score.
+	// Severity Rating of a match: the distribution's rating of a package match when
+	// its advisories have one (Debian urgency), otherwise the CVSS rating
+	// of the highest base score. `negligible` comes from distributions
+	// only (Debian `unimportant`: the binary packages are not affected,
+	// or it is not a security problem there). On a vulnerability or an
+	// aggregate, the highest rating of its matches.
 	Severity *Severity `json:"severity,omitempty"`
 
-	// SeverityCounts Vulnerabilities by rating; `unknown` have no CVSS score.
+	// SeverityCounts Vulnerabilities by rating; `unknown` have no rating.
 	SeverityCounts SeverityCounts `json:"severityCounts"`
 }
 
@@ -3875,8 +3932,11 @@ type VulnSummary struct {
 	ActionsTotal int             `json:"actionsTotal"`
 	CheckedAt    *time.Time      `json:"checkedAt,omitempty"`
 
-	// Deferred Vulnerabilities whose open findings are all deferred.
+	// Deferred Vulnerabilities whose open findings are all deferred, negligible ones aside.
 	Deferred int `json:"deferred"`
+
+	// Negligible Vulnerabilities whose open findings that are not deferred are all rated negligible.
+	Negligible int `json:"negligible"`
 
 	// Revision Data revision of the active feed server at the last check.
 	Revision *int64 `json:"revision,omitempty"`
@@ -3912,6 +3972,9 @@ type QueryExposure = Exposure
 // QueryIncludeDeferred defines model for QueryIncludeDeferred.
 type QueryIncludeDeferred = bool
 
+// QueryIncludeNegligible defines model for QueryIncludeNegligible.
+type QueryIncludeNegligible = bool
+
 // QueryKev defines model for QueryKev.
 type QueryKev = bool
 
@@ -3924,7 +3987,12 @@ type QueryOffset = int
 // QueryQ defines model for QueryQ.
 type QueryQ = string
 
-// QuerySeverity CVSS rating of the highest base score.
+// QuerySeverity Rating of a match: the distribution's rating of a package match when
+// its advisories have one (Debian urgency), otherwise the CVSS rating
+// of the highest base score. `negligible` comes from distributions
+// only (Debian `unimportant`: the binary packages are not affected,
+// or it is not a security problem there). On a vulnerability or an
+// aggregate, the highest rating of its matches.
 type QuerySeverity = Severity
 
 // BadRequest defines model for BadRequest.
@@ -4277,8 +4345,11 @@ type ListVulnerableComponentsParams struct {
 
 	// IncludeDeferred Keep findings an active triage rule defers.
 	IncludeDeferred *QueryIncludeDeferred `form:"includeDeferred,omitempty" json:"includeDeferred,omitempty"`
-	Limit           *QueryLimit           `form:"limit,omitempty" json:"limit,omitempty"`
-	Offset          *QueryOffset          `form:"offset,omitempty" json:"offset,omitempty"`
+
+	// IncludeNegligible Keep findings the distribution rates negligible; implied by `severity=negligible`.
+	IncludeNegligible *QueryIncludeNegligible `form:"includeNegligible,omitempty" json:"includeNegligible,omitempty"`
+	Limit             *QueryLimit             `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset            *QueryOffset            `form:"offset,omitempty" json:"offset,omitempty"`
 }
 
 // ListVulnerabilitiesParams defines parameters for ListVulnerabilities.
@@ -4297,8 +4368,11 @@ type ListVulnerabilitiesParams struct {
 
 	// IncludeDeferred Keep findings an active triage rule defers.
 	IncludeDeferred *QueryIncludeDeferred `form:"includeDeferred,omitempty" json:"includeDeferred,omitempty"`
-	Limit           *QueryLimit           `form:"limit,omitempty" json:"limit,omitempty"`
-	Offset          *QueryOffset          `form:"offset,omitempty" json:"offset,omitempty"`
+
+	// IncludeNegligible Keep findings the distribution rates negligible; implied by `severity=negligible`.
+	IncludeNegligible *QueryIncludeNegligible `form:"includeNegligible,omitempty" json:"includeNegligible,omitempty"`
+	Limit             *QueryLimit             `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset            *QueryOffset            `form:"offset,omitempty" json:"offset,omitempty"`
 }
 
 // ListVulnerableImagesParams defines parameters for ListVulnerableImages.
@@ -4308,8 +4382,11 @@ type ListVulnerableImagesParams struct {
 
 	// IncludeDeferred Keep findings an active triage rule defers.
 	IncludeDeferred *QueryIncludeDeferred `form:"includeDeferred,omitempty" json:"includeDeferred,omitempty"`
-	Limit           *QueryLimit           `form:"limit,omitempty" json:"limit,omitempty"`
-	Offset          *QueryOffset          `form:"offset,omitempty" json:"offset,omitempty"`
+
+	// IncludeNegligible Keep findings the distribution rates negligible; implied by `severity=negligible`.
+	IncludeNegligible *QueryIncludeNegligible `form:"includeNegligible,omitempty" json:"includeNegligible,omitempty"`
+	Limit             *QueryLimit             `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset            *QueryOffset            `form:"offset,omitempty" json:"offset,omitempty"`
 }
 
 // ListVulnerableProcessesParams defines parameters for ListVulnerableProcesses.
@@ -4319,8 +4396,11 @@ type ListVulnerableProcessesParams struct {
 
 	// IncludeDeferred Keep findings an active triage rule defers.
 	IncludeDeferred *QueryIncludeDeferred `form:"includeDeferred,omitempty" json:"includeDeferred,omitempty"`
-	Limit           *QueryLimit           `form:"limit,omitempty" json:"limit,omitempty"`
-	Offset          *QueryOffset          `form:"offset,omitempty" json:"offset,omitempty"`
+
+	// IncludeNegligible Keep findings the distribution rates negligible; implied by `severity=negligible`.
+	IncludeNegligible *QueryIncludeNegligible `form:"includeNegligible,omitempty" json:"includeNegligible,omitempty"`
+	Limit             *QueryLimit             `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset            *QueryOffset            `form:"offset,omitempty" json:"offset,omitempty"`
 }
 
 // GetVulnerableProcessParams defines parameters for GetVulnerableProcess.
@@ -5175,8 +5255,8 @@ type ClientInterface interface {
 
 	// ListVulnerableComponents Update actions, one per vulnerable component
 	//
-	// Ordered by exposure, then known exploitation, EPSS and CVSS. `q`
-	// matches the component name, version and the CVE ids.
+	// Ordered by exposure, then known exploitation, EPSS and CVSS; items
+	// rated only negligible come last. `q` matches the component name, version and the CVE ids.
 	//
 	// Corresponds with GET /vulnerabilities/components (the `ListVulnerableComponents` operationId).
 	ListVulnerableComponents(ctx context.Context, params *ListVulnerableComponentsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -5188,8 +5268,8 @@ type ClientInterface interface {
 
 	// ListVulnerabilities Open vulnerabilities, one per id
 	//
-	// Ordered by exposure, then known exploitation, EPSS and CVSS. `q`
-	// matches the id, aliases, summary and component names.
+	// Ordered by exposure, then known exploitation, EPSS and CVSS; items
+	// rated only negligible come last. `q` matches the id, aliases, summary and component names.
 	//
 	// Corresponds with GET /vulnerabilities/cves (the `ListVulnerabilities` operationId).
 	ListVulnerabilities(ctx context.Context, params *ListVulnerabilitiesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -5217,7 +5297,7 @@ type ClientInterface interface {
 
 	// ListVulnerableProcesses Executables of processes that load vulnerable components
 	//
-	// Ordered by listening processes, then CVSS. `q` matches the executable path.
+	// Ordered by listening processes, then CVSS; items rated only negligible come last. `q` matches the executable path.
 	//
 	// Corresponds with GET /vulnerabilities/processes (the `ListVulnerableProcesses` operationId).
 	ListVulnerableProcesses(ctx context.Context, params *ListVulnerableProcessesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -6843,8 +6923,8 @@ func (c *Client) ExportVex(ctx context.Context, reqEditors ...RequestEditorFn) (
 
 // ListVulnerableComponents Update actions, one per vulnerable component
 //
-// Ordered by exposure, then known exploitation, EPSS and CVSS. `q`
-// matches the component name, version and the CVE ids.
+// Ordered by exposure, then known exploitation, EPSS and CVSS; items
+// rated only negligible come last. `q` matches the component name, version and the CVE ids.
 //
 // Corresponds with GET /vulnerabilities/components (the `ListVulnerableComponents` operationId).
 func (c *Client) ListVulnerableComponents(ctx context.Context, params *ListVulnerableComponentsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -6876,8 +6956,8 @@ func (c *Client) GetVulnerableComponent(ctx context.Context, id PathId, reqEdito
 
 // ListVulnerabilities Open vulnerabilities, one per id
 //
-// Ordered by exposure, then known exploitation, EPSS and CVSS. `q`
-// matches the id, aliases, summary and component names.
+// Ordered by exposure, then known exploitation, EPSS and CVSS; items
+// rated only negligible come last. `q` matches the id, aliases, summary and component names.
 //
 // Corresponds with GET /vulnerabilities/cves (the `ListVulnerabilities` operationId).
 func (c *Client) ListVulnerabilities(ctx context.Context, params *ListVulnerabilitiesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -6945,7 +7025,7 @@ func (c *Client) GetVulnerableImage(ctx context.Context, digest PathDigest, reqE
 
 // ListVulnerableProcesses Executables of processes that load vulnerable components
 //
-// Ordered by listening processes, then CVSS. `q` matches the executable path.
+// Ordered by listening processes, then CVSS; items rated only negligible come last. `q` matches the executable path.
 //
 // Corresponds with GET /vulnerabilities/processes (the `ListVulnerableProcesses` operationId).
 func (c *Client) ListVulnerableProcesses(ctx context.Context, params *ListVulnerableProcessesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -11362,6 +11442,18 @@ func NewListVulnerableComponentsRequest(server string, params *ListVulnerableCom
 
 		}
 
+		if params.IncludeNegligible != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "includeNegligible", *params.IncludeNegligible, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "boolean", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
 		if params.Limit != nil {
 
 			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
@@ -11522,6 +11614,18 @@ func NewListVulnerabilitiesRequest(server string, params *ListVulnerabilitiesPar
 
 		}
 
+		if params.IncludeNegligible != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "includeNegligible", *params.IncludeNegligible, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "boolean", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
 		if params.Limit != nil {
 
 			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
@@ -11646,6 +11750,18 @@ func NewListVulnerableImagesRequest(server string, params *ListVulnerableImagesP
 
 		}
 
+		if params.IncludeNegligible != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "includeNegligible", *params.IncludeNegligible, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "boolean", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
 		if params.Limit != nil {
 
 			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
@@ -11761,6 +11877,18 @@ func NewListVulnerableProcessesRequest(server string, params *ListVulnerableProc
 		if params.IncludeDeferred != nil {
 
 			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "includeDeferred", *params.IncludeDeferred, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "boolean", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.IncludeNegligible != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "includeNegligible", *params.IncludeNegligible, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "boolean", Format: ""}); err != nil {
 				return nil, err
 			} else {
 				for _, qp := range strings.Split(queryFrag, "&") {
@@ -12749,8 +12877,8 @@ type ClientWithResponsesInterface interface {
 
 	// ListVulnerableComponentsWithResponse Update actions, one per vulnerable component
 	//
-	// Ordered by exposure, then known exploitation, EPSS and CVSS. `q`
-	// matches the component name, version and the CVE ids.
+	// Ordered by exposure, then known exploitation, EPSS and CVSS; items
+	// rated only negligible come last. `q` matches the component name, version and the CVE ids.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -12766,8 +12894,8 @@ type ClientWithResponsesInterface interface {
 
 	// ListVulnerabilitiesWithResponse Open vulnerabilities, one per id
 	//
-	// Ordered by exposure, then known exploitation, EPSS and CVSS. `q`
-	// matches the id, aliases, summary and component names.
+	// Ordered by exposure, then known exploitation, EPSS and CVSS; items
+	// rated only negligible come last. `q` matches the id, aliases, summary and component names.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -12803,7 +12931,7 @@ type ClientWithResponsesInterface interface {
 
 	// ListVulnerableProcessesWithResponse Executables of processes that load vulnerable components
 	//
-	// Ordered by listening processes, then CVSS. `q` matches the executable path.
+	// Ordered by listening processes, then CVSS; items rated only negligible come last. `q` matches the executable path.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -19304,8 +19432,8 @@ func (c *ClientWithResponses) ExportVexWithResponse(ctx context.Context, reqEdit
 
 // ListVulnerableComponentsWithResponse Update actions, one per vulnerable component
 //
-// Ordered by exposure, then known exploitation, EPSS and CVSS. `q`
-// matches the component name, version and the CVE ids.
+// Ordered by exposure, then known exploitation, EPSS and CVSS; items
+// rated only negligible come last. `q` matches the component name, version and the CVE ids.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -19333,8 +19461,8 @@ func (c *ClientWithResponses) GetVulnerableComponentWithResponse(ctx context.Con
 
 // ListVulnerabilitiesWithResponse Open vulnerabilities, one per id
 //
-// Ordered by exposure, then known exploitation, EPSS and CVSS. `q`
-// matches the id, aliases, summary and component names.
+// Ordered by exposure, then known exploitation, EPSS and CVSS; items
+// rated only negligible come last. `q` matches the id, aliases, summary and component names.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -19394,7 +19522,7 @@ func (c *ClientWithResponses) GetVulnerableImageWithResponse(ctx context.Context
 
 // ListVulnerableProcessesWithResponse Executables of processes that load vulnerable components
 //
-// Ordered by listening processes, then CVSS. `q` matches the executable path.
+// Ordered by listening processes, then CVSS; items rated only negligible come last. `q` matches the executable path.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -27441,6 +27569,19 @@ func (siw *ServerInterfaceWrapper) ListVulnerableComponents(w http.ResponseWrite
 		return
 	}
 
+	// ------------- Optional query parameter "includeNegligible" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "includeNegligible", r.URL.Query(), &params.IncludeNegligible, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "includeNegligible"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "includeNegligible", Err: err})
+		}
+		return
+	}
+
 	// ------------- Optional query parameter "limit" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
@@ -27578,6 +27719,19 @@ func (siw *ServerInterfaceWrapper) ListVulnerabilities(w http.ResponseWriter, r 
 		return
 	}
 
+	// ------------- Optional query parameter "includeNegligible" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "includeNegligible", r.URL.Query(), &params.IncludeNegligible, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "includeNegligible"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "includeNegligible", Err: err})
+		}
+		return
+	}
+
 	// ------------- Optional query parameter "limit" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
@@ -27676,6 +27830,19 @@ func (siw *ServerInterfaceWrapper) ListVulnerableImages(w http.ResponseWriter, r
 		return
 	}
 
+	// ------------- Optional query parameter "includeNegligible" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "includeNegligible", r.URL.Query(), &params.IncludeNegligible, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "includeNegligible"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "includeNegligible", Err: err})
+		}
+		return
+	}
+
 	// ------------- Optional query parameter "limit" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
@@ -27770,6 +27937,19 @@ func (siw *ServerInterfaceWrapper) ListVulnerableProcesses(w http.ResponseWriter
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "includeDeferred"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "includeDeferred", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "includeNegligible" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "includeNegligible", r.URL.Query(), &params.IncludeNegligible, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "includeNegligible"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "includeNegligible", Err: err})
 		}
 		return
 	}

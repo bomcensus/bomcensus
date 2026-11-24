@@ -20,6 +20,13 @@ func ptrF(f float64) *float64 { return &f }
 // findings. It returns the component ids by name.
 func seedVulns(t *testing.T) (*fixture, map[string]string) {
 	t.Helper()
+	return seedVulnsRated(t, nil)
+}
+
+// seedVulnsRated is seedVulns with the distribution's ratings of the
+// matches, by vulnerability id.
+func seedVulnsRated(t *testing.T, ratings map[string]string) (*fixture, map[string]string) {
+	t.Helper()
 	f := seed(t)
 	ctx := f.ctx
 	srv, err := f.db.GetActiveFeedServer(ctx)
@@ -43,6 +50,9 @@ func seedVulns(t *testing.T) (*fixture, map[string]string) {
 			m.Vulns = []store.ComponentVuln{{VulnID: "CVE-C", Method: "package", FixState: "fixed", FixedVersion: "1.27.1"}}
 		case "curl":
 			m.Status = store.MatchUnsupported
+		}
+		for i := range m.Vulns {
+			m.Vulns[i].Severity = ratings[m.Vulns[i].VulnID]
 		}
 		batch = append(batch, m)
 	}
@@ -129,6 +139,110 @@ func TestVulnerabilityViews(t *testing.T) {
 	s := sm.(gen.GetVulnerabilitySummary200JSONResponse)
 	if s.Urgent.Components != 1 || s.Urgent.Cves != 1 || s.Totals.Cves != 3 || s.Totals.Kev != 1 || s.Totals.Assets != 2 ||
 		s.Totals.Components != 2 || s.ActionsTotal != 2 || len(s.Actions) != 2 || *s.Revision != 7 || s.Unsupported != 1 {
+		t.Fatalf("summary %+v", s)
+	}
+}
+
+// TestNegligibleSeverity: nginx's only vulnerability is rated negligible by
+// the distribution, openssl's critical one low. Negligible findings leave
+// the aggregated views unless asked for and then come last; the
+// distribution's rating replaces the CVSS one everywhere.
+func TestNegligibleSeverity(t *testing.T) {
+	f, ids := seedVulnsRated(t, map[string]string{"CVE-C": store.SeverityNegligible, "CVE-A": "low"})
+	ctx := f.ctx
+	yes := true
+
+	list, err := f.h.ListVulnerableComponents(ctx, gen.ListVulnerableComponentsRequestObject{})
+	must(t, err)
+	units := list.(gen.ListVulnerableComponents200JSONResponse)
+	if units.Total != 1 || units.Items[0].Name != "openssl" {
+		t.Fatalf("units %+v", units)
+	}
+	ssl := units.Items[0]
+	if ssl.SeverityCounts.Critical != 0 || ssl.SeverityCounts.Low != 1 || ssl.SeverityCounts.Medium != 1 || *ssl.Severity != gen.SeverityMedium {
+		t.Fatalf("openssl unit %+v", ssl)
+	}
+	list, err = f.h.ListVulnerableComponents(ctx, gen.ListVulnerableComponentsRequestObject{
+		Params: gen.ListVulnerableComponentsParams{IncludeNegligible: &yes}})
+	must(t, err)
+	units = list.(gen.ListVulnerableComponents200JSONResponse)
+	// nginx listens, but is rated only negligible.
+	if units.Total != 2 || units.Items[1].Name != "nginx" || *units.Items[1].Severity != gen.SeverityNegligible ||
+		units.Items[1].SeverityCounts.Negligible != 1 {
+		t.Fatalf("units with negligible %+v", units)
+	}
+	neg := gen.SeverityNegligible
+	list, err = f.h.ListVulnerableComponents(ctx, gen.ListVulnerableComponentsRequestObject{
+		Params: gen.ListVulnerableComponentsParams{Severity: &neg}})
+	must(t, err)
+	if u := list.(gen.ListVulnerableComponents200JSONResponse); u.Total != 1 || u.Items[0].Name != "nginx" {
+		t.Fatalf("negligible filter %+v", u)
+	}
+
+	cl, err := f.h.ListVulnerabilities(ctx, gen.ListVulnerabilitiesRequestObject{})
+	must(t, err)
+	if c := cl.(gen.ListVulnerabilities200JSONResponse); c.Total != 2 {
+		t.Fatalf("cves %+v", c)
+	}
+	cl, err = f.h.ListVulnerabilities(ctx, gen.ListVulnerabilitiesRequestObject{Params: gen.ListVulnerabilitiesParams{IncludeNegligible: &yes}})
+	must(t, err)
+	cves := cl.(gen.ListVulnerabilities200JSONResponse)
+	if cves.Total != 3 || cves.Items[2].VulnId != "CVE-C" || *cves.Items[2].Severity != gen.SeverityNegligible {
+		t.Fatalf("cves with negligible %+v", cves)
+	}
+	cd, err := f.h.GetVulnerability(ctx, gen.GetVulnerabilityRequestObject{VulnId: "CVE-C"})
+	must(t, err)
+	c := cd.(gen.GetVulnerability200JSONResponse)
+	if *c.Vulnerability.Severity != gen.SeverityNegligible || *c.Components[0].Severity != gen.SeverityNegligible {
+		t.Fatalf("CVE-C detail %+v", c)
+	}
+
+	det, err := f.h.GetVulnerableComponent(ctx, gen.GetVulnerableComponentRequestObject{Id: ids["nginx"]})
+	must(t, err)
+	if d := det.(gen.GetVulnerableComponent200JSONResponse); len(d.Cves) != 1 || *d.Cves[0].Severity != gen.SeverityNegligible {
+		t.Fatalf("nginx detail %+v", d)
+	}
+
+	av, err := f.h.ListAssetVulnerabilities(ctx, gen.ListAssetVulnerabilitiesRequestObject{Id: f.web})
+	must(t, err)
+	items := av.(gen.ListAssetVulnerabilities200JSONResponse).Items
+	if len(items) != 3 || items[2].VulnId != "CVE-C" || *items[2].Severity != gen.SeverityNegligible {
+		t.Fatalf("asset findings %+v", items)
+	}
+
+	pl, err := f.h.ListVulnerableProcesses(ctx, gen.ListVulnerableProcessesRequestObject{})
+	must(t, err)
+	if p := pl.(gen.ListVulnerableProcesses200JSONResponse); p.Total != 0 {
+		t.Fatalf("processes %+v", p)
+	}
+	pl, err = f.h.ListVulnerableProcesses(ctx, gen.ListVulnerableProcessesRequestObject{
+		Params: gen.ListVulnerableProcessesParams{IncludeNegligible: &yes}})
+	must(t, err)
+	procs := pl.(gen.ListVulnerableProcesses200JSONResponse)
+	if procs.Total != 1 || procs.Items[0].SeverityCounts.Negligible != 1 || *procs.Items[0].Severity != gen.SeverityNegligible {
+		t.Fatalf("processes with negligible %+v", procs)
+	}
+	pd, err := f.h.GetVulnerableProcess(ctx, gen.GetVulnerableProcessRequestObject{Params: gen.GetVulnerableProcessParams{Exe: "/usr/sbin/nginx"}})
+	must(t, err)
+	if p := pd.(gen.GetVulnerableProcess200JSONResponse); p.Process.Cves != 1 || len(p.Components) != 1 {
+		t.Fatalf("process detail %+v", p)
+	}
+
+	il, err := f.h.ListVulnerableImages(ctx, gen.ListVulnerableImagesRequestObject{})
+	must(t, err)
+	if i := il.(gen.ListVulnerableImages200JSONResponse); i.Total != 0 {
+		t.Fatalf("images %+v", i)
+	}
+	il, err = f.h.ListVulnerableImages(ctx, gen.ListVulnerableImagesRequestObject{Params: gen.ListVulnerableImagesParams{IncludeNegligible: &yes}})
+	must(t, err)
+	if i := il.(gen.ListVulnerableImages200JSONResponse); i.Total != 1 || i.Items[0].SeverityCounts.Negligible != 1 {
+		t.Fatalf("images with negligible %+v", i)
+	}
+
+	sm, err := f.h.GetVulnerabilitySummary(ctx, gen.GetVulnerabilitySummaryRequestObject{})
+	must(t, err)
+	s := sm.(gen.GetVulnerabilitySummary200JSONResponse)
+	if s.Negligible != 1 || s.Totals.Cves != 2 || s.Totals.Components != 1 || s.Urgent.Components != 0 {
 		t.Fatalf("summary %+v", s)
 	}
 }

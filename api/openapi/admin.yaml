@@ -2012,14 +2012,15 @@ paths:
       operationId: listVulnerableComponents
       summary: Update actions, one per vulnerable component
       description: |
-        Ordered by exposure, then known exploitation, EPSS and CVSS. `q`
-        matches the component name, version and the CVE ids.
+        Ordered by exposure, then known exploitation, EPSS and CVSS; items
+        rated only negligible come last. `q` matches the component name, version and the CVE ids.
       parameters:
         - $ref: "#/components/parameters/QueryQ"
         - $ref: "#/components/parameters/QuerySeverity"
         - $ref: "#/components/parameters/QueryExposure"
         - $ref: "#/components/parameters/QueryKev"
         - $ref: "#/components/parameters/QueryIncludeDeferred"
+        - $ref: "#/components/parameters/QueryIncludeNegligible"
         - $ref: "#/components/parameters/QueryLimit"
         - $ref: "#/components/parameters/QueryOffset"
       responses:
@@ -2063,14 +2064,15 @@ paths:
       operationId: listVulnerabilities
       summary: Open vulnerabilities, one per id
       description: |
-        Ordered by exposure, then known exploitation, EPSS and CVSS. `q`
-        matches the id, aliases, summary and component names.
+        Ordered by exposure, then known exploitation, EPSS and CVSS; items
+        rated only negligible come last. `q` matches the id, aliases, summary and component names.
       parameters:
         - $ref: "#/components/parameters/QueryQ"
         - $ref: "#/components/parameters/QuerySeverity"
         - $ref: "#/components/parameters/QueryExposure"
         - $ref: "#/components/parameters/QueryKev"
         - $ref: "#/components/parameters/QueryIncludeDeferred"
+        - $ref: "#/components/parameters/QueryIncludeNegligible"
         - $ref: "#/components/parameters/QueryLimit"
         - $ref: "#/components/parameters/QueryOffset"
       responses:
@@ -2140,10 +2142,11 @@ paths:
       tags: [vulnerabilities]
       operationId: listVulnerableProcesses
       summary: Executables of processes that load vulnerable components
-      description: "Ordered by listening processes, then CVSS. `q` matches the executable path."
+      description: "Ordered by listening processes, then CVSS; items rated only negligible come last. `q` matches the executable path."
       parameters:
         - $ref: "#/components/parameters/QueryQ"
         - $ref: "#/components/parameters/QueryIncludeDeferred"
+        - $ref: "#/components/parameters/QueryIncludeNegligible"
         - $ref: "#/components/parameters/QueryLimit"
         - $ref: "#/components/parameters/QueryOffset"
       responses:
@@ -2201,6 +2204,7 @@ paths:
       parameters:
         - $ref: "#/components/parameters/QueryQ"
         - $ref: "#/components/parameters/QueryIncludeDeferred"
+        - $ref: "#/components/parameters/QueryIncludeNegligible"
         - $ref: "#/components/parameters/QueryLimit"
         - $ref: "#/components/parameters/QueryOffset"
       responses:
@@ -2410,6 +2414,13 @@ components:
       name: includeDeferred
       in: query
       description: Keep findings an active triage rule defers.
+      schema:
+        type: boolean
+        default: false
+    QueryIncludeNegligible:
+      name: includeNegligible
+      in: query
+      description: Keep findings the distribution rates negligible; implied by `severity=negligible`.
       schema:
         type: boolean
         default: false
@@ -4407,9 +4418,15 @@ components:
     # ── vulnerabilities ─────────────────────────────────────────────────
 
     Severity:
-      description: CVSS rating of the highest base score.
+      description: |
+        Rating of a match: the distribution's rating of a package match when
+        its advisories have one (Debian urgency), otherwise the CVSS rating
+        of the highest base score. `negligible` comes from distributions
+        only (Debian `unimportant`: the binary packages are not affected,
+        or it is not a security problem there). On a vulnerability or an
+        aggregate, the highest rating of its matches.
       type: string
-      enum: [critical, high, medium, low, none]
+      enum: [critical, high, medium, low, negligible, none]
     FixState:
       type: string
       enum: [fixed, not_fixed, will_not_fix, under_investigation, unknown]
@@ -4540,9 +4557,9 @@ components:
         unknown:
           type: integer
     SeverityCounts:
-      description: Vulnerabilities by rating; `unknown` have no CVSS score.
+      description: Vulnerabilities by rating; `unknown` have no rating.
       type: object
-      required: [critical, high, medium, low, unknown]
+      required: [critical, high, medium, low, negligible, unknown]
       properties:
         critical:
           type: integer
@@ -4551,6 +4568,8 @@ components:
         medium:
           type: integer
         low:
+          type: integer
+        negligible:
           type: integer
         unknown:
           type: integer
@@ -4884,6 +4903,8 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/VulnAdvisory"
+        severity:
+          $ref: "#/components/schemas/Severity"
         assets:
           type: integer
         exposure:
@@ -4976,7 +4997,7 @@ components:
             $ref: "#/components/schemas/AssetVuln"
     VulnSummary:
       type: object
-      required: [urgent, totals, unsupported, deferred, actions, actionsTotal]
+      required: [urgent, totals, unsupported, deferred, negligible, actions, actionsTotal]
       properties:
         revision:
           description: Data revision of the active feed server at the last check.
@@ -5010,7 +5031,10 @@ components:
           description: Live components the feed server has no data for.
           type: integer
         deferred:
-          description: Vulnerabilities whose open findings are all deferred.
+          description: Vulnerabilities whose open findings are all deferred, negligible ones aside.
+          type: integer
+        negligible:
+          description: Vulnerabilities whose open findings that are not deferred are all rated negligible.
           type: integer
         actions:
           type: array

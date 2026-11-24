@@ -1088,8 +1088,8 @@ export const getVulnerabilitySummary = <ThrowOnError extends boolean = false>(op
 /**
  * Update actions, one per vulnerable component
  *
- * Ordered by exposure, then known exploitation, EPSS and CVSS. `q`
- * matches the component name, version and the CVE ids.
+ * Ordered by exposure, then known exploitation, EPSS and CVSS; items
+ * rated only negligible come last. `q` matches the component name, version and the CVE ids.
  *
  */
 export const listVulnerableComponents = <ThrowOnError extends boolean = false>(options?: Options<ListVulnerableComponentsData, ThrowOnError>): RequestResult<ListVulnerableComponentsResponses, ListVulnerableComponentsErrors, ThrowOnError> => (options?.client ?? client).get<ListVulnerableComponentsResponses, ListVulnerableComponentsErrors, ThrowOnError>({
@@ -1118,8 +1118,8 @@ export const getVulnerableComponent = <ThrowOnError extends boolean = false>(opt
 /**
  * Open vulnerabilities, one per id
  *
- * Ordered by exposure, then known exploitation, EPSS and CVSS. `q`
- * matches the id, aliases, summary and component names.
+ * Ordered by exposure, then known exploitation, EPSS and CVSS; items
+ * rated only negligible come last. `q` matches the id, aliases, summary and component names.
  *
  */
 export const listVulnerabilities = <ThrowOnError extends boolean = false>(options?: Options<ListVulnerabilitiesData, ThrowOnError>): RequestResult<ListVulnerabilitiesResponses, ListVulnerabilitiesErrors, ThrowOnError> => (options?.client ?? client).get<ListVulnerabilitiesResponses, ListVulnerabilitiesErrors, ThrowOnError>({
@@ -1163,7 +1163,7 @@ export const listAssetVulnerabilities = <ThrowOnError extends boolean = false>(o
 /**
  * Executables of processes that load vulnerable components
  *
- * Ordered by listening processes, then CVSS. `q` matches the executable path.
+ * Ordered by listening processes, then CVSS; items rated only negligible come last. `q` matches the executable path.
  */
 export const listVulnerableProcesses = <ThrowOnError extends boolean = false>(options?: Options<ListVulnerableProcessesData, ThrowOnError>): RequestResult<ListVulnerableProcessesResponses, ListVulnerableProcessesErrors, ThrowOnError> => (options?.client ?? client).get<ListVulnerableProcessesResponses, ListVulnerableProcessesErrors, ThrowOnError>({
     security: [{

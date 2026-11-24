@@ -39,6 +39,7 @@ const severityText: Record<string, string> = {
   high: 'text-high',
   medium: 'text-medium',
   low: 'text-low',
+  negligible: 'text-ink-3',
   none: 'text-ink-3',
 }
 
@@ -63,7 +64,7 @@ function processNote(v: VulnCve): string {
 }
 
 const sevCounts = (c: VulnComponent) =>
-  (['critical', 'high', 'medium', 'low'] as const).map((k) => ({ k, n: c.severityCounts[k] })).filter((x) => x.n > 0)
+  (['critical', 'high', 'medium', 'low', 'negligible'] as const).map((k) => ({ k, n: c.severityCounts[k] })).filter((x) => x.n > 0)
 </script>
 
 <template>

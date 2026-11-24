@@ -17,24 +17,51 @@ import (
 var _ store.VulnViews = (*DB)(nil)
 
 // vuOpen is the open findings with whether an active triage rule defers
-// them at $1, open those shown ($2 includes deferred ones), and locs one
-// exposure per place of a component.
+// them at $1 and their severity (store.MatchSeverity of the package match
+// first), open those shown ($2 includes deferred ones, $3 negligible
+// ones), and locs one exposure per place of a component.
 const vuOpen = `allopen AS (
 		SELECT f.asset_id, f.container, f.component_id, f.vuln_id, f.exposure, f.processes,
-			coalesce(t.rule_id IS NOT NULL AND (t.expires_at IS NULL OR t.expires_at > $1), false) AS deferred
+			coalesce(t.rule_id IS NOT NULL AND (t.expires_at IS NULL OR t.expires_at > $1), false) AS deferred,
+			coalesce(nullif(cv.severity, ''), m.severity, '') AS severity
 		FROM findings f
 		JOIN assets a ON a.id = f.asset_id
 		JOIN components c ON c.id = f.component_id
+		LEFT JOIN vuln_meta m ON m.vuln_id = f.vuln_id
+		LEFT JOIN LATERAL (
+			SELECT v.severity FROM component_vulns v WHERE v.component_id = f.component_id AND v.vuln_id = f.vuln_id
+			ORDER BY v.method = 'package' DESC LIMIT 1
+		) cv ON true
 		LEFT JOIN LATERAL triage_rule_for(f.vuln_id, f.asset_id, a.group_name, c.purl, $1) t ON true
 		WHERE f.resolved_at IS NULL
 	), open AS (
-		SELECT * FROM allopen WHERE $2 OR NOT deferred
+		SELECT * FROM allopen WHERE ($2 OR NOT deferred) AND ($3 OR severity <> 'negligible')
 	), locs AS (
 		SELECT DISTINCT component_id, asset_id, container, exposure FROM open
 	)`
 
 func vuArgs(o store.VulnViewOptions) []any {
-	return []any{mgOrNow(o.At), o.IncludeDeferred}
+	return []any{mgOrNow(o.At), o.IncludeDeferred, o.IncludeNegligible}
+}
+
+// vuSevRank orders the severity in col, highest first. A vulnerability
+// without a rating ranks above a negligible one: it may be anything.
+func vuSevRank(col string) string {
+	return `CASE ` + col + ` WHEN 'critical' THEN 5 WHEN 'high' THEN 4 WHEN 'medium' THEN 3 WHEN 'low' THEN 2
+		WHEN 'negligible' THEN 0 ELSE 1 END`
+}
+
+// vuSevTop is the highest severity in col of a group.
+func vuSevTop(col string) string {
+	return `(array_agg(` + col + ` ORDER BY ` + vuSevRank(col) + ` DESC))[1]`
+}
+
+// vuSevCounts counts the distinct ids by the severity in col; each id has
+// one severity in the group.
+func vuSevCounts(id, col string) string {
+	f := func(cond string) string { return `count(DISTINCT ` + id + `) FILTER (WHERE ` + col + ` ` + cond + `)` }
+	return f(`= 'critical'`) + ` AS critical, ` + f(`= 'high'`) + ` AS high, ` + f(`= 'medium'`) + ` AS medium, ` +
+		f(`= 'low'`) + ` AS low, ` + f(`= 'negligible'`) + ` AS negligible, ` + f(`IN ('', 'none')`) + ` AS unknown`
 }
 
 const vuExposureCols = `count(*) FILTER (WHERE exposure = 'listening') AS listening,
@@ -48,13 +75,9 @@ func (d *DB) VulnComponents(ctx context.Context, o store.VulnViewOptions) ([]sto
 		WITH `+vuOpen+`, per AS (
 			SELECT o.component_id,
 				array_agg(DISTINCT o.vuln_id) AS vulns,
-				coalesce(array_agg(DISTINCT o.vuln_id) FILTER (WHERE m.severity IN ('critical', 'high')), '{}') AS hot,
+				coalesce(array_agg(DISTINCT o.vuln_id) FILTER (WHERE o.severity IN ('critical', 'high')), '{}') AS hot,
 				coalesce(array_agg(DISTINCT o.vuln_id) FILTER (WHERE m.kev_added IS NOT NULL), '{}') AS kev,
-				count(DISTINCT o.vuln_id) FILTER (WHERE m.severity = 'critical') AS critical,
-				count(DISTINCT o.vuln_id) FILTER (WHERE m.severity = 'high') AS high,
-				count(DISTINCT o.vuln_id) FILTER (WHERE m.severity = 'medium') AS medium,
-				count(DISTINCT o.vuln_id) FILTER (WHERE m.severity = 'low') AS low,
-				count(DISTINCT o.vuln_id) FILTER (WHERE m.severity IN ('', 'none')) AS unknown,
+				`+vuSevCounts("o.vuln_id", "o.severity")+`,
 				max(m.max_score) AS score, max(m.epss) AS epss,
 				count(DISTINCT o.asset_id) AS assets,
 				count(*) FILTER (WHERE o.deferred) AS deferred
@@ -71,7 +94,7 @@ func (d *DB) VulnComponents(ctx context.Context, o store.VulnViewOptions) ([]sto
 			GROUP BY x.component_id
 		)
 		SELECT c.id::text, c.type, c.name, c.version, c.purl, per.vulns, per.hot, per.kev,
-			per.critical, per.high, per.medium, per.low, per.unknown, per.score, per.epss, per.assets, per.deferred,
+			per.critical, per.high, per.medium, per.low, per.negligible, per.unknown, per.score, per.epss, per.assets, per.deferred,
 			ex.listening, ex.running, ex.installed, ex.unknown_exposure,
 			coalesce(fix.fixes, '{}'), coalesce(fix.unfixed, 0)
 		FROM per
@@ -88,7 +111,7 @@ func (d *DB) VulnComponents(ctx context.Context, o store.VulnViewOptions) ([]sto
 		var score, epss *float32
 		if err := rows.Scan(&r.Component.ID, &r.Component.Type, &r.Component.Name, &r.Component.Version, &r.Component.PURL,
 			&r.VulnIDs, &r.HotVulnIDs, &r.KEVVulnIDs,
-			&r.Severity.Critical, &r.Severity.High, &r.Severity.Medium, &r.Severity.Low, &r.Severity.Unknown,
+			&r.Severity.Critical, &r.Severity.High, &r.Severity.Medium, &r.Severity.Low, &r.Severity.Negligible, &r.Severity.Unknown,
 			&score, &epss, &r.Assets, &r.Deferred,
 			&r.Exposure.Listening, &r.Exposure.Running, &r.Exposure.Installed, &r.Exposure.Unknown,
 			&r.FixedVersions, &r.Unfixed); err != nil {
@@ -136,7 +159,8 @@ func (d *DB) VulnCves(ctx context.Context, o store.VulnViewOptions) ([]store.Vul
 	rows, err := d.q.Query(ctx, `
 		WITH `+vuOpen+`, per AS (
 			SELECT o.vuln_id, count(DISTINCT o.component_id) AS components, count(DISTINCT o.asset_id) AS assets,
-				array_agg(DISTINCT c.name) AS names, count(*) FILTER (WHERE o.deferred) AS deferred
+				array_agg(DISTINCT c.name) AS names, count(*) FILTER (WHERE o.deferred) AS deferred,
+				`+vuSevTop("o.severity")+` AS severity
 			FROM open o JOIN components c ON c.id = o.component_id
 			GROUP BY o.vuln_id
 		), ex AS (
@@ -144,7 +168,7 @@ func (d *DB) VulnCves(ctx context.Context, o store.VulnViewOptions) ([]store.Vul
 			FROM (SELECT DISTINCT vuln_id, component_id, asset_id, container, exposure FROM open) x
 			GROUP BY vuln_id
 		)
-		SELECT `+vuMetaCols+`, per.components, per.assets, per.names, per.deferred,
+		SELECT `+vuMetaCols+`, per.components, per.assets, per.names, per.deferred, per.severity,
 			ex.listening, ex.running, ex.installed, ex.unknown_exposure
 		FROM per
 		JOIN vuln_meta m ON m.vuln_id = per.vuln_id
@@ -156,7 +180,7 @@ func (d *DB) VulnCves(ctx context.Context, o store.VulnViewOptions) ([]store.Vul
 	var out []store.VulnCveRow
 	for rows.Next() {
 		var r store.VulnCveRow
-		if err := vuScanMeta(rows, &r.Meta, &r.Components, &r.Assets, &r.ComponentNames, &r.Deferred,
+		if err := vuScanMeta(rows, &r.Meta, &r.Components, &r.Assets, &r.ComponentNames, &r.Deferred, &r.Severity,
 			&r.Exposure.Listening, &r.Exposure.Running, &r.Exposure.Installed, &r.Exposure.Unknown); err != nil {
 			return nil, mgErr("vulnerabilities", err)
 		}
@@ -200,7 +224,7 @@ func (d *DB) OpenFindings(ctx context.Context, f store.OpenFindingFilter) ([]sto
 			coalesce(cv.method, ''), coalesce(cv.ecosystem, ''), coalesce(cv.fix_state, 'unknown'),
 			coalesce(cv.fixed_version, ''), coalesce(cv.cpe_match, ''), coalesce(cv.range_source, ''),
 			coalesce(cv.platforms, '{}'), coalesce(cv.advisories::text, '[]'), coalesce(cv.symbols::text, '[]'),
-			t.rule_id IS NOT NULL, coalesce(t.expires_at IS NULL OR t.expires_at > `+atArg+`, false),
+			coalesce(cv.severity, ''), t.rule_id IS NOT NULL, coalesce(t.expires_at IS NULL OR t.expires_at > `+atArg+`, false),
 			`+trCols+`
 		FROM findings f
 		JOIN assets a ON a.id = f.asset_id
@@ -242,7 +266,7 @@ func (d *DB) OpenFindings(ctx context.Context, f store.OpenFindingFilter) ([]sto
 			&o.VulnID, &o.Exposure, &o.Reachability, &procs, &o.FirstSeen,
 			&o.Locations, &o.Method,
 			&o.Match.Method, &o.Match.Ecosystem, &o.Match.FixState, &o.Match.FixedVersion, &o.Match.CPEMatch,
-			&o.Match.RangeSource, &o.Match.Platforms, &adv, &syms, &hasRule, &active,
+			&o.Match.RangeSource, &o.Match.Platforms, &adv, &syms, &o.Match.Severity, &hasRule, &active,
 			&rule.ID, &rule.VulnID, &rule.ScopeKind, &rule.ScopeValue, &rule.PURLLike, &rule.Status, &rule.Justification,
 			&rule.Note, &rule.ExpiresAt, &rule.ExpiredAt, &rule.CreatedBy, &rule.CreatedAt, &rule.RevokedAt,
 			&rule.RevokedBy); err != nil {
@@ -310,9 +334,20 @@ func (d *DB) CountDeferred(ctx context.Context, at time.Time) (int, error) {
 	err := d.q.QueryRow(ctx, `
 		WITH `+vuOpen+`
 		SELECT count(*) FROM (
-			SELECT vuln_id FROM allopen GROUP BY vuln_id HAVING bool_and(deferred)
+			SELECT vuln_id FROM allopen WHERE severity <> 'negligible' GROUP BY vuln_id HAVING bool_and(deferred)
 		) x`, vuArgs(store.VulnViewOptions{At: at})...).Scan(&n)
 	return n, mgErr("count deferred", err)
+}
+
+// CountNegligible implements store.VulnViews.
+func (d *DB) CountNegligible(ctx context.Context, at time.Time) (int, error) {
+	var n int
+	err := d.q.QueryRow(ctx, `
+		WITH `+vuOpen+`
+		SELECT count(*) FROM (
+			SELECT vuln_id FROM allopen WHERE NOT deferred GROUP BY vuln_id HAVING bool_and(severity = 'negligible')
+		) x`, vuArgs(store.VulnViewOptions{At: at})...).Scan(&n)
+	return n, mgErr("count negligible", err)
 }
 
 // VulnProcesses implements store.VulnViews.
@@ -321,21 +356,24 @@ func (d *DB) VulnProcesses(ctx context.Context, o store.VulnViewOptions) ([]stor
 		WITH `+vuOpen+`, p AS (
 			SELECT o.asset_id, o.container, o.component_id, o.vuln_id, pr->>'exe' AS exe,
 				coalesce(pr->>'pod', '') AS pod, pr->>'pid' AS pid,
-				jsonb_array_length(coalesce(pr->'ports', '[]'::jsonb)) > 0 AS listening
+				jsonb_array_length(coalesce(pr->'ports', '[]'::jsonb)) > 0 AS listening, o.severity
 			FROM open o CROSS JOIN LATERAL jsonb_array_elements(o.processes) pr
+		), pv AS (
+			SELECT exe, vuln_id, `+vuSevTop("severity")+` AS severity FROM p GROUP BY exe, vuln_id
+		), sev AS (
+			SELECT exe, `+vuSevCounts("vuln_id", "severity")+` FROM pv GROUP BY exe
+		), per AS (
+			SELECT p.exe, count(DISTINCT p.asset_id) AS assets,
+				count(DISTINCT (p.asset_id, p.container, p.pod, p.pid)) AS processes,
+				count(DISTINCT (p.asset_id, p.container, p.pod, p.pid)) FILTER (WHERE p.listening) AS listening,
+				count(DISTINCT p.component_id) AS components, array_agg(DISTINCT p.vuln_id) AS vulns,
+				count(DISTINCT p.vuln_id) FILTER (WHERE m.kev_added IS NOT NULL) AS kev, max(m.max_score) AS score
+			FROM p JOIN vuln_meta m ON m.vuln_id = p.vuln_id
+			GROUP BY p.exe
 		)
-		SELECT p.exe, count(DISTINCT p.asset_id),
-			count(DISTINCT (p.asset_id, p.container, p.pod, p.pid)),
-			count(DISTINCT (p.asset_id, p.container, p.pod, p.pid)) FILTER (WHERE p.listening),
-			count(DISTINCT p.component_id), array_agg(DISTINCT p.vuln_id),
-			count(DISTINCT p.vuln_id) FILTER (WHERE m.kev_added IS NOT NULL), max(m.max_score),
-			count(DISTINCT p.vuln_id) FILTER (WHERE m.severity = 'critical'),
-			count(DISTINCT p.vuln_id) FILTER (WHERE m.severity = 'high'),
-			count(DISTINCT p.vuln_id) FILTER (WHERE m.severity = 'medium'),
-			count(DISTINCT p.vuln_id) FILTER (WHERE m.severity = 'low'),
-			count(DISTINCT p.vuln_id) FILTER (WHERE m.severity IN ('', 'none'))
-		FROM p JOIN vuln_meta m ON m.vuln_id = p.vuln_id
-		GROUP BY p.exe`, vuArgs(o)...)
+		SELECT per.exe, per.assets, per.processes, per.listening, per.components, per.vulns, per.kev, per.score,
+			sev.critical, sev.high, sev.medium, sev.low, sev.negligible, sev.unknown
+		FROM per JOIN sev ON sev.exe = per.exe`, vuArgs(o)...)
 	if err != nil {
 		return nil, mgErr("vulnerable processes", err)
 	}
@@ -345,7 +383,8 @@ func (d *DB) VulnProcesses(ctx context.Context, o store.VulnViewOptions) ([]stor
 		var r store.VulnProcessRow
 		var score *float32
 		if err := rows.Scan(&r.Exe, &r.Assets, &r.Processes, &r.Listening, &r.Components, &r.VulnIDs, &r.KEV, &score,
-			&r.Severity.Critical, &r.Severity.High, &r.Severity.Medium, &r.Severity.Low, &r.Severity.Unknown); err != nil {
+			&r.Severity.Critical, &r.Severity.High, &r.Severity.Medium, &r.Severity.Low, &r.Severity.Negligible,
+			&r.Severity.Unknown); err != nil {
 			return nil, mgErr("vulnerable processes", err)
 		}
 		r.MaxScore = vuF64(score)
@@ -355,36 +394,42 @@ func (d *DB) VulnProcesses(ctx context.Context, o store.VulnViewOptions) ([]stor
 }
 
 // vuImageVulns is the vulnerabilities of image contents with whether a
-// component-scoped rule defers them at $1.
+// component-scoped rule defers them at $1 and their severity as in vuOpen.
 const vuImageVulns = `iv AS (
 		SELECT ic.digest, ic.component_id, cv.vuln_id,
-			coalesce(t.rule_id IS NOT NULL AND (t.expires_at IS NULL OR t.expires_at > $1), false) AS deferred
+			coalesce(t.rule_id IS NOT NULL AND (t.expires_at IS NULL OR t.expires_at > $1), false) AS deferred,
+			coalesce(nullif(cv.severity, ''), m.severity) AS severity
 		FROM image_components ic
 		JOIN components c ON c.id = ic.component_id
-		JOIN (SELECT DISTINCT component_id, vuln_id FROM component_vulns) cv ON cv.component_id = ic.component_id
+		JOIN (
+			SELECT DISTINCT ON (component_id, vuln_id) component_id, vuln_id, severity FROM component_vulns
+			ORDER BY component_id, vuln_id, method = 'package' DESC
+		) cv ON cv.component_id = ic.component_id
+		JOIN vuln_meta m ON m.vuln_id = cv.vuln_id
 		LEFT JOIN LATERAL triage_rule_for(cv.vuln_id, NULL, '', c.purl, $1) t ON true
 	)`
 
 // VulnImages implements store.VulnViews.
 func (d *DB) VulnImages(ctx context.Context, o store.VulnViewOptions) ([]store.VulnImageRow, error) {
 	rows, err := d.q.Query(ctx, `
-		WITH `+vuImageVulns+`, per AS (
-			SELECT iv.digest, count(DISTINCT iv.component_id) AS components, array_agg(DISTINCT iv.vuln_id) AS vulns,
-				count(DISTINCT iv.vuln_id) FILTER (WHERE m.kev_added IS NOT NULL) AS kev,
+		WITH `+vuImageVulns+`, shown AS (
+			SELECT * FROM iv WHERE ($2 OR NOT deferred) AND ($3 OR severity <> 'negligible')
+		), sev AS (
+			SELECT digest, `+vuSevCounts("vuln_id", "severity")+` FROM (
+				SELECT digest, vuln_id, `+vuSevTop("severity")+` AS severity FROM shown GROUP BY digest, vuln_id
+			) x GROUP BY digest
+		), per AS (
+			SELECT s.digest, count(DISTINCT s.component_id) AS components, array_agg(DISTINCT s.vuln_id) AS vulns,
+				count(DISTINCT s.vuln_id) FILTER (WHERE m.kev_added IS NOT NULL) AS kev,
 				max(m.max_score) AS score, max(m.epss) AS epss,
-				count(DISTINCT iv.vuln_id) FILTER (WHERE m.severity = 'critical') AS critical,
-				count(DISTINCT iv.vuln_id) FILTER (WHERE m.severity = 'high') AS high,
-				count(DISTINCT iv.vuln_id) FILTER (WHERE m.severity = 'medium') AS medium,
-				count(DISTINCT iv.vuln_id) FILTER (WHERE m.severity = 'low') AS low,
-				count(DISTINCT iv.vuln_id) FILTER (WHERE m.severity IN ('', 'none')) AS unknown
-			FROM iv JOIN vuln_meta m ON m.vuln_id = iv.vuln_id
-			WHERE $2 OR NOT iv.deferred
-			GROUP BY iv.digest
+				sev.critical, sev.high, sev.medium, sev.low, sev.negligible, sev.unknown
+			FROM shown s JOIN vuln_meta m ON m.vuln_id = s.vuln_id JOIN sev ON sev.digest = s.digest
+			GROUP BY s.digest, sev.critical, sev.high, sev.medium, sev.low, sev.negligible, sev.unknown
 		)
 		SELECT per.digest,
 			coalesce((SELECT array_agg(DISTINCT t.tag ORDER BY t.tag) FROM image_tags t WHERE t.digest = per.digest AND t.gone_at IS NULL), '{}'),
 			per.components, per.vulns, per.kev, per.score, per.epss,
-			per.critical, per.high, per.medium, per.low, per.unknown,
+			per.critical, per.high, per.medium, per.low, per.negligible, per.unknown,
 			(SELECT count(*) FROM asset_containers ct JOIN assets ca ON ca.id = ct.asset_id
 				WHERE ct.image_digest = per.digest AND ct.gone_at IS NULL AND ca.gone_at IS NULL),
 			(SELECT count(DISTINCT ct.asset_id) FROM asset_containers ct JOIN assets ca ON ca.id = ct.asset_id
@@ -399,8 +444,8 @@ func (d *DB) VulnImages(ctx context.Context, o store.VulnViewOptions) ([]store.V
 		var r store.VulnImageRow
 		var score, epss *float32
 		if err := rows.Scan(&r.Digest, &r.Tags, &r.Components, &r.VulnIDs, &r.KEV, &score, &epss,
-			&r.Severity.Critical, &r.Severity.High, &r.Severity.Medium, &r.Severity.Low, &r.Severity.Unknown,
-			&r.Containers, &r.Assets); err != nil {
+			&r.Severity.Critical, &r.Severity.High, &r.Severity.Medium, &r.Severity.Low, &r.Severity.Negligible,
+			&r.Severity.Unknown, &r.Containers, &r.Assets); err != nil {
 			return nil, mgErr("vulnerable images", err)
 		}
 		r.MaxScore, r.MaxEPSS = vuF64(score), vuF64(epss)
@@ -414,7 +459,7 @@ func (d *DB) ImageVulns(ctx context.Context, digest string, at time.Time) ([]sto
 	rows, err := d.q.Query(ctx, `
 		SELECT `+vuMetaCols+`, c.id::text, c.type, c.name, c.version, c.purl, ic.locations,
 			cv.method, cv.ecosystem, cv.fix_state, cv.fixed_version, cv.cpe_match, cv.range_source,
-			cv.platforms, cv.advisories::text,
+			cv.platforms, cv.advisories::text, cv.severity,
 			coalesce(t.rule_id IS NOT NULL AND (t.expires_at IS NULL OR t.expires_at > $2), false)
 		FROM image_components ic
 		JOIN components c ON c.id = ic.component_id
@@ -436,7 +481,7 @@ func (d *DB) ImageVulns(ctx context.Context, digest string, at time.Time) ([]sto
 		var adv string
 		if err := vuScanMeta(rows, &v.Meta, &v.Component.ID, &v.Component.Type, &v.Component.Name, &v.Component.Version,
 			&v.Component.PURL, &v.Locations, &v.Match.Method, &v.Match.Ecosystem, &v.Match.FixState, &v.Match.FixedVersion,
-			&v.Match.CPEMatch, &v.Match.RangeSource, &v.Match.Platforms, &adv, &v.Deferred); err != nil {
+			&v.Match.CPEMatch, &v.Match.RangeSource, &v.Match.Platforms, &adv, &v.Match.Severity, &v.Deferred); err != nil {
 			return nil, mgErr("image vulnerabilities", err)
 		}
 		if err := json.Unmarshal([]byte(adv), &v.Match.Advisories); err != nil {

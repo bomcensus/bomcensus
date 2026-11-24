@@ -1267,9 +1267,15 @@ export type FeedServerTrustKey = {
 };
 
 /**
- * CVSS rating of the highest base score.
+ * Rating of a match: the distribution's rating of a package match when
+ * its advisories have one (Debian urgency), otherwise the CVSS rating
+ * of the highest base score. `negligible` comes from distributions
+ * only (Debian `unimportant`: the binary packages are not affected,
+ * or it is not a security problem there). On a vulnerability or an
+ * aggregate, the highest rating of its matches.
+ *
  */
-export type Severity = 'critical' | 'high' | 'medium' | 'low' | 'none';
+export type Severity = 'critical' | 'high' | 'medium' | 'low' | 'negligible' | 'none';
 
 export type FixState = 'fixed' | 'not_fixed' | 'will_not_fix' | 'under_investigation' | 'unknown';
 
@@ -1356,13 +1362,14 @@ export type ExposureCounts = {
 };
 
 /**
- * Vulnerabilities by rating; `unknown` have no CVSS score.
+ * Vulnerabilities by rating; `unknown` have no rating.
  */
 export type SeverityCounts = {
     critical: number;
     high: number;
     medium: number;
     low: number;
+    negligible: number;
     unknown: number;
 };
 
@@ -1557,6 +1564,7 @@ export type VulnCveComponent = {
     rangeSource?: 'nvd' | 'vulncheck' | 'cna';
     platforms: Array<string>;
     advisories: Array<VulnAdvisory>;
+    severity?: Severity;
     assets: number;
     exposure: Exposure;
     findings?: number;
@@ -1631,9 +1639,13 @@ export type VulnSummary = {
      */
     unsupported: number;
     /**
-     * Vulnerabilities whose open findings are all deferred.
+     * Vulnerabilities whose open findings are all deferred, negligible ones aside.
      */
     deferred: number;
+    /**
+     * Vulnerabilities whose open findings that are not deferred are all rated negligible.
+     */
+    negligible: number;
     actions: Array<VulnComponent>;
     actionsTotal: number;
 };
@@ -1872,6 +1884,11 @@ export type QueryKev = boolean;
  * Keep findings an active triage rule defers.
  */
 export type QueryIncludeDeferred = boolean;
+
+/**
+ * Keep findings the distribution rates negligible; implied by `severity=negligible`.
+ */
+export type QueryIncludeNegligible = boolean;
 
 export type QueryLimit = number;
 
@@ -4487,6 +4504,10 @@ export type ListVulnerableComponentsData = {
          * Keep findings an active triage rule defers.
          */
         includeDeferred?: boolean;
+        /**
+         * Keep findings the distribution rates negligible; implied by `severity=negligible`.
+         */
+        includeNegligible?: boolean;
         limit?: number;
         offset?: number;
     };
@@ -4578,6 +4599,10 @@ export type ListVulnerabilitiesData = {
          * Keep findings an active triage rule defers.
          */
         includeDeferred?: boolean;
+        /**
+         * Keep findings the distribution rates negligible; implied by `severity=negligible`.
+         */
+        includeNegligible?: boolean;
         limit?: number;
         offset?: number;
     };
@@ -4692,6 +4717,10 @@ export type ListVulnerableProcessesData = {
          * Keep findings an active triage rule defers.
          */
         includeDeferred?: boolean;
+        /**
+         * Keep findings the distribution rates negligible; implied by `severity=negligible`.
+         */
+        includeNegligible?: boolean;
         limit?: number;
         offset?: number;
     };
@@ -4775,6 +4804,10 @@ export type ListVulnerableImagesData = {
          * Keep findings an active triage rule defers.
          */
         includeDeferred?: boolean;
+        /**
+         * Keep findings the distribution rates negligible; implied by `severity=negligible`.
+         */
+        includeNegligible?: boolean;
         limit?: number;
         offset?: number;
     };

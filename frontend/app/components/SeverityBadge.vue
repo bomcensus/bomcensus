@@ -7,7 +7,7 @@
 <script setup lang="ts">
 import type { Severity } from '~/types'
 
-// CVSS rating with the score. Without a rating, a dash.
+// Rating (the distribution's or the CVSS one) with the CVSS score. Without a rating, a dash.
 defineProps<{ severity?: Severity; score?: number }>()
 
 const toneClass: Record<Severity, string> = {
@@ -15,6 +15,7 @@ const toneClass: Record<Severity, string> = {
   high: 'bg-high-soft text-high',
   medium: 'bg-medium-soft text-medium',
   low: 'bg-low-soft text-low',
+  negligible: 'bg-surface-2 text-ink-3',
   none: 'bg-surface-2 text-ink-2',
 }
 </script>
