@@ -2019,6 +2019,7 @@ paths:
         - $ref: "#/components/parameters/QuerySeverity"
         - $ref: "#/components/parameters/QueryExposure"
         - $ref: "#/components/parameters/QueryKev"
+        - $ref: "#/components/parameters/QueryIncludeDeferred"
         - $ref: "#/components/parameters/QueryLimit"
         - $ref: "#/components/parameters/QueryOffset"
       responses:
@@ -2069,6 +2070,7 @@ paths:
         - $ref: "#/components/parameters/QuerySeverity"
         - $ref: "#/components/parameters/QueryExposure"
         - $ref: "#/components/parameters/QueryKev"
+        - $ref: "#/components/parameters/QueryIncludeDeferred"
         - $ref: "#/components/parameters/QueryLimit"
         - $ref: "#/components/parameters/QueryOffset"
       responses:
@@ -2133,6 +2135,244 @@ paths:
         default:
           $ref: "#/components/responses/UnexpectedError"
 
+  /vulnerabilities/processes:
+    get:
+      tags: [vulnerabilities]
+      operationId: listVulnerableProcesses
+      summary: Executables of processes that load vulnerable components
+      description: "Ordered by listening processes, then CVSS. `q` matches the executable path."
+      parameters:
+        - $ref: "#/components/parameters/QueryQ"
+        - $ref: "#/components/parameters/QueryIncludeDeferred"
+        - $ref: "#/components/parameters/QueryLimit"
+        - $ref: "#/components/parameters/QueryOffset"
+      responses:
+        "200":
+          description: Executables
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VulnProcessList"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /vulnerabilities/processes/detail:
+    get:
+      tags: [vulnerabilities]
+      operationId: getVulnerableProcess
+      summary: The vulnerable components one executable loads and where it runs
+      parameters:
+        - name: exe
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 4096
+      responses:
+        "200":
+          description: Executable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VulnProcessDetail"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /vulnerabilities/images:
+    get:
+      tags: [vulnerabilities]
+      operationId: listVulnerableImages
+      summary: Images whose content has vulnerabilities
+      description: |
+        Every image with known content, running or not. Rules with a
+        component scope apply; asset and group scopes do not, an image
+        belonging to no asset. `q` matches digest and tags.
+      parameters:
+        - $ref: "#/components/parameters/QueryQ"
+        - $ref: "#/components/parameters/QueryIncludeDeferred"
+        - $ref: "#/components/parameters/QueryLimit"
+        - $ref: "#/components/parameters/QueryOffset"
+      responses:
+        "200":
+          description: Images
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VulnImageList"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /vulnerabilities/images/{digest}:
+    parameters:
+      - $ref: "#/components/parameters/PathDigest"
+    get:
+      tags: [vulnerabilities]
+      operationId: getVulnerableImage
+      summary: The vulnerable components of one image's content
+      responses:
+        "200":
+          description: Image
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VulnImageDetail"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /triage-rules:
+    get:
+      tags: [vulnerabilities]
+      operationId: listTriageRules
+      summary: Judgments that a vulnerability does not affect a scope, newest first
+      parameters:
+        - name: includeRevoked
+          in: query
+          schema:
+            type: boolean
+            default: false
+      responses:
+        "200":
+          description: Rules
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TriageRuleList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+    post:
+      tags: [vulnerabilities]
+      operationId: createTriageRule
+      summary: Judge that a vulnerability does not affect a scope, for good or until a time
+      description: |
+        The rule defers the open findings of the vulnerability in its scope,
+        now and later. `scope.kind` `purl` takes a component purl
+        (qualifiers are ignored; a trailing `*` matches a prefix), `asset`
+        an asset id, `group` an asset group. Without `expiresAt` the rule
+        holds until revoked. When `expiresAt` passes, the findings come
+        back and a `expired` event is recorded.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TriageRuleCreate"
+      responses:
+        "201":
+          description: Rule created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TriageRule"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /triage-rules/{id}:
+    parameters:
+      - $ref: "#/components/parameters/PathId"
+    delete:
+      tags: [vulnerabilities]
+      operationId: revokeTriageRule
+      summary: Revoke a rule; its findings come back
+      responses:
+        "200":
+          description: Revoked rule
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TriageRule"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /triage-events:
+    get:
+      tags: [vulnerabilities]
+      operationId: listTriageEvents
+      summary: What happened to triage rules, oldest first
+      description: |
+        Rules created, revoked and expired. A client follows the log by
+        passing the last `id` it saw as `after`.
+      parameters:
+        - name: after
+          in: query
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+            default: 0
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 200
+      responses:
+        "200":
+          description: Events
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TriageEventList"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /vex:
+    get:
+      tags: [vulnerabilities]
+      operationId: exportVex
+      summary: The active triage rules as an OpenVEX document
+      description: |
+        One `not_affected` statement per rule, with the purls of the
+        components it decides (or its purl scope). A deferral's end is
+        stated in `status_notes`.
+      responses:
+        "200":
+          description: OpenVEX 0.2.0 document
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
 components:
   securitySchemes:
     session:
@@ -2166,6 +2406,13 @@ components:
       description: Keep items with a known exploited vulnerability.
       schema:
         type: boolean
+    QueryIncludeDeferred:
+      name: includeDeferred
+      in: query
+      description: Keep findings an active triage rule defers.
+      schema:
+        type: boolean
+        default: false
     QueryLimit:
       name: limit
       in: query
@@ -4380,6 +4627,9 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ProcessCount"
+        deferred:
+          description: Deferred findings among them (when deferred ones are included).
+          type: integer
     VulnComponentList:
       type: object
       required: [items, total]
@@ -4434,6 +4684,14 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/FindingProcess"
+        deferred:
+          description: Deferred findings among them (when deferred ones are included).
+          type: integer
+        rules:
+          description: In the context of one component; the triage rules deciding its findings.
+          type: array
+          items:
+            $ref: "#/components/schemas/TriageRule"
     VulnCveList:
       type: object
       required: [items, total]
@@ -4619,6 +4877,16 @@ components:
           type: integer
         exposure:
           $ref: "#/components/schemas/Exposure"
+        findings:
+          type: integer
+        deferred:
+          description: Findings an active rule defers.
+          type: integer
+        rules:
+          description: The triage rules deciding its findings.
+          type: array
+          items:
+            $ref: "#/components/schemas/TriageRule"
     VulnCveDetail:
       type: object
       required: [vulnerability, components, locations]
@@ -4642,6 +4910,8 @@ components:
         componentName:
           type: string
         componentVersion:
+          type: string
+        componentPurl:
           type: string
         container:
           type: string
@@ -4676,6 +4946,8 @@ components:
         firstSeen:
           type: string
           format: date-time
+        triage:
+          $ref: "#/components/schemas/TriageRule"
     AssetVulnList:
       type: object
       required: [items]
@@ -4686,7 +4958,7 @@ components:
             $ref: "#/components/schemas/AssetVuln"
     VulnSummary:
       type: object
-      required: [urgent, totals, unsupported, actions, actionsTotal]
+      required: [urgent, totals, unsupported, deferred, actions, actionsTotal]
       properties:
         revision:
           description: Data revision of the active feed server at the last check.
@@ -4719,9 +4991,284 @@ components:
         unsupported:
           description: Live components the feed server has no data for.
           type: integer
+        deferred:
+          description: Vulnerabilities whose open findings are all deferred.
+          type: integer
         actions:
           type: array
           items:
             $ref: "#/components/schemas/VulnComponent"
         actionsTotal:
           type: integer
+    TriageJustification:
+      description: CycloneDX VEX justification of a `not_affected` judgment.
+      type: string
+      enum: [code_not_present, code_not_reachable, requires_configuration, requires_environment, protected_at_runtime, protected_by_mitigating_control]
+    TriageScope:
+      type: object
+      required: [kind, value]
+      properties:
+        kind:
+          type: string
+          enum: [purl, asset, group]
+        value:
+          description: A purl (pattern), an asset id or an asset group.
+          type: string
+          minLength: 1
+          maxLength: 1024
+    TriageRuleCreate:
+      type: object
+      required: [vulnId, scope, justification]
+      properties:
+        vulnId:
+          type: string
+          minLength: 1
+          maxLength: 128
+        scope:
+          $ref: "#/components/schemas/TriageScope"
+        justification:
+          $ref: "#/components/schemas/TriageJustification"
+        note:
+          type: string
+          maxLength: 2000
+        expiresAt:
+          description: End of the deferral; absent for a permanent one. Must be in the future.
+          type: string
+          format: date-time
+    TriageRule:
+      type: object
+      required: [id, vulnId, scope, status, justification, createdBy, createdAt, active]
+      properties:
+        id:
+          type: string
+        vulnId:
+          type: string
+        scope:
+          $ref: "#/components/schemas/TriageScope"
+        scopeName:
+          description: Asset name of an asset scope.
+          type: string
+        status:
+          type: string
+          enum: [not_affected]
+        justification:
+          $ref: "#/components/schemas/TriageJustification"
+        note:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+        expiredAt:
+          description: When the end of the deferral was recorded.
+          type: string
+          format: date-time
+        active:
+          description: The rule defers findings now.
+          type: boolean
+        createdBy:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        revokedAt:
+          type: string
+          format: date-time
+        revokedBy:
+          type: string
+        findings:
+          description: Open findings it decides now.
+          type: integer
+        assets:
+          type: integer
+    TriageRuleList:
+      type: object
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/TriageRule"
+        total:
+          type: integer
+    TriageEvent:
+      type: object
+      required: [id, kind, at, rule, findings]
+      properties:
+        id:
+          type: integer
+          format: int64
+        kind:
+          type: string
+          enum: [created, revoked, expired]
+        at:
+          type: string
+          format: date-time
+        actor:
+          type: string
+        findings:
+          description: "Open findings the rule decided; for `expired`, those that came back."
+          type: integer
+        rule:
+          $ref: "#/components/schemas/TriageRule"
+    TriageEventList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/TriageEvent"
+    VulnProcess:
+      type: object
+      required: [exe, assets, processes, listening, components, cves, kev, severityCounts]
+      properties:
+        exe:
+          type: string
+        assets:
+          type: integer
+        processes:
+          type: integer
+        listening:
+          description: Processes listening on a non-loopback address.
+          type: integer
+        components:
+          type: integer
+        cves:
+          type: integer
+        kev:
+          type: integer
+        score:
+          type: number
+          format: double
+        severity:
+          $ref: "#/components/schemas/Severity"
+        severityCounts:
+          $ref: "#/components/schemas/SeverityCounts"
+    VulnProcessList:
+      type: object
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/VulnProcess"
+        total:
+          type: integer
+    VulnProcessDetail:
+      type: object
+      required: [process, components, locations]
+      properties:
+        process:
+          $ref: "#/components/schemas/VulnProcess"
+        components:
+          type: array
+          items:
+            $ref: "#/components/schemas/VulnComponent"
+        locations:
+          type: array
+          items:
+            $ref: "#/components/schemas/VulnLocation"
+    VulnImage:
+      type: object
+      required: [digest, tags, components, cves, kev, severityCounts, containers, assets]
+      properties:
+        digest:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        components:
+          type: integer
+        cves:
+          type: integer
+        kev:
+          type: integer
+        score:
+          type: number
+          format: double
+        severity:
+          $ref: "#/components/schemas/Severity"
+        epss:
+          type: number
+          format: double
+        severityCounts:
+          $ref: "#/components/schemas/SeverityCounts"
+        containers:
+          description: Current containers running it.
+          type: integer
+        assets:
+          type: integer
+    VulnImageList:
+      type: object
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/VulnImage"
+        total:
+          type: integer
+    VulnImageCve:
+      type: object
+      required: [vulnId, kev, fixState, deferred]
+      properties:
+        vulnId:
+          type: string
+        summary:
+          type: string
+        severity:
+          $ref: "#/components/schemas/Severity"
+        score:
+          type: number
+          format: double
+        kev:
+          type: boolean
+        epss:
+          type: number
+          format: double
+        fixState:
+          $ref: "#/components/schemas/FixState"
+        fixedVersion:
+          type: string
+        deferred:
+          description: A rule with a component scope defers it.
+          type: boolean
+    VulnImageComponent:
+      type: object
+      required: [componentId, name, version, type, locations, fixedVersions, cves]
+      properties:
+        componentId:
+          type: string
+        name:
+          type: string
+        version:
+          type: string
+        type:
+          $ref: "#/components/schemas/ComponentType"
+        purl:
+          type: string
+        locations:
+          type: array
+          items:
+            type: string
+        fixedVersion:
+          type: string
+        fixedVersions:
+          type: array
+          items:
+            type: string
+        cves:
+          type: array
+          items:
+            $ref: "#/components/schemas/VulnImageCve"
+    VulnImageDetail:
+      type: object
+      required: [image, components]
+      properties:
+        image:
+          $ref: "#/components/schemas/VulnImage"
+        components:
+          type: array
+          items:
+            $ref: "#/components/schemas/VulnImageComponent"

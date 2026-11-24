@@ -23,6 +23,7 @@ import type {
   SectionName,
   Severity,
   TlsMode,
+  TriageJustification,
   UpdateState,
 } from '~/types'
 
@@ -249,4 +250,13 @@ export const findingLayerLabel: Record<FindingLayer, string> = {
   host: '호스트',
   runtime: '실행 중 추가',
   image: '이미지',
+}
+
+export const justificationLabel: Record<TriageJustification, string> = {
+  code_not_present: '취약 코드 없음',
+  code_not_reachable: '실행 경로 아님',
+  requires_configuration: '설정 필요(미설정)',
+  requires_environment: '환경 필요(해당 없음)',
+  protected_at_runtime: '런타임 보호',
+  protected_by_mitigating_control: '완화 조치 적용',
 }

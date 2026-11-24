@@ -142,6 +142,10 @@ func componentUnitDTO(r store.VulnComponentRow) gen.VulnComponent {
 		n := r.Unfixed
 		out.Unfixed = &n
 	}
+	if r.Deferred > 0 {
+		n := r.Deferred
+		out.Deferred = &n
+	}
 	for _, p := range r.Processes {
 		out.Processes = append(out.Processes, gen.ProcessCount{Exe: p.Exe, Count: p.Count})
 	}
@@ -235,11 +239,11 @@ func pageSlice[T any](items []T, limit, offset *int) ([]T, error) {
 
 // ListVulnerableComponents implements gen.StrictServerInterface.
 func (h *Handlers) ListVulnerableComponents(ctx context.Context, req gen.ListVulnerableComponentsRequestObject) (gen.ListVulnerableComponentsResponseObject, error) {
-	rows, err := h.cfg.Store.VulnComponents(ctx)
+	prm := req.Params
+	rows, err := h.cfg.Store.VulnComponents(ctx, h.viewOptions(prm.IncludeDeferred))
 	if err != nil {
 		return nil, err
 	}
-	prm := req.Params
 	rows = slices.DeleteFunc(rows, func(r store.VulnComponentRow) bool {
 		return !unitMatches(r, prm.Q, prm.Severity, prm.Exposure, prm.Kev)
 	})
@@ -398,7 +402,7 @@ func locationsOf(fs []store.OpenFinding) []gen.VulnLocation {
 
 // GetVulnerableComponent implements gen.StrictServerInterface.
 func (h *Handlers) GetVulnerableComponent(ctx context.Context, req gen.GetVulnerableComponentRequestObject) (gen.GetVulnerableComponentResponseObject, error) {
-	fs, err := h.cfg.Store.OpenFindings(ctx, store.OpenFindingFilter{ComponentID: req.Id})
+	fs, err := h.cfg.Store.OpenFindings(ctx, store.OpenFindingFilter{ComponentID: req.Id, At: h.cfg.Now()})
 	if err != nil {
 		return nil, err
 	}
@@ -411,21 +415,27 @@ func (h *Handlers) GetVulnerableComponent(ctx context.Context, req gen.GetVulner
 	}
 	// One row per vulnerability: the most exposed place and its processes.
 	type agg struct {
-		f      store.OpenFinding
-		assets map[string]bool
-		places map[string]string
+		f        store.OpenFinding
+		assets   map[string]bool
+		places   map[string]string
+		rules    rulesOf
+		deferred int
 	}
 	byVuln := map[string]*agg{}
 	var order []string
 	for _, f := range fs {
 		a := byVuln[f.VulnID]
 		if a == nil {
-			a = &agg{f: f, assets: map[string]bool{}, places: map[string]string{}}
+			a = &agg{f: f, assets: map[string]bool{}, places: map[string]string{}, rules: rulesOf{}}
 			byVuln[f.VulnID] = a
 			order = append(order, f.VulnID)
 		}
 		a.assets[f.AssetID] = true
 		a.places[f.AssetID+"\x00"+f.Container] = f.Exposure
+		a.rules.add(f)
+		if f.Triage != nil && f.Triage.Active {
+			a.deferred++
+		}
 		if exposureLevel[f.Exposure] > exposureLevel[a.f.Exposure] {
 			a.f.Exposure, a.f.Processes = f.Exposure, f.Processes
 		}
@@ -441,6 +451,12 @@ func (h *Handlers) GetVulnerableComponent(ctx context.Context, req gen.GetVulner
 		v.FixState, v.FixedVersion = &fs, optStr(a.f.Match.FixedVersion)
 		p := processesDTO(a.f.Processes)
 		v.Processes = &p
+		if a.deferred > 0 {
+			n := a.deferred
+			v.Deferred = &n
+		}
+		rs := a.rules.dto(h.cfg.Now())
+		v.Rules = &rs
 		out.Cves = append(out.Cves, v)
 	}
 	sortCves(out.Cves)
@@ -466,11 +482,11 @@ func sortCves(vs []gen.VulnCve) {
 
 // ListVulnerabilities implements gen.StrictServerInterface.
 func (h *Handlers) ListVulnerabilities(ctx context.Context, req gen.ListVulnerabilitiesRequestObject) (gen.ListVulnerabilitiesResponseObject, error) {
-	rows, err := h.cfg.Store.VulnCves(ctx)
+	prm := req.Params
+	rows, err := h.cfg.Store.VulnCves(ctx, h.viewOptions(prm.IncludeDeferred))
 	if err != nil {
 		return nil, err
 	}
-	prm := req.Params
 	var items []gen.VulnCve
 	for _, r := range rows {
 		if prm.Severity != nil && string(*prm.Severity) != r.Meta.Severity &&
@@ -486,7 +502,12 @@ func (h *Handlers) ListVulnerabilities(ctx context.Context, req gen.ListVulnerab
 		if !textMatches(prm.Q, append(append([]string{r.Meta.ID, r.Meta.Summary}, r.Meta.Aliases...), r.ComponentNames...)...) {
 			continue
 		}
-		items = append(items, cveDTO(r.Meta, r.Components, r.Assets, r.Exposure))
+		v := cveDTO(r.Meta, r.Components, r.Assets, r.Exposure)
+		if r.Deferred > 0 {
+			n := r.Deferred
+			v.Deferred = &n
+		}
+		items = append(items, v)
 	}
 	sortCves(items)
 	pg, err := pageSlice(items, prm.Limit, prm.Offset)
@@ -527,7 +548,7 @@ func vulnDetailDTO(m store.VulnMeta) gen.VulnDetail {
 
 // GetVulnerability implements gen.StrictServerInterface.
 func (h *Handlers) GetVulnerability(ctx context.Context, req gen.GetVulnerabilityRequestObject) (gen.GetVulnerabilityResponseObject, error) {
-	fs, err := h.cfg.Store.OpenFindings(ctx, store.OpenFindingFilter{VulnID: req.VulnId})
+	fs, err := h.cfg.Store.OpenFindings(ctx, store.OpenFindingFilter{VulnID: req.VulnId, At: h.cfg.Now()})
 	if err != nil {
 		return nil, err
 	}
@@ -539,19 +560,27 @@ func (h *Handlers) GetVulnerability(ctx context.Context, req gen.GetVulnerabilit
 		Locations:     locationsOf(fs),
 	}
 	type agg struct {
-		f      store.OpenFinding
-		assets map[string]bool
+		f        store.OpenFinding
+		assets   map[string]bool
+		rules    rulesOf
+		findings int
+		deferred int
 	}
 	byComp := map[string]*agg{}
 	var order []string
 	for _, f := range fs {
 		a := byComp[f.Component.ID]
 		if a == nil {
-			a = &agg{f: f, assets: map[string]bool{}}
+			a = &agg{f: f, assets: map[string]bool{}, rules: rulesOf{}}
 			byComp[f.Component.ID] = a
 			order = append(order, f.Component.ID)
 		}
 		a.assets[f.AssetID] = true
+		a.findings++
+		a.rules.add(f)
+		if f.Triage != nil && f.Triage.Active {
+			a.deferred++
+		}
 		if exposureLevel[f.Exposure] > exposureLevel[a.f.Exposure] {
 			a.f.Exposure = f.Exposure
 		}
@@ -565,6 +594,8 @@ func (h *Handlers) GetVulnerability(ctx context.Context, req gen.GetVulnerabilit
 			FixState: gen.FixState(m.FixState), FixedVersion: optStr(m.FixedVersion), Platforms: m.Platforms,
 			Advisories: make([]gen.VulnAdvisory, 0, len(m.Advisories)), Assets: len(a.assets), Exposure: gen.Exposure(a.f.Exposure),
 		}
+		findings, deferred, rules := a.findings, a.deferred, a.rules.dto(h.cfg.Now())
+		c.Findings, c.Deferred, c.Rules = &findings, &deferred, &rules
 		if c.Platforms == nil {
 			c.Platforms = []string{}
 		}
@@ -596,7 +627,7 @@ func (h *Handlers) ListAssetVulnerabilities(ctx context.Context, req gen.ListAss
 	} else if err != nil {
 		return nil, err
 	}
-	fs, err := h.cfg.Store.OpenFindings(ctx, store.OpenFindingFilter{AssetID: req.Id})
+	fs, err := h.cfg.Store.OpenFindings(ctx, store.OpenFindingFilter{AssetID: req.Id, At: h.cfg.Now()})
 	if err != nil {
 		return nil, err
 	}
@@ -604,10 +635,12 @@ func (h *Handlers) ListAssetVulnerabilities(ctx context.Context, req gen.ListAss
 	for _, f := range fs {
 		out.Items = append(out.Items, gen.AssetVuln{
 			ComponentId: f.Component.ID, ComponentName: f.Component.Name, ComponentVersion: f.Component.Version,
-			Container: optStr(f.Container), Layer: gen.FindingLayer(layerOf(f.Layer)), ImageDigest: optStr(f.ImageDigest),
+			ComponentPurl: optStr(f.Component.PURL),
+			Container:     optStr(f.Container), Layer: gen.FindingLayer(layerOf(f.Layer)), ImageDigest: optStr(f.ImageDigest),
 			VulnId: f.VulnID, Summary: optStr(f.Meta.Summary), Severity: severityPtr(f.Meta.Severity), Score: f.Meta.MaxScore,
 			Kev: f.Meta.KEV != nil, Epss: f.Meta.EPSS, Exposure: gen.Exposure(f.Exposure), FixState: gen.FixState(f.Match.FixState),
 			FixedVersion: optStr(f.Match.FixedVersion), Processes: processesDTO(f.Processes), FirstSeen: f.FirstSeen,
+			Triage: findingTriageDTO(f, h.cfg.Now()),
 		})
 	}
 	slices.SortStableFunc(out.Items, func(a, b gen.AssetVuln) int {
@@ -621,12 +654,16 @@ func (h *Handlers) ListAssetVulnerabilities(ctx context.Context, req gen.ListAss
 
 // GetVulnerabilitySummary implements gen.StrictServerInterface.
 func (h *Handlers) GetVulnerabilitySummary(ctx context.Context, _ gen.GetVulnerabilitySummaryRequestObject) (gen.GetVulnerabilitySummaryResponseObject, error) {
-	rows, err := h.cfg.Store.VulnComponents(ctx)
+	now := h.cfg.Now()
+	rows, err := h.cfg.Store.VulnComponents(ctx, store.VulnViewOptions{At: now})
 	if err != nil {
 		return nil, err
 	}
 	sortUnits(rows)
 	var out gen.GetVulnerabilitySummary200JSONResponse
+	if out.Deferred, err = h.cfg.Store.CountDeferred(ctx, now); err != nil {
+		return nil, err
+	}
 	cves, kev, urgent := map[string]bool{}, map[string]bool{}, map[string]bool{}
 	for _, r := range rows {
 		for _, v := range r.VulnIDs {
@@ -644,7 +681,7 @@ func (h *Handlers) GetVulnerabilitySummary(ctx context.Context, _ gen.GetVulnera
 	}
 	out.Urgent.Cves = len(urgent)
 	out.Totals.Cves, out.Totals.Kev, out.Totals.Components = len(cves), len(kev), len(rows)
-	if out.Totals.Assets, err = h.cfg.Store.CountFindingAssets(ctx); err != nil {
+	if out.Totals.Assets, err = h.cfg.Store.CountFindingAssets(ctx, now); err != nil {
 		return nil, err
 	}
 	out.ActionsTotal = len(rows)

@@ -130,6 +130,17 @@ export type {
   VulnCveDetail,
   AssetVuln,
   VulnSummary,
+  TriageJustification,
+  TriageScope,
+  TriageRule,
+  TriageRuleCreate,
+  TriageEvent,
+  VulnProcess,
+  VulnProcessDetail,
+  VulnImage,
+  VulnImageCve,
+  VulnImageComponent,
+  VulnImageDetail,
 } from '~/api/gen/types.gen'
 
 // Request bodies with write-only fields (secrets) use the writable variant.

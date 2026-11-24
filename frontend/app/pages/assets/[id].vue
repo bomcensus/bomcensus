@@ -649,7 +649,14 @@ const tabs = computed(() => [
         </Panel>
       </div>
 
-      <AssetVulnPanel v-else-if="tab === 'vulnerabilities'" :items="vulns" :pending="vulnsPending" :error="vulnsError" @retry="refreshVulns" />
+      <AssetVulnPanel
+        v-else-if="tab === 'vulnerabilities'"
+        :asset="{ id: asset.id, name: asset.name, group: asset.group || undefined }"
+        :items="vulns"
+        :pending="vulnsPending"
+        :error="vulnsError"
+        @retry="refreshVulns"
+      />
 
       <!-- Collection -->
       <div v-else-if="tab === 'collection'" class="space-y-4">

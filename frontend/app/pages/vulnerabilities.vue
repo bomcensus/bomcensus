@@ -7,11 +7,13 @@
 <script setup lang="ts">
 import type { Exposure, ExposureCounts, Severity, VulnLocation } from '~/types'
 import {
+  exportVex,
   getVulnerability,
   getVulnerabilitySummary,
   getVulnerableComponent,
   listVulnerabilities,
   listVulnerableComponents,
+  toApiError,
 } from '~/api'
 
 useHead({ title: '취약점 · bomcensus' })
@@ -19,8 +21,9 @@ useHead({ title: '취약점 · bomcensus' })
 const route = useRoute()
 const router = useRouter()
 
-type View = 'cve' | 'component'
-const view = computed<View>(() => (route.query.view === 'component' ? 'component' : 'cve'))
+type View = 'cve' | 'component' | 'process' | 'image' | 'rules'
+const views: View[] = ['cve', 'component', 'process', 'image', 'rules']
+const view = computed<View>(() => (views.includes(route.query.view as View) ? (route.query.view as View) : 'cve'))
 const selected = computed(() => (typeof route.query.id === 'string' ? route.query.id : ''))
 
 function go(v: View, id = '') {
@@ -33,6 +36,8 @@ const q = ref('')
 const severity = ref('')
 const exposure = ref('')
 const kevOnly = ref(false)
+// Deferred findings are hidden unless asked for.
+const hideDeferred = ref(true)
 // The search goes to the server once typing pauses.
 const qDebounced = ref('')
 let qTimer: ReturnType<typeof setTimeout> | undefined
@@ -46,13 +51,14 @@ const filters = computed(() => ({
   severity: (severity.value || undefined) as Severity | undefined,
   exposure: (exposure.value || undefined) as Exposure | undefined,
   kev: kevOnly.value ? true : undefined,
+  includeDeferred: hideDeferred.value ? undefined : true,
   limit: 500,
 }))
 
 const severityOptions = (['critical', 'high', 'medium', 'low'] as const).map((s) => ({ value: s, label: severityLabel[s] }))
 const exposureOptions = (['listening', 'running', 'installed', 'unknown'] as const).map((e) => ({ value: e, label: exposureLabel[e] }))
 
-const { data: summary } = useLoad('vulns:summary', getVulnerabilitySummary)
+const { data: summary, refresh: refreshSummary } = useLoad('vulns:summary', getVulnerabilitySummary)
 
 const listKey = computed(() => `vulns:${view.value}:${JSON.stringify(filters.value)}`)
 const { data: cveList, pending: cvesPending, error: cvesError, refresh: refreshCves } = useLoad(
@@ -82,14 +88,6 @@ const { data: compDetail, error: compError, refresh: refreshComp } = useLoad(
 
 // ── Formatting ────────────────────────────────────────
 
-const severityText: Record<Severity, string> = {
-  critical: 'text-critical',
-  high: 'text-high',
-  medium: 'text-medium',
-  low: 'text-low',
-  none: 'text-ink-3',
-}
-
 function mix(c: ExposureCounts): string {
   return (['listening', 'running', 'installed', 'unknown'] as const)
     .filter((e) => c[e] > 0)
@@ -104,21 +102,7 @@ const paragraphs = (text: string) =>
     .map((p) => p.replace(/\s*\n\s*/g, ' ').trim())
     .filter(Boolean)
 
-const pct = (n?: number) => (n === undefined ? '—' : `${(n * 100).toFixed(1)}%`)
-
-function where(l: VulnLocation): string {
-  const kind = l.assetKind === 'workload' ? '워크로드' : '호스트'
-  if (!l.container) return kind
-  return `${kind} · ${l.container} · ${findingLayerLabel[l.layer]}`
-}
-
-function processText(l: VulnLocation): string {
-  const p = l.processes[0]
-  if (!p) return ''
-  const exe = p.exe.split('/').pop() ?? p.exe
-  const more = l.processes.length > 1 ? ` 외 ${l.processes.length - 1}` : ''
-  return `${exe} · pid ${p.pid}${p.ports.length ? ` · ${p.ports.join(', ')}` : ''}${more}`
-}
+const pct = percent
 
 // Long location lists show the first rows; the rest open on demand.
 const locationLimit = 10
@@ -129,7 +113,37 @@ const visible = (ls: VulnLocation[]) => (showAllLocations.value ? ls : ls.slice(
 const tabs = computed(() => [
   { key: 'cve', label: 'CVE', count: summary.value?.totals.cves },
   { key: 'component', label: '컴포넌트', count: summary.value?.totals.components },
+  { key: 'process', label: '프로세스' },
+  { key: 'image', label: '이미지' },
+  { key: 'rules', label: '판정' },
 ])
+
+// ── Triage ────────────────────────────────────────────
+
+const picker = reactive({ open: false, vulnId: '', purl: '' })
+function judge(vulnId: string, purl?: string) {
+  Object.assign(picker, { open: true, vulnId, purl: purl ?? '' })
+}
+// A saved or revoked rule changes counts, lists and the detail.
+async function triageChanged() {
+  await Promise.all([refreshSummary(), refreshCves(), refreshComps(), refreshCve(), refreshComp()])
+}
+
+const vexError = ref('')
+async function downloadVex() {
+  vexError.value = ''
+  try {
+    const doc = await exportVex()
+    const blob = new Blob([JSON.stringify(doc, null, 2)], { type: 'application/json' })
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = `bomcensus-${new Date().toISOString().slice(0, 10)}.openvex.json`
+    a.click()
+    URL.revokeObjectURL(a.href)
+  } catch (e) {
+    vexError.value = toApiError(e).message
+  }
+}
 const tabModel = computed({ get: () => view.value as string, set: (v: string) => go(v as View) })
 </script>
 
@@ -140,16 +154,29 @@ const tabModel = computed({ get: () => view.value as string, set: (v: string) =>
         <template v-if="summary?.revision !== undefined">취약점 데이터 rev {{ summary.revision }} · {{ formatDateTime(summary.checkedAt) }}</template>
         <template v-else-if="summary">feed 서버에 아직 연결하지 않았습니다. <NuxtLink to="/settings/feed" class="link">설정 › 취약점 피드</NuxtLink></template>
       </template>
+      <template #actions>
+        <AppButton @click="downloadVex">OpenVEX 내보내기</AppButton>
+      </template>
     </PageHeader>
+    <p v-if="vexError" class="note note-danger mb-3" role="alert">{{ vexError }}</p>
 
     <AppTabs v-model="tabModel" :tabs="tabs" class="mb-3" />
 
+    <VulnProcessView v-if="view === 'process'" :selected="selected" @select="(exe: string) => go('process', exe)" />
+    <VulnImageView v-else-if="view === 'image'" :selected="selected" @select="(digest: string) => go('image', digest)" />
+    <TriageRuleList v-else-if="view === 'rules'" @changed="triageChanged" />
+
+    <template v-else>
     <FilterBar :count="view === 'cve' ? cveList?.total : compList?.total" unit="개">
       <SearchInput v-model="q" :placeholder="view === 'cve' ? 'CVE, 요약, 컴포넌트' : '컴포넌트, 버전, CVE'" />
       <SelectFilter v-model="severity" label="심각도" :options="severityOptions" />
       <SelectFilter v-model="exposure" label="영향도" :options="exposureOptions" />
       <label class="inline-flex items-center gap-1.5 text-sm">
         <input v-model="kevOnly" type="checkbox" class="size-[15px] accent-(--accent)" /> KEV만
+      </label>
+      <label class="inline-flex items-center gap-1.5 text-sm">
+        <input v-model="hideDeferred" type="checkbox" class="size-[15px] accent-(--accent)" /> 유예 숨김
+        <span v-if="summary?.deferred" class="mono text-xs text-ink-3">{{ summary.deferred }}</span>
       </label>
     </FilterBar>
 
@@ -173,6 +200,7 @@ const tabModel = computed({ get: () => view.value as string, set: (v: string) =>
                   <span v-if="v.severity" class="text-[11px]" :class="severityText[v.severity]">■</span>
                   <span class="mono text-sm font-medium">{{ v.vulnId }}</span>
                   <StatusBadge v-if="v.kev" tone="danger" label="KEV" />
+                  <StatusBadge v-if="v.deferred" label="유예" />
                   <span class="mono ml-auto text-xs text-ink-2">{{ v.score !== undefined ? v.score.toFixed(1) : '—' }}</span>
                 </span>
                 <span v-if="v.summary" class="mt-0.5 line-clamp-1 block text-xs text-ink-2">{{ v.summary }}</span>
@@ -205,6 +233,7 @@ const tabModel = computed({ get: () => view.value as string, set: (v: string) =>
                   <span v-if="c.severity" class="text-[11px]" :class="severityText[c.severity]">■</span>
                   <span class="truncate text-sm font-medium">{{ c.name }}</span>
                   <StatusBadge v-if="c.kev" tone="danger" label="KEV" />
+                  <StatusBadge v-if="c.deferred" label="유예" />
                   <span class="mono ml-auto text-xs text-ink-2">{{ c.score !== undefined ? c.score.toFixed(1) : '—' }}</span>
                 </span>
                 <span class="mono mt-0.5 block truncate text-xs text-ink-2">
@@ -286,7 +315,8 @@ const tabModel = computed({ get: () => view.value as string, set: (v: string) =>
                   </tr>
                 </thead>
                 <tbody>
-                  <tr v-for="c in cveDetail.components" :key="c.componentId" class="border-b border-line align-top last:border-b-0">
+                  <template v-for="c in cveDetail.components" :key="c.componentId">
+                  <tr class="align-top">
                     <td class="py-2 pl-3.5">
                       <NuxtLink :to="`/vulnerabilities?view=component&id=${c.componentId}`" class="font-medium hover:underline">{{ c.name }}</NuxtLink>
                       <span class="mono ml-1 text-xs text-ink-2">{{ c.version }}</span>
@@ -302,12 +332,24 @@ const tabModel = computed({ get: () => view.value as string, set: (v: string) =>
                     <td class="px-3 py-2"><ExposureMeter :exposure="c.exposure" /></td>
                     <td class="mono py-2 pl-3 pr-3.5 text-right">{{ c.assets }}</td>
                   </tr>
+                  <tr class="border-b border-line last:border-b-0">
+                    <td colspan="5" class="px-3.5 pb-2.5">
+                      <div class="flex flex-col gap-1">
+                        <TriageRuleBadge v-for="r in c.rules ?? []" :key="r.id" :rule="r" @changed="triageChanged" />
+                        <span>
+                          <button type="button" class="link text-xs" @click="judge(cveDetail.vulnerability.vulnId, c.purl)">판정…</button>
+                          <span v-if="c.deferred" class="ml-2 text-xs text-ink-3">{{ c.deferred }}/{{ c.findings }}곳 유예</span>
+                        </span>
+                      </div>
+                    </td>
+                  </tr>
+                  </template>
                 </tbody>
               </table>
             </Panel>
 
             <Panel title="위치" flush>
-              <VulnLocations :items="visible(cveDetail.locations)" :where="where" :process-text="processText" />
+              <VulnLocations :items="visible(cveDetail.locations)" :where="locationWhere" :process-text="locationProcess" />
               <button
                 v-if="cveDetail.locations.length > locationLimit && !showAllLocations"
                 type="button"
@@ -394,6 +436,10 @@ const tabModel = computed({ get: () => view.value as string, set: (v: string) =>
                       <NuxtLink :to="`/vulnerabilities?view=cve&id=${encodeURIComponent(v.vulnId)}`" class="mono font-medium hover:underline">{{ v.vulnId }}</NuxtLink>
                       <StatusBadge v-if="v.kev" class="ml-1" tone="danger" label="KEV" />
                       <div v-if="v.summary" class="max-w-[52ch] text-xs text-ink-2">{{ v.summary }}</div>
+                      <div class="mt-1 flex flex-col gap-1">
+                        <TriageRuleBadge v-for="r in v.rules ?? []" :key="r.id" :rule="r" @changed="triageChanged" />
+                        <button type="button" class="link self-start text-xs" @click="judge(v.vulnId, compDetail.component.purl)">판정…</button>
+                      </div>
                     </td>
                     <td class="px-3 py-2">
                       <span v-if="v.fixedVersion" class="mono whitespace-nowrap text-xs">→ {{ v.fixedVersion }}</span>
@@ -411,7 +457,7 @@ const tabModel = computed({ get: () => view.value as string, set: (v: string) =>
             </Panel>
 
             <Panel title="위치" flush>
-              <VulnLocations :items="visible(compDetail.locations)" :where="where" :process-text="processText" />
+              <VulnLocations :items="visible(compDetail.locations)" :where="locationWhere" :process-text="locationProcess" />
               <button
                 v-if="compDetail.locations.length > locationLimit && !showAllLocations"
                 type="button"
@@ -425,5 +471,8 @@ const tabModel = computed({ get: () => view.value as string, set: (v: string) =>
         </template>
       </div>
     </div>
+    </template>
+
+    <TriagePicker v-model:open="picker.open" :vuln-id="picker.vulnId" :purl="picker.purl" @saved="triageChanged" />
   </div>
 </template>

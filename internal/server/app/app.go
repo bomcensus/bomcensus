@@ -177,6 +177,7 @@ func Run(ctx context.Context, cfg config.Config, log *slog.Logger, opts Options)
 		queue.Periodic(job.KindCleanup, opts.CleanupInterval, job.CleanupArgs{}),
 		matcher.Register(queue, vulnsvc.DefaultInterval),
 		refresher.Register(queue, vulnsvc.DefaultRefreshInterval),
+		vulnsvc.NewExpirer(db, log.With("component", "triage")).Register(queue, vulnsvc.DefaultExpireInterval),
 	); err != nil {
 		return err
 	}

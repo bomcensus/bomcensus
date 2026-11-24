@@ -28,6 +28,7 @@ type Store interface {
 	store.K8sClusters
 	store.AssetRequests
 	store.VulnQuery
+	store.Triage
 	GetActiveFeedServer(ctx context.Context) (store.FeedServer, error)
 	CountMatches(ctx context.Context, e store.MatchEpoch) (store.MatchCounts, error)
 }

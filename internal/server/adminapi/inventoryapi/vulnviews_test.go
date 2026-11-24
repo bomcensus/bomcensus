@@ -15,7 +15,11 @@ import (
 
 func ptrF(f float64) *float64 { return &f }
 
-func TestVulnerabilityViews(t *testing.T) {
+// seedVulns matches the seed's components (openssl: CVE-A, CVE-B; nginx in
+// the web-1 container image: CVE-C; curl unsupported) and computes the
+// findings. It returns the component ids by name.
+func seedVulns(t *testing.T) (*fixture, map[string]string) {
+	t.Helper()
 	f := seed(t)
 	ctx := f.ctx
 	srv, err := f.db.GetActiveFeedServer(ctx)
@@ -50,6 +54,12 @@ func TestVulnerabilityViews(t *testing.T) {
 	r, err := vulnsvc.NewRefresher(f.db, nil, nil)
 	must(t, err)
 	must(t, r.Run(ctx))
+	return f, ids
+}
+
+func TestVulnerabilityViews(t *testing.T) {
+	f, ids := seedVulns(t)
+	ctx := f.ctx
 
 	// Update actions: nginx listens in its container, openssl's places are
 	// not fully collected; KEV does not outrank exposure.

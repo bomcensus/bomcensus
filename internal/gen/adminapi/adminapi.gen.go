@@ -907,6 +907,93 @@ func (e TlsMode) Valid() bool {
 	}
 }
 
+// Defines values for TriageEventKind.
+const (
+	TriageEventKindCreated TriageEventKind = "created"
+	TriageEventKindExpired TriageEventKind = "expired"
+	TriageEventKindRevoked TriageEventKind = "revoked"
+)
+
+// Valid indicates whether the value is a known member of the TriageEventKind enum.
+func (e TriageEventKind) Valid() bool {
+	switch e {
+	case TriageEventKindCreated:
+		return true
+	case TriageEventKindExpired:
+		return true
+	case TriageEventKindRevoked:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TriageJustification.
+const (
+	CodeNotPresent               TriageJustification = "code_not_present"
+	CodeNotReachable             TriageJustification = "code_not_reachable"
+	ProtectedAtRuntime           TriageJustification = "protected_at_runtime"
+	ProtectedByMitigatingControl TriageJustification = "protected_by_mitigating_control"
+	RequiresConfiguration        TriageJustification = "requires_configuration"
+	RequiresEnvironment          TriageJustification = "requires_environment"
+)
+
+// Valid indicates whether the value is a known member of the TriageJustification enum.
+func (e TriageJustification) Valid() bool {
+	switch e {
+	case CodeNotPresent:
+		return true
+	case CodeNotReachable:
+		return true
+	case ProtectedAtRuntime:
+		return true
+	case ProtectedByMitigatingControl:
+		return true
+	case RequiresConfiguration:
+		return true
+	case RequiresEnvironment:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TriageRuleStatus.
+const (
+	NotAffected TriageRuleStatus = "not_affected"
+)
+
+// Valid indicates whether the value is a known member of the TriageRuleStatus enum.
+func (e TriageRuleStatus) Valid() bool {
+	switch e {
+	case NotAffected:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TriageScopeKind.
+const (
+	TriageScopeKindAsset TriageScopeKind = "asset"
+	TriageScopeKindGroup TriageScopeKind = "group"
+	TriageScopeKindPurl  TriageScopeKind = "purl"
+)
+
+// Valid indicates whether the value is a known member of the TriageScopeKind enum.
+func (e TriageScopeKind) Valid() bool {
+	switch e {
+	case TriageScopeKindAsset:
+		return true
+	case TriageScopeKindGroup:
+		return true
+	case TriageScopeKindPurl:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for UpdateState.
 const (
 	UpdateStatePending    UpdateState = "pending"
@@ -2155,6 +2242,7 @@ type AssetSummary struct {
 type AssetVuln struct {
 	ComponentId      string   `json:"componentId"`
 	ComponentName    string   `json:"componentName"`
+	ComponentPurl    *string  `json:"componentPurl,omitempty"`
 	ComponentVersion string   `json:"componentVersion"`
 	Container        *string  `json:"container,omitempty"`
 	Epss             *float64 `json:"epss,omitempty"`
@@ -2176,9 +2264,10 @@ type AssetVuln struct {
 	Score     *float64         `json:"score,omitempty"`
 
 	// Severity CVSS rating of the highest base score.
-	Severity *Severity `json:"severity,omitempty"`
-	Summary  *string   `json:"summary,omitempty"`
-	VulnId   string    `json:"vulnId"`
+	Severity *Severity   `json:"severity,omitempty"`
+	Summary  *string     `json:"summary,omitempty"`
+	Triage   *TriageRule `json:"triage,omitempty"`
+	VulnId   string      `json:"vulnId"`
 }
 
 // AssetVulnList defines model for AssetVulnList.
@@ -3350,6 +3439,90 @@ type TlsState struct {
 	Web            TlsEndpoint `json:"web"`
 }
 
+// TriageEvent defines model for TriageEvent.
+type TriageEvent struct {
+	Actor *string   `json:"actor,omitempty"`
+	At    time.Time `json:"at"`
+
+	// Findings Open findings the rule decided; for `expired`, those that came back.
+	Findings int             `json:"findings"`
+	Id       int64           `json:"id"`
+	Kind     TriageEventKind `json:"kind"`
+	Rule     TriageRule      `json:"rule"`
+}
+
+// TriageEventKind defines model for TriageEvent.Kind.
+type TriageEventKind string
+
+// TriageEventList defines model for TriageEventList.
+type TriageEventList struct {
+	Items []TriageEvent `json:"items"`
+}
+
+// TriageJustification CycloneDX VEX justification of a `not_affected` judgment.
+type TriageJustification string
+
+// TriageRule defines model for TriageRule.
+type TriageRule struct {
+	// Active The rule defers findings now.
+	Active    bool      `json:"active"`
+	Assets    *int      `json:"assets,omitempty"`
+	CreatedAt time.Time `json:"createdAt"`
+	CreatedBy string    `json:"createdBy"`
+
+	// ExpiredAt When the end of the deferral was recorded.
+	ExpiredAt *time.Time `json:"expiredAt,omitempty"`
+	ExpiresAt *time.Time `json:"expiresAt,omitempty"`
+
+	// Findings Open findings it decides now.
+	Findings *int   `json:"findings,omitempty"`
+	Id       string `json:"id"`
+
+	// Justification CycloneDX VEX justification of a `not_affected` judgment.
+	Justification TriageJustification `json:"justification"`
+	Note          *string             `json:"note,omitempty"`
+	RevokedAt     *time.Time          `json:"revokedAt,omitempty"`
+	RevokedBy     *string             `json:"revokedBy,omitempty"`
+	Scope         TriageScope         `json:"scope"`
+
+	// ScopeName Asset name of an asset scope.
+	ScopeName *string          `json:"scopeName,omitempty"`
+	Status    TriageRuleStatus `json:"status"`
+	VulnId    string           `json:"vulnId"`
+}
+
+// TriageRuleStatus defines model for TriageRule.Status.
+type TriageRuleStatus string
+
+// TriageRuleCreate defines model for TriageRuleCreate.
+type TriageRuleCreate struct {
+	// ExpiresAt End of the deferral; absent for a permanent one. Must be in the future.
+	ExpiresAt *time.Time `json:"expiresAt,omitempty"`
+
+	// Justification CycloneDX VEX justification of a `not_affected` judgment.
+	Justification TriageJustification `json:"justification"`
+	Note          *string             `json:"note,omitempty"`
+	Scope         TriageScope         `json:"scope"`
+	VulnId        string              `json:"vulnId"`
+}
+
+// TriageRuleList defines model for TriageRuleList.
+type TriageRuleList struct {
+	Items []TriageRule `json:"items"`
+	Total int          `json:"total"`
+}
+
+// TriageScope defines model for TriageScope.
+type TriageScope struct {
+	Kind TriageScopeKind `json:"kind"`
+
+	// Value A purl (pattern), an asset id or an asset group.
+	Value string `json:"value"`
+}
+
+// TriageScopeKind defines model for TriageScope.Kind.
+type TriageScopeKind string
+
 // UpdateSettings The deployed version is one for the whole server. Agents ask every `checkIntervalMinutes` and update when their version differs; they never downgrade.
 type UpdateSettings struct {
 	CheckIntervalMinutes int     `json:"checkIntervalMinutes"`
@@ -3373,10 +3546,13 @@ type VulnAdvisory struct {
 
 // VulnComponent An update action. `fixedVersion` is the version that fixes all its vulnerabilities, when one is known.
 type VulnComponent struct {
-	Assets      int      `json:"assets"`
-	ComponentId string   `json:"componentId"`
-	Cves        int      `json:"cves"`
-	Epss        *float64 `json:"epss,omitempty"`
+	Assets      int    `json:"assets"`
+	ComponentId string `json:"componentId"`
+	Cves        int    `json:"cves"`
+
+	// Deferred Deferred findings among them (when deferred ones are included).
+	Deferred *int     `json:"deferred,omitempty"`
+	Epss     *float64 `json:"epss,omitempty"`
 
 	// Exposure `listening`: a process that loaded the component listens on a
 	// non-loopback address. `running`: a process loaded it.
@@ -3426,8 +3602,11 @@ type VulnComponentList struct {
 
 // VulnCve defines model for VulnCve.
 type VulnCve struct {
-	Assets         int      `json:"assets"`
-	Components     int      `json:"components"`
+	Assets     int `json:"assets"`
+	Components int `json:"components"`
+
+	// Deferred Deferred findings among them (when deferred ones are included).
+	Deferred       *int     `json:"deferred,omitempty"`
 	Epss           *float64 `json:"epss,omitempty"`
 	EpssPercentile *float64 `json:"epssPercentile,omitempty"`
 
@@ -3450,7 +3629,10 @@ type VulnCve struct {
 
 	// Processes In the context of one component; the loading processes of the most exposed location.
 	Processes *[]FindingProcess `json:"processes,omitempty"`
-	Score     *float64          `json:"score,omitempty"`
+
+	// Rules In the context of one component; the triage rules deciding its findings.
+	Rules *[]TriageRule `json:"rules,omitempty"`
+	Score *float64      `json:"score,omitempty"`
 
 	// Severity CVSS rating of the highest base score.
 	Severity *Severity `json:"severity,omitempty"`
@@ -3464,13 +3646,17 @@ type VulnCveComponent struct {
 	Assets      int                       `json:"assets"`
 	ComponentId string                    `json:"componentId"`
 	CpeMatch    *VulnCveComponentCpeMatch `json:"cpeMatch,omitempty"`
-	Ecosystem   *string                   `json:"ecosystem,omitempty"`
+
+	// Deferred Findings an active rule defers.
+	Deferred  *int    `json:"deferred,omitempty"`
+	Ecosystem *string `json:"ecosystem,omitempty"`
 
 	// Exposure `listening`: a process that loaded the component listens on a
 	// non-loopback address. `running`: a process loaded it.
 	// `installed`: no process did. `unknown`: the processes were not fully
 	// collected.
 	Exposure     Exposure                     `json:"exposure"`
+	Findings     *int                         `json:"findings,omitempty"`
 	FixState     FixState                     `json:"fixState"`
 	FixedVersion *string                      `json:"fixedVersion,omitempty"`
 	Method       VulnCveComponentMethod       `json:"method"`
@@ -3478,8 +3664,11 @@ type VulnCveComponent struct {
 	Platforms    []string                     `json:"platforms"`
 	Purl         *string                      `json:"purl,omitempty"`
 	RangeSource  *VulnCveComponentRangeSource `json:"rangeSource,omitempty"`
-	Type         ComponentType                `json:"type"`
-	Version      string                       `json:"version"`
+
+	// Rules The triage rules deciding its findings.
+	Rules   *[]TriageRule `json:"rules,omitempty"`
+	Type    ComponentType `json:"type"`
+	Version string        `json:"version"`
 }
 
 // VulnCveComponentCpeMatch defines model for VulnCveComponent.CpeMatch.
@@ -3524,6 +3713,68 @@ type VulnDetail struct {
 	VulnId   string    `json:"vulnId"`
 }
 
+// VulnImage defines model for VulnImage.
+type VulnImage struct {
+	Assets     int `json:"assets"`
+	Components int `json:"components"`
+
+	// Containers Current containers running it.
+	Containers int      `json:"containers"`
+	Cves       int      `json:"cves"`
+	Digest     string   `json:"digest"`
+	Epss       *float64 `json:"epss,omitempty"`
+	Kev        int      `json:"kev"`
+	Score      *float64 `json:"score,omitempty"`
+
+	// Severity CVSS rating of the highest base score.
+	Severity *Severity `json:"severity,omitempty"`
+
+	// SeverityCounts Vulnerabilities by rating; `unknown` have no CVSS score.
+	SeverityCounts SeverityCounts `json:"severityCounts"`
+	Tags           []string       `json:"tags"`
+}
+
+// VulnImageComponent defines model for VulnImageComponent.
+type VulnImageComponent struct {
+	ComponentId   string         `json:"componentId"`
+	Cves          []VulnImageCve `json:"cves"`
+	FixedVersion  *string        `json:"fixedVersion,omitempty"`
+	FixedVersions []string       `json:"fixedVersions"`
+	Locations     []string       `json:"locations"`
+	Name          string         `json:"name"`
+	Purl          *string        `json:"purl,omitempty"`
+	Type          ComponentType  `json:"type"`
+	Version       string         `json:"version"`
+}
+
+// VulnImageCve defines model for VulnImageCve.
+type VulnImageCve struct {
+	// Deferred A rule with a component scope defers it.
+	Deferred     bool     `json:"deferred"`
+	Epss         *float64 `json:"epss,omitempty"`
+	FixState     FixState `json:"fixState"`
+	FixedVersion *string  `json:"fixedVersion,omitempty"`
+	Kev          bool     `json:"kev"`
+	Score        *float64 `json:"score,omitempty"`
+
+	// Severity CVSS rating of the highest base score.
+	Severity *Severity `json:"severity,omitempty"`
+	Summary  *string   `json:"summary,omitempty"`
+	VulnId   string    `json:"vulnId"`
+}
+
+// VulnImageDetail defines model for VulnImageDetail.
+type VulnImageDetail struct {
+	Components []VulnImageComponent `json:"components"`
+	Image      VulnImage            `json:"image"`
+}
+
+// VulnImageList defines model for VulnImageList.
+type VulnImageList struct {
+	Items []VulnImage `json:"items"`
+	Total int         `json:"total"`
+}
+
 // VulnLocation One place a component is, with the open findings there.
 type VulnLocation struct {
 	AssetId          string    `json:"assetId"`
@@ -3552,11 +3803,47 @@ type VulnLocation struct {
 	Processes []FindingProcess `json:"processes"`
 }
 
+// VulnProcess defines model for VulnProcess.
+type VulnProcess struct {
+	Assets     int    `json:"assets"`
+	Components int    `json:"components"`
+	Cves       int    `json:"cves"`
+	Exe        string `json:"exe"`
+	Kev        int    `json:"kev"`
+
+	// Listening Processes listening on a non-loopback address.
+	Listening int      `json:"listening"`
+	Processes int      `json:"processes"`
+	Score     *float64 `json:"score,omitempty"`
+
+	// Severity CVSS rating of the highest base score.
+	Severity *Severity `json:"severity,omitempty"`
+
+	// SeverityCounts Vulnerabilities by rating; `unknown` have no CVSS score.
+	SeverityCounts SeverityCounts `json:"severityCounts"`
+}
+
+// VulnProcessDetail defines model for VulnProcessDetail.
+type VulnProcessDetail struct {
+	Components []VulnComponent `json:"components"`
+	Locations  []VulnLocation  `json:"locations"`
+	Process    VulnProcess     `json:"process"`
+}
+
+// VulnProcessList defines model for VulnProcessList.
+type VulnProcessList struct {
+	Items []VulnProcess `json:"items"`
+	Total int           `json:"total"`
+}
+
 // VulnSummary defines model for VulnSummary.
 type VulnSummary struct {
 	Actions      []VulnComponent `json:"actions"`
 	ActionsTotal int             `json:"actionsTotal"`
 	CheckedAt    *time.Time      `json:"checkedAt,omitempty"`
+
+	// Deferred Vulnerabilities whose open findings are all deferred.
+	Deferred int `json:"deferred"`
 
 	// Revision Data revision of the active feed server at the last check.
 	Revision *int64 `json:"revision,omitempty"`
@@ -3588,6 +3875,9 @@ type PathId = string
 // `installed`: no process did. `unknown`: the processes were not fully
 // collected.
 type QueryExposure = Exposure
+
+// QueryIncludeDeferred defines model for QueryIncludeDeferred.
+type QueryIncludeDeferred = bool
 
 // QueryKev defines model for QueryKev.
 type QueryKev = bool
@@ -3927,6 +4217,17 @@ type ListScanTargetsParams struct {
 // ListScanTargetsParamsSort defines parameters for ListScanTargets.
 type ListScanTargetsParamsSort string
 
+// ListTriageEventsParams defines parameters for ListTriageEvents.
+type ListTriageEventsParams struct {
+	After *int64 `form:"after,omitempty" json:"after,omitempty"`
+	Limit *int   `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// ListTriageRulesParams defines parameters for ListTriageRules.
+type ListTriageRulesParams struct {
+	IncludeRevoked *bool `form:"includeRevoked,omitempty" json:"includeRevoked,omitempty"`
+}
+
 // ListVulnerableComponentsParams defines parameters for ListVulnerableComponents.
 type ListVulnerableComponentsParams struct {
 	// Q Free-text search, case-insensitive substring match.
@@ -3939,9 +4240,12 @@ type ListVulnerableComponentsParams struct {
 	Exposure *QueryExposure `form:"exposure,omitempty" json:"exposure,omitempty"`
 
 	// Kev Keep items with a known exploited vulnerability.
-	Kev    *QueryKev    `form:"kev,omitempty" json:"kev,omitempty"`
-	Limit  *QueryLimit  `form:"limit,omitempty" json:"limit,omitempty"`
-	Offset *QueryOffset `form:"offset,omitempty" json:"offset,omitempty"`
+	Kev *QueryKev `form:"kev,omitempty" json:"kev,omitempty"`
+
+	// IncludeDeferred Keep findings an active triage rule defers.
+	IncludeDeferred *QueryIncludeDeferred `form:"includeDeferred,omitempty" json:"includeDeferred,omitempty"`
+	Limit           *QueryLimit           `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset          *QueryOffset          `form:"offset,omitempty" json:"offset,omitempty"`
 }
 
 // ListVulnerabilitiesParams defines parameters for ListVulnerabilities.
@@ -3956,9 +4260,39 @@ type ListVulnerabilitiesParams struct {
 	Exposure *QueryExposure `form:"exposure,omitempty" json:"exposure,omitempty"`
 
 	// Kev Keep items with a known exploited vulnerability.
-	Kev    *QueryKev    `form:"kev,omitempty" json:"kev,omitempty"`
-	Limit  *QueryLimit  `form:"limit,omitempty" json:"limit,omitempty"`
-	Offset *QueryOffset `form:"offset,omitempty" json:"offset,omitempty"`
+	Kev *QueryKev `form:"kev,omitempty" json:"kev,omitempty"`
+
+	// IncludeDeferred Keep findings an active triage rule defers.
+	IncludeDeferred *QueryIncludeDeferred `form:"includeDeferred,omitempty" json:"includeDeferred,omitempty"`
+	Limit           *QueryLimit           `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset          *QueryOffset          `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
+// ListVulnerableImagesParams defines parameters for ListVulnerableImages.
+type ListVulnerableImagesParams struct {
+	// Q Free-text search, case-insensitive substring match.
+	Q *QueryQ `form:"q,omitempty" json:"q,omitempty"`
+
+	// IncludeDeferred Keep findings an active triage rule defers.
+	IncludeDeferred *QueryIncludeDeferred `form:"includeDeferred,omitempty" json:"includeDeferred,omitempty"`
+	Limit           *QueryLimit           `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset          *QueryOffset          `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
+// ListVulnerableProcessesParams defines parameters for ListVulnerableProcesses.
+type ListVulnerableProcessesParams struct {
+	// Q Free-text search, case-insensitive substring match.
+	Q *QueryQ `form:"q,omitempty" json:"q,omitempty"`
+
+	// IncludeDeferred Keep findings an active triage rule defers.
+	IncludeDeferred *QueryIncludeDeferred `form:"includeDeferred,omitempty" json:"includeDeferred,omitempty"`
+	Limit           *QueryLimit           `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset          *QueryOffset          `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
+// GetVulnerableProcessParams defines parameters for GetVulnerableProcess.
+type GetVulnerableProcessParams struct {
+	Exe string `form:"exe" json:"exe"`
 }
 
 // UpdateAgentJSONRequestBody defines body for UpdateAgent for application/json ContentType.
@@ -4011,6 +4345,9 @@ type ChangeAgentTlsAnchorJSONRequestBody = AgentAnchorChange
 
 // UpdateTlsEndpointJSONRequestBody defines body for UpdateTlsEndpoint for application/json ContentType.
 type UpdateTlsEndpointJSONRequestBody = TlsEndpointUpdate
+
+// CreateTriageRuleJSONRequestBody defines body for CreateTriageRule for application/json ContentType.
+type CreateTriageRuleJSONRequestBody = TriageRuleCreate
 
 // SetUpdateSettingsJSONRequestBody defines body for SetUpdateSettings for application/json ContentType.
 type SetUpdateSettingsJSONRequestBody = UpdateSettings
@@ -4725,6 +5062,52 @@ type ClientInterface interface {
 	// Corresponds with PUT /settings/tls/{endpoint} (the `UpdateTlsEndpoint` operationId).
 	UpdateTlsEndpoint(ctx context.Context, endpoint TlsEndpointName, body UpdateTlsEndpointJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ListTriageEvents What happened to triage rules, oldest first
+	//
+	// Rules created, revoked and expired. A client follows the log by
+	// passing the last `id` it saw as `after`.
+	//
+	// Corresponds with GET /triage-events (the `ListTriageEvents` operationId).
+	ListTriageEvents(ctx context.Context, params *ListTriageEventsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListTriageRules Judgments that a vulnerability does not affect a scope, newest first
+	//
+	// Corresponds with GET /triage-rules (the `ListTriageRules` operationId).
+	ListTriageRules(ctx context.Context, params *ListTriageRulesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateTriageRuleWithBody Judge that a vulnerability does not affect a scope, for good or until a time
+	//
+	// The rule defers the open findings of the vulnerability in its scope,
+	// now and later. `scope.kind` `purl` takes a component purl
+	// (qualifiers are ignored; a trailing `*` matches a prefix), `asset`
+	// an asset id, `group` an asset group. Without `expiresAt` the rule
+	// holds until revoked. When `expiresAt` passes, the findings come
+	// back and a `expired` event is recorded.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /triage-rules (the `CreateTriageRule` operationId).
+	CreateTriageRuleWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateTriageRule Judge that a vulnerability does not affect a scope, for good or until a time
+	//
+	// The rule defers the open findings of the vulnerability in its scope,
+	// now and later. `scope.kind` `purl` takes a component purl
+	// (qualifiers are ignored; a trailing `*` matches a prefix), `asset`
+	// an asset id, `group` an asset group. Without `expiresAt` the rule
+	// holds until revoked. When `expiresAt` passes, the findings come
+	// back and a `expired` event is recorded.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /triage-rules (the `CreateTriageRule` operationId).
+	CreateTriageRule(ctx context.Context, body CreateTriageRuleJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RevokeTriageRule Revoke a rule; its findings come back
+	//
+	// Corresponds with DELETE /triage-rules/{id} (the `RevokeTriageRule` operationId).
+	RevokeTriageRule(ctx context.Context, id PathId, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetUpdateSettings Deployed version and update check interval
 	//
 	// Corresponds with GET /update-settings (the `GetUpdateSettings` operationId).
@@ -4747,6 +5130,15 @@ type ClientInterface interface {
 	//
 	// Corresponds with PUT /update-settings (the `SetUpdateSettings` operationId).
 	SetUpdateSettings(ctx context.Context, body SetUpdateSettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ExportVex The active triage rules as an OpenVEX document
+	//
+	// One `not_affected` statement per rule, with the purls of the
+	// components it decides (or its purl scope). A deferral's end is
+	// stated in `status_notes`.
+	//
+	// Corresponds with GET /vex (the `ExportVex` operationId).
+	ExportVex(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListVulnerableComponents Update actions, one per vulnerable component
 	//
@@ -4775,6 +5167,32 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /vulnerabilities/cves/{vulnId} (the `GetVulnerability` operationId).
 	GetVulnerability(ctx context.Context, vulnId string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListVulnerableImages Images whose content has vulnerabilities
+	//
+	// Every image with known content, running or not. Rules with a
+	// component scope apply; asset and group scopes do not, an image
+	// belonging to no asset. `q` matches digest and tags.
+	//
+	// Corresponds with GET /vulnerabilities/images (the `ListVulnerableImages` operationId).
+	ListVulnerableImages(ctx context.Context, params *ListVulnerableImagesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetVulnerableImage The vulnerable components of one image's content
+	//
+	// Corresponds with GET /vulnerabilities/images/{digest} (the `GetVulnerableImage` operationId).
+	GetVulnerableImage(ctx context.Context, digest PathDigest, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListVulnerableProcesses Executables of processes that load vulnerable components
+	//
+	// Ordered by listening processes, then CVSS. `q` matches the executable path.
+	//
+	// Corresponds with GET /vulnerabilities/processes (the `ListVulnerableProcesses` operationId).
+	ListVulnerableProcesses(ctx context.Context, params *ListVulnerableProcessesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetVulnerableProcess The vulnerable components one executable loads and where it runs
+	//
+	// Corresponds with GET /vulnerabilities/processes/detail (the `GetVulnerableProcess` operationId).
+	GetVulnerableProcess(ctx context.Context, params *GetVulnerableProcessParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetVulnerabilitySummary Vulnerability figures of the dashboard and the first update actions
 	//
@@ -6222,6 +6640,102 @@ func (c *Client) UpdateTlsEndpoint(ctx context.Context, endpoint TlsEndpointName
 	return c.Client.Do(req)
 }
 
+// ListTriageEvents What happened to triage rules, oldest first
+//
+// Rules created, revoked and expired. A client follows the log by
+// passing the last `id` it saw as `after`.
+//
+// Corresponds with GET /triage-events (the `ListTriageEvents` operationId).
+func (c *Client) ListTriageEvents(ctx context.Context, params *ListTriageEventsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListTriageEventsRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListTriageRules Judgments that a vulnerability does not affect a scope, newest first
+//
+// Corresponds with GET /triage-rules (the `ListTriageRules` operationId).
+func (c *Client) ListTriageRules(ctx context.Context, params *ListTriageRulesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListTriageRulesRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateTriageRuleWithBody Judge that a vulnerability does not affect a scope, for good or until a time
+//
+// The rule defers the open findings of the vulnerability in its scope,
+// now and later. `scope.kind` `purl` takes a component purl
+// (qualifiers are ignored; a trailing `*` matches a prefix), `asset`
+// an asset id, `group` an asset group. Without `expiresAt` the rule
+// holds until revoked. When `expiresAt` passes, the findings come
+// back and a `expired` event is recorded.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /triage-rules (the `CreateTriageRule` operationId).
+func (c *Client) CreateTriageRuleWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateTriageRuleRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateTriageRule Judge that a vulnerability does not affect a scope, for good or until a time
+//
+// The rule defers the open findings of the vulnerability in its scope,
+// now and later. `scope.kind` `purl` takes a component purl
+// (qualifiers are ignored; a trailing `*` matches a prefix), `asset`
+// an asset id, `group` an asset group. Without `expiresAt` the rule
+// holds until revoked. When `expiresAt` passes, the findings come
+// back and a `expired` event is recorded.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /triage-rules (the `CreateTriageRule` operationId).
+func (c *Client) CreateTriageRule(ctx context.Context, body CreateTriageRuleJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateTriageRuleRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// RevokeTriageRule Revoke a rule; its findings come back
+//
+// Corresponds with DELETE /triage-rules/{id} (the `RevokeTriageRule` operationId).
+func (c *Client) RevokeTriageRule(ctx context.Context, id PathId, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRevokeTriageRuleRequest(c.Server, id)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // GetUpdateSettings Deployed version and update check interval
 //
 // Corresponds with GET /update-settings (the `GetUpdateSettings` operationId).
@@ -6265,6 +6779,25 @@ func (c *Client) SetUpdateSettingsWithBody(ctx context.Context, contentType stri
 // Corresponds with PUT /update-settings (the `SetUpdateSettings` operationId).
 func (c *Client) SetUpdateSettings(ctx context.Context, body SetUpdateSettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewSetUpdateSettingsRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ExportVex The active triage rules as an OpenVEX document
+//
+// One `not_affected` statement per rule, with the purls of the
+// components it decides (or its purl scope). A deferral's end is
+// stated in `status_notes`.
+//
+// Corresponds with GET /vex (the `ExportVex` operationId).
+func (c *Client) ExportVex(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewExportVexRequest(c.Server)
 	if err != nil {
 		return nil, err
 	}
@@ -6333,6 +6866,72 @@ func (c *Client) ListVulnerabilities(ctx context.Context, params *ListVulnerabil
 // Corresponds with GET /vulnerabilities/cves/{vulnId} (the `GetVulnerability` operationId).
 func (c *Client) GetVulnerability(ctx context.Context, vulnId string, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetVulnerabilityRequest(c.Server, vulnId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListVulnerableImages Images whose content has vulnerabilities
+//
+// Every image with known content, running or not. Rules with a
+// component scope apply; asset and group scopes do not, an image
+// belonging to no asset. `q` matches digest and tags.
+//
+// Corresponds with GET /vulnerabilities/images (the `ListVulnerableImages` operationId).
+func (c *Client) ListVulnerableImages(ctx context.Context, params *ListVulnerableImagesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListVulnerableImagesRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetVulnerableImage The vulnerable components of one image's content
+//
+// Corresponds with GET /vulnerabilities/images/{digest} (the `GetVulnerableImage` operationId).
+func (c *Client) GetVulnerableImage(ctx context.Context, digest PathDigest, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetVulnerableImageRequest(c.Server, digest)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListVulnerableProcesses Executables of processes that load vulnerable components
+//
+// Ordered by listening processes, then CVSS. `q` matches the executable path.
+//
+// Corresponds with GET /vulnerabilities/processes (the `ListVulnerableProcesses` operationId).
+func (c *Client) ListVulnerableProcesses(ctx context.Context, params *ListVulnerableProcessesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListVulnerableProcessesRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetVulnerableProcess The vulnerable components one executable loads and where it runs
+//
+// Corresponds with GET /vulnerabilities/processes/detail (the `GetVulnerableProcess` operationId).
+func (c *Client) GetVulnerableProcess(ctx context.Context, params *GetVulnerableProcessParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetVulnerableProcessRequest(c.Server, params)
 	if err != nil {
 		return nil, err
 	}
@@ -10354,6 +10953,200 @@ func NewUpdateTlsEndpointRequestWithBody(server string, endpoint TlsEndpointName
 	return req, nil
 }
 
+// NewListTriageEventsRequest constructs an http.Request for the ListTriageEvents method
+func NewListTriageEventsRequest(server string, params *ListTriageEventsParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/triage-events")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.After != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "after", *params.After, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: "int64"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListTriageRulesRequest constructs an http.Request for the ListTriageRules method
+func NewListTriageRulesRequest(server string, params *ListTriageRulesParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/triage-rules")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.IncludeRevoked != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "includeRevoked", *params.IncludeRevoked, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "boolean", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateTriageRuleRequest calls the generic CreateTriageRule builder with application/json body
+func NewCreateTriageRuleRequest(server string, body CreateTriageRuleJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateTriageRuleRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewCreateTriageRuleRequestWithBody constructs an http.Request for the CreateTriageRule method, with any body, and a specified content type
+func NewCreateTriageRuleRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/triage-rules")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewRevokeTriageRuleRequest constructs an http.Request for the RevokeTriageRule method
+func NewRevokeTriageRuleRequest(server string, id PathId) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/triage-rules/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewGetUpdateSettingsRequest constructs an http.Request for the GetUpdateSettings method
 func NewGetUpdateSettingsRequest(server string) (*http.Request, error) {
 	var err error
@@ -10417,6 +11210,33 @@ func NewSetUpdateSettingsRequestWithBody(server string, contentType string, body
 	}
 
 	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewExportVexRequest constructs an http.Request for the ExportVex method
+func NewExportVexRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/vex")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
 
 	return req, nil
 }
@@ -10488,6 +11308,18 @@ func NewListVulnerableComponentsRequest(server string, params *ListVulnerableCom
 		if params.Kev != nil {
 
 			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "kev", *params.Kev, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "boolean", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.IncludeDeferred != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "includeDeferred", *params.IncludeDeferred, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "boolean", Format: ""}); err != nil {
 				return nil, err
 			} else {
 				for _, qp := range strings.Split(queryFrag, "&") {
@@ -10645,6 +11477,18 @@ func NewListVulnerabilitiesRequest(server string, params *ListVulnerabilitiesPar
 
 		}
 
+		if params.IncludeDeferred != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "includeDeferred", *params.IncludeDeferred, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "boolean", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
 		if params.Limit != nil {
 
 			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
@@ -10707,6 +11551,270 @@ func NewGetVulnerabilityRequest(server string, vulnId string) (*http.Request, er
 	queryURL, err := serverURL.Parse(operationPath)
 	if err != nil {
 		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListVulnerableImagesRequest constructs an http.Request for the ListVulnerableImages method
+func NewListVulnerableImagesRequest(server string, params *ListVulnerableImagesParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/vulnerabilities/images")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Q != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "q", *params.Q, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.IncludeDeferred != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "includeDeferred", *params.IncludeDeferred, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "boolean", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Offset != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "offset", *params.Offset, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetVulnerableImageRequest constructs an http.Request for the GetVulnerableImage method
+func NewGetVulnerableImageRequest(server string, digest PathDigest) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "digest", digest, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/vulnerabilities/images/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListVulnerableProcessesRequest constructs an http.Request for the ListVulnerableProcesses method
+func NewListVulnerableProcessesRequest(server string, params *ListVulnerableProcessesParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/vulnerabilities/processes")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Q != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "q", *params.Q, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.IncludeDeferred != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "includeDeferred", *params.IncludeDeferred, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "boolean", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Offset != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "offset", *params.Offset, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetVulnerableProcessRequest constructs an http.Request for the GetVulnerableProcess method
+func NewGetVulnerableProcessRequest(server string, params *GetVulnerableProcessParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/vulnerabilities/processes/detail")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if queryFrag, err := runtime.StyleParamWithOptions("form", true, "exe", params.Exe, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+			return nil, err
+		} else {
+			for _, qp := range strings.Split(queryFrag, "&") {
+				rawQueryFragments = append(rawQueryFragments, qp)
+			}
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
 	}
 
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
@@ -11518,6 +12626,58 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with PUT /settings/tls/{endpoint} (the `UpdateTlsEndpoint` operationId).
 	UpdateTlsEndpointWithResponse(ctx context.Context, endpoint TlsEndpointName, body UpdateTlsEndpointJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateTlsEndpointResponse, error)
 
+	// ListTriageEventsWithResponse What happened to triage rules, oldest first
+	//
+	// Rules created, revoked and expired. A client follows the log by
+	// passing the last `id` it saw as `after`.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /triage-events (the `ListTriageEvents` operationId).
+	ListTriageEventsWithResponse(ctx context.Context, params *ListTriageEventsParams, reqEditors ...RequestEditorFn) (*ListTriageEventsResponse, error)
+
+	// ListTriageRulesWithResponse Judgments that a vulnerability does not affect a scope, newest first
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /triage-rules (the `ListTriageRules` operationId).
+	ListTriageRulesWithResponse(ctx context.Context, params *ListTriageRulesParams, reqEditors ...RequestEditorFn) (*ListTriageRulesResponse, error)
+
+	// CreateTriageRuleWithBodyWithResponse Judge that a vulnerability does not affect a scope, for good or until a time
+	//
+	// The rule defers the open findings of the vulnerability in its scope,
+	// now and later. `scope.kind` `purl` takes a component purl
+	// (qualifiers are ignored; a trailing `*` matches a prefix), `asset`
+	// an asset id, `group` an asset group. Without `expiresAt` the rule
+	// holds until revoked. When `expiresAt` passes, the findings come
+	// back and a `expired` event is recorded.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /triage-rules (the `CreateTriageRule` operationId).
+	CreateTriageRuleWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateTriageRuleResponse, error)
+
+	// CreateTriageRuleWithResponse Judge that a vulnerability does not affect a scope, for good or until a time
+	//
+	// The rule defers the open findings of the vulnerability in its scope,
+	// now and later. `scope.kind` `purl` takes a component purl
+	// (qualifiers are ignored; a trailing `*` matches a prefix), `asset`
+	// an asset id, `group` an asset group. Without `expiresAt` the rule
+	// holds until revoked. When `expiresAt` passes, the findings come
+	// back and a `expired` event is recorded.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /triage-rules (the `CreateTriageRule` operationId).
+	CreateTriageRuleWithResponse(ctx context.Context, body CreateTriageRuleJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateTriageRuleResponse, error)
+
+	// RevokeTriageRuleWithResponse Revoke a rule; its findings come back
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /triage-rules/{id} (the `RevokeTriageRule` operationId).
+	RevokeTriageRuleWithResponse(ctx context.Context, id PathId, reqEditors ...RequestEditorFn) (*RevokeTriageRuleResponse, error)
+
 	// GetUpdateSettingsWithResponse Deployed version and update check interval
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -11542,6 +12702,17 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with PUT /update-settings (the `SetUpdateSettings` operationId).
 	SetUpdateSettingsWithResponse(ctx context.Context, body SetUpdateSettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*SetUpdateSettingsResponse, error)
+
+	// ExportVexWithResponse The active triage rules as an OpenVEX document
+	//
+	// One `not_affected` statement per rule, with the purls of the
+	// components it decides (or its purl scope). A deferral's end is
+	// stated in `status_notes`.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /vex (the `ExportVex` operationId).
+	ExportVexWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ExportVexResponse, error)
 
 	// ListVulnerableComponentsWithResponse Update actions, one per vulnerable component
 	//
@@ -11578,6 +12749,40 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /vulnerabilities/cves/{vulnId} (the `GetVulnerability` operationId).
 	GetVulnerabilityWithResponse(ctx context.Context, vulnId string, reqEditors ...RequestEditorFn) (*GetVulnerabilityResponse, error)
+
+	// ListVulnerableImagesWithResponse Images whose content has vulnerabilities
+	//
+	// Every image with known content, running or not. Rules with a
+	// component scope apply; asset and group scopes do not, an image
+	// belonging to no asset. `q` matches digest and tags.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /vulnerabilities/images (the `ListVulnerableImages` operationId).
+	ListVulnerableImagesWithResponse(ctx context.Context, params *ListVulnerableImagesParams, reqEditors ...RequestEditorFn) (*ListVulnerableImagesResponse, error)
+
+	// GetVulnerableImageWithResponse The vulnerable components of one image's content
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /vulnerabilities/images/{digest} (the `GetVulnerableImage` operationId).
+	GetVulnerableImageWithResponse(ctx context.Context, digest PathDigest, reqEditors ...RequestEditorFn) (*GetVulnerableImageResponse, error)
+
+	// ListVulnerableProcessesWithResponse Executables of processes that load vulnerable components
+	//
+	// Ordered by listening processes, then CVSS. `q` matches the executable path.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /vulnerabilities/processes (the `ListVulnerableProcesses` operationId).
+	ListVulnerableProcessesWithResponse(ctx context.Context, params *ListVulnerableProcessesParams, reqEditors ...RequestEditorFn) (*ListVulnerableProcessesResponse, error)
+
+	// GetVulnerableProcessWithResponse The vulnerable components one executable loads and where it runs
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /vulnerabilities/processes/detail (the `GetVulnerableProcess` operationId).
+	GetVulnerableProcessWithResponse(ctx context.Context, params *GetVulnerableProcessParams, reqEditors ...RequestEditorFn) (*GetVulnerableProcessResponse, error)
 
 	// GetVulnerabilitySummaryWithResponse Vulnerability figures of the dashboard and the first update actions
 	//
@@ -15734,6 +16939,254 @@ func (r UpdateTlsEndpointResponse) ContentType() string {
 	return ""
 }
 
+type ListTriageEventsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *TriageEventList
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *BadRequest
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *UnexpectedError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListTriageEventsResponse) GetJSON200() *TriageEventList {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r ListTriageEventsResponse) GetJSON400() *BadRequest {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ListTriageEventsResponse) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r ListTriageEventsResponse) GetJSONDefault() *UnexpectedError {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ListTriageEventsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListTriageEventsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListTriageEventsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListTriageEventsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListTriageRulesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *TriageRuleList
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *UnexpectedError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListTriageRulesResponse) GetJSON200() *TriageRuleList {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ListTriageRulesResponse) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r ListTriageRulesResponse) GetJSONDefault() *UnexpectedError {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ListTriageRulesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListTriageRulesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListTriageRulesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListTriageRulesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type CreateTriageRuleResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *TriageRule
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *BadRequest
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *UnexpectedError
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r CreateTriageRuleResponse) GetJSON201() *TriageRule {
+	return r.JSON201
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r CreateTriageRuleResponse) GetJSON400() *BadRequest {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r CreateTriageRuleResponse) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r CreateTriageRuleResponse) GetJSONDefault() *UnexpectedError {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r CreateTriageRuleResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateTriageRuleResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateTriageRuleResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CreateTriageRuleResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type RevokeTriageRuleResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *TriageRule
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Conflict
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *UnexpectedError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r RevokeTriageRuleResponse) GetJSON200() *TriageRule {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r RevokeTriageRuleResponse) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r RevokeTriageRuleResponse) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r RevokeTriageRuleResponse) GetJSON409() *Conflict {
+	return r.JSON409
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r RevokeTriageRuleResponse) GetJSONDefault() *UnexpectedError {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r RevokeTriageRuleResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r RevokeTriageRuleResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RevokeTriageRuleResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r RevokeTriageRuleResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type GetUpdateSettingsResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -15845,6 +17298,61 @@ func (r SetUpdateSettingsResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r SetUpdateSettingsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ExportVexResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *map[string]interface{}
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *UnexpectedError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ExportVexResponse) GetJSON200() *map[string]interface{} {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ExportVexResponse) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r ExportVexResponse) GetJSONDefault() *UnexpectedError {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ExportVexResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ExportVexResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ExportVexResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ExportVexResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -16093,6 +17601,261 @@ func (r GetVulnerabilityResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r GetVulnerabilityResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListVulnerableImagesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *VulnImageList
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *BadRequest
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *UnexpectedError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListVulnerableImagesResponse) GetJSON200() *VulnImageList {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r ListVulnerableImagesResponse) GetJSON400() *BadRequest {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ListVulnerableImagesResponse) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r ListVulnerableImagesResponse) GetJSONDefault() *UnexpectedError {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ListVulnerableImagesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListVulnerableImagesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListVulnerableImagesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListVulnerableImagesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetVulnerableImageResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *VulnImageDetail
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *UnexpectedError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetVulnerableImageResponse) GetJSON200() *VulnImageDetail {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetVulnerableImageResponse) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetVulnerableImageResponse) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r GetVulnerableImageResponse) GetJSONDefault() *UnexpectedError {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetVulnerableImageResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetVulnerableImageResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetVulnerableImageResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetVulnerableImageResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListVulnerableProcessesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *VulnProcessList
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *BadRequest
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *UnexpectedError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListVulnerableProcessesResponse) GetJSON200() *VulnProcessList {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r ListVulnerableProcessesResponse) GetJSON400() *BadRequest {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ListVulnerableProcessesResponse) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r ListVulnerableProcessesResponse) GetJSONDefault() *UnexpectedError {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ListVulnerableProcessesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListVulnerableProcessesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListVulnerableProcessesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListVulnerableProcessesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetVulnerableProcessResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *VulnProcessDetail
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *BadRequest
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *UnexpectedError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetVulnerableProcessResponse) GetJSON200() *VulnProcessDetail {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r GetVulnerableProcessResponse) GetJSON400() *BadRequest {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetVulnerableProcessResponse) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetVulnerableProcessResponse) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r GetVulnerableProcessResponse) GetJSONDefault() *UnexpectedError {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetVulnerableProcessResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetVulnerableProcessResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetVulnerableProcessResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetVulnerableProcessResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -17364,6 +19127,88 @@ func (c *ClientWithResponses) UpdateTlsEndpointWithResponse(ctx context.Context,
 	return ParseUpdateTlsEndpointResponse(rsp)
 }
 
+// ListTriageEventsWithResponse What happened to triage rules, oldest first
+//
+// Rules created, revoked and expired. A client follows the log by
+// passing the last `id` it saw as `after`.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /triage-events (the `ListTriageEvents` operationId).
+func (c *ClientWithResponses) ListTriageEventsWithResponse(ctx context.Context, params *ListTriageEventsParams, reqEditors ...RequestEditorFn) (*ListTriageEventsResponse, error) {
+	rsp, err := c.ListTriageEvents(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListTriageEventsResponse(rsp)
+}
+
+// ListTriageRulesWithResponse Judgments that a vulnerability does not affect a scope, newest first
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /triage-rules (the `ListTriageRules` operationId).
+func (c *ClientWithResponses) ListTriageRulesWithResponse(ctx context.Context, params *ListTriageRulesParams, reqEditors ...RequestEditorFn) (*ListTriageRulesResponse, error) {
+	rsp, err := c.ListTriageRules(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListTriageRulesResponse(rsp)
+}
+
+// CreateTriageRuleWithBodyWithResponse Judge that a vulnerability does not affect a scope, for good or until a time
+//
+// The rule defers the open findings of the vulnerability in its scope,
+// now and later. `scope.kind` `purl` takes a component purl
+// (qualifiers are ignored; a trailing `*` matches a prefix), `asset`
+// an asset id, `group` an asset group. Without `expiresAt` the rule
+// holds until revoked. When `expiresAt` passes, the findings come
+// back and a `expired` event is recorded.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /triage-rules (the `CreateTriageRule` operationId).
+func (c *ClientWithResponses) CreateTriageRuleWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateTriageRuleResponse, error) {
+	rsp, err := c.CreateTriageRuleWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateTriageRuleResponse(rsp)
+}
+
+// CreateTriageRuleWithResponse Judge that a vulnerability does not affect a scope, for good or until a time
+//
+// The rule defers the open findings of the vulnerability in its scope,
+// now and later. `scope.kind` `purl` takes a component purl
+// (qualifiers are ignored; a trailing `*` matches a prefix), `asset`
+// an asset id, `group` an asset group. Without `expiresAt` the rule
+// holds until revoked. When `expiresAt` passes, the findings come
+// back and a `expired` event is recorded.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /triage-rules (the `CreateTriageRule` operationId).
+func (c *ClientWithResponses) CreateTriageRuleWithResponse(ctx context.Context, body CreateTriageRuleJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateTriageRuleResponse, error) {
+	rsp, err := c.CreateTriageRule(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateTriageRuleResponse(rsp)
+}
+
+// RevokeTriageRuleWithResponse Revoke a rule; its findings come back
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /triage-rules/{id} (the `RevokeTriageRule` operationId).
+func (c *ClientWithResponses) RevokeTriageRuleWithResponse(ctx context.Context, id PathId, reqEditors ...RequestEditorFn) (*RevokeTriageRuleResponse, error) {
+	rsp, err := c.RevokeTriageRule(ctx, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRevokeTriageRuleResponse(rsp)
+}
+
 // GetUpdateSettingsWithResponse Deployed version and update check interval
 //
 // Returns a wrapper object for the known response body format(s).
@@ -17405,6 +19250,23 @@ func (c *ClientWithResponses) SetUpdateSettingsWithResponse(ctx context.Context,
 		return nil, err
 	}
 	return ParseSetUpdateSettingsResponse(rsp)
+}
+
+// ExportVexWithResponse The active triage rules as an OpenVEX document
+//
+// One `not_affected` statement per rule, with the purls of the
+// components it decides (or its purl scope). A deferral's end is
+// stated in `status_notes`.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /vex (the `ExportVex` operationId).
+func (c *ClientWithResponses) ExportVexWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ExportVexResponse, error) {
+	rsp, err := c.ExportVex(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseExportVexResponse(rsp)
 }
 
 // ListVulnerableComponentsWithResponse Update actions, one per vulnerable component
@@ -17465,6 +19327,64 @@ func (c *ClientWithResponses) GetVulnerabilityWithResponse(ctx context.Context, 
 		return nil, err
 	}
 	return ParseGetVulnerabilityResponse(rsp)
+}
+
+// ListVulnerableImagesWithResponse Images whose content has vulnerabilities
+//
+// Every image with known content, running or not. Rules with a
+// component scope apply; asset and group scopes do not, an image
+// belonging to no asset. `q` matches digest and tags.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /vulnerabilities/images (the `ListVulnerableImages` operationId).
+func (c *ClientWithResponses) ListVulnerableImagesWithResponse(ctx context.Context, params *ListVulnerableImagesParams, reqEditors ...RequestEditorFn) (*ListVulnerableImagesResponse, error) {
+	rsp, err := c.ListVulnerableImages(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListVulnerableImagesResponse(rsp)
+}
+
+// GetVulnerableImageWithResponse The vulnerable components of one image's content
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /vulnerabilities/images/{digest} (the `GetVulnerableImage` operationId).
+func (c *ClientWithResponses) GetVulnerableImageWithResponse(ctx context.Context, digest PathDigest, reqEditors ...RequestEditorFn) (*GetVulnerableImageResponse, error) {
+	rsp, err := c.GetVulnerableImage(ctx, digest, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetVulnerableImageResponse(rsp)
+}
+
+// ListVulnerableProcessesWithResponse Executables of processes that load vulnerable components
+//
+// Ordered by listening processes, then CVSS. `q` matches the executable path.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /vulnerabilities/processes (the `ListVulnerableProcesses` operationId).
+func (c *ClientWithResponses) ListVulnerableProcessesWithResponse(ctx context.Context, params *ListVulnerableProcessesParams, reqEditors ...RequestEditorFn) (*ListVulnerableProcessesResponse, error) {
+	rsp, err := c.ListVulnerableProcesses(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListVulnerableProcessesResponse(rsp)
+}
+
+// GetVulnerableProcessWithResponse The vulnerable components one executable loads and where it runs
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /vulnerabilities/processes/detail (the `GetVulnerableProcess` operationId).
+func (c *ClientWithResponses) GetVulnerableProcessWithResponse(ctx context.Context, params *GetVulnerableProcessParams, reqEditors ...RequestEditorFn) (*GetVulnerableProcessResponse, error) {
+	rsp, err := c.GetVulnerableProcess(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetVulnerableProcessResponse(rsp)
 }
 
 // GetVulnerabilitySummaryWithResponse Vulnerability figures of the dashboard and the first update actions
@@ -20715,6 +22635,194 @@ func ParseUpdateTlsEndpointResponse(rsp *http.Response) (*UpdateTlsEndpointRespo
 	return response, nil
 }
 
+// ParseListTriageEventsResponse parses an HTTP response from a ListTriageEventsWithResponse call
+func ParseListTriageEventsResponse(rsp *http.Response) (*ListTriageEventsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListTriageEventsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest TriageEventList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest UnexpectedError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListTriageRulesResponse parses an HTTP response from a ListTriageRulesWithResponse call
+func ParseListTriageRulesResponse(rsp *http.Response) (*ListTriageRulesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListTriageRulesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest TriageRuleList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest UnexpectedError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateTriageRuleResponse parses an HTTP response from a CreateTriageRuleWithResponse call
+func ParseCreateTriageRuleResponse(rsp *http.Response) (*CreateTriageRuleResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateTriageRuleResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest TriageRule
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest UnexpectedError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRevokeTriageRuleResponse parses an HTTP response from a RevokeTriageRuleWithResponse call
+func ParseRevokeTriageRuleResponse(rsp *http.Response) (*RevokeTriageRuleResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RevokeTriageRuleResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest TriageRule
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest UnexpectedError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseGetUpdateSettingsResponse parses an HTTP response from a GetUpdateSettingsWithResponse call
 func ParseGetUpdateSettingsResponse(rsp *http.Response) (*GetUpdateSettingsResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -20782,6 +22890,46 @@ func ParseSetUpdateSettingsResponse(rsp *http.Response) (*SetUpdateSettingsRespo
 			return nil, err
 		}
 		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest UnexpectedError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseExportVexResponse parses an HTTP response from a ExportVexWithResponse call
+func ParseExportVexResponse(rsp *http.Response) (*ExportVexResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ExportVexResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest map[string]interface{}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
 		var dest Unauthorized
@@ -20963,6 +23111,201 @@ func ParseGetVulnerabilityResponse(rsp *http.Response) (*GetVulnerabilityRespons
 			return nil, err
 		}
 		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest UnexpectedError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListVulnerableImagesResponse parses an HTTP response from a ListVulnerableImagesWithResponse call
+func ParseListVulnerableImagesResponse(rsp *http.Response) (*ListVulnerableImagesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListVulnerableImagesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest VulnImageList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest UnexpectedError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetVulnerableImageResponse parses an HTTP response from a GetVulnerableImageWithResponse call
+func ParseGetVulnerableImageResponse(rsp *http.Response) (*GetVulnerableImageResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetVulnerableImageResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest VulnImageDetail
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest UnexpectedError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListVulnerableProcessesResponse parses an HTTP response from a ListVulnerableProcessesWithResponse call
+func ParseListVulnerableProcessesResponse(rsp *http.Response) (*ListVulnerableProcessesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListVulnerableProcessesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest VulnProcessList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest UnexpectedError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetVulnerableProcessResponse parses an HTTP response from a GetVulnerableProcessWithResponse call
+func ParseGetVulnerableProcessResponse(rsp *http.Response) (*GetVulnerableProcessResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetVulnerableProcessResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest VulnProcessDetail
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
 		var dest Unauthorized
@@ -21224,12 +23567,27 @@ type ServerInterface interface {
 	// UpdateTlsEndpoint Switch a TLS configuration between automatic and manual, or replace the manual certificate
 	// (PUT /settings/tls/{endpoint})
 	UpdateTlsEndpoint(w http.ResponseWriter, r *http.Request, endpoint TlsEndpointName)
+	// ListTriageEvents What happened to triage rules, oldest first
+	// (GET /triage-events)
+	ListTriageEvents(w http.ResponseWriter, r *http.Request, params ListTriageEventsParams)
+	// ListTriageRules Judgments that a vulnerability does not affect a scope, newest first
+	// (GET /triage-rules)
+	ListTriageRules(w http.ResponseWriter, r *http.Request, params ListTriageRulesParams)
+	// CreateTriageRule Judge that a vulnerability does not affect a scope, for good or until a time
+	// (POST /triage-rules)
+	CreateTriageRule(w http.ResponseWriter, r *http.Request)
+	// RevokeTriageRule Revoke a rule; its findings come back
+	// (DELETE /triage-rules/{id})
+	RevokeTriageRule(w http.ResponseWriter, r *http.Request, id PathId)
 	// GetUpdateSettings Deployed version and update check interval
 	// (GET /update-settings)
 	GetUpdateSettings(w http.ResponseWriter, r *http.Request)
 	// SetUpdateSettings Change the deployed version and update check interval
 	// (PUT /update-settings)
 	SetUpdateSettings(w http.ResponseWriter, r *http.Request)
+	// ExportVex The active triage rules as an OpenVEX document
+	// (GET /vex)
+	ExportVex(w http.ResponseWriter, r *http.Request)
 	// ListVulnerableComponents Update actions, one per vulnerable component
 	// (GET /vulnerabilities/components)
 	ListVulnerableComponents(w http.ResponseWriter, r *http.Request, params ListVulnerableComponentsParams)
@@ -21242,6 +23600,18 @@ type ServerInterface interface {
 	// GetVulnerability One vulnerability with the components and places it affects
 	// (GET /vulnerabilities/cves/{vulnId})
 	GetVulnerability(w http.ResponseWriter, r *http.Request, vulnId string)
+	// ListVulnerableImages Images whose content has vulnerabilities
+	// (GET /vulnerabilities/images)
+	ListVulnerableImages(w http.ResponseWriter, r *http.Request, params ListVulnerableImagesParams)
+	// GetVulnerableImage The vulnerable components of one image's content
+	// (GET /vulnerabilities/images/{digest})
+	GetVulnerableImage(w http.ResponseWriter, r *http.Request, digest PathDigest)
+	// ListVulnerableProcesses Executables of processes that load vulnerable components
+	// (GET /vulnerabilities/processes)
+	ListVulnerableProcesses(w http.ResponseWriter, r *http.Request, params ListVulnerableProcessesParams)
+	// GetVulnerableProcess The vulnerable components one executable loads and where it runs
+	// (GET /vulnerabilities/processes/detail)
+	GetVulnerableProcess(w http.ResponseWriter, r *http.Request, params GetVulnerableProcessParams)
 	// GetVulnerabilitySummary Vulnerability figures of the dashboard and the first update actions
 	// (GET /vulnerabilities/summary)
 	GetVulnerabilitySummary(w http.ResponseWriter, r *http.Request)
@@ -21635,6 +24005,30 @@ func (_ Unimplemented) UpdateTlsEndpoint(w http.ResponseWriter, r *http.Request,
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// ListTriageEvents What happened to triage rules, oldest first
+// (GET /triage-events)
+func (_ Unimplemented) ListTriageEvents(w http.ResponseWriter, r *http.Request, params ListTriageEventsParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListTriageRules Judgments that a vulnerability does not affect a scope, newest first
+// (GET /triage-rules)
+func (_ Unimplemented) ListTriageRules(w http.ResponseWriter, r *http.Request, params ListTriageRulesParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// CreateTriageRule Judge that a vulnerability does not affect a scope, for good or until a time
+// (POST /triage-rules)
+func (_ Unimplemented) CreateTriageRule(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// RevokeTriageRule Revoke a rule; its findings come back
+// (DELETE /triage-rules/{id})
+func (_ Unimplemented) RevokeTriageRule(w http.ResponseWriter, r *http.Request, id PathId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // GetUpdateSettings Deployed version and update check interval
 // (GET /update-settings)
 func (_ Unimplemented) GetUpdateSettings(w http.ResponseWriter, r *http.Request) {
@@ -21644,6 +24038,12 @@ func (_ Unimplemented) GetUpdateSettings(w http.ResponseWriter, r *http.Request)
 // SetUpdateSettings Change the deployed version and update check interval
 // (PUT /update-settings)
 func (_ Unimplemented) SetUpdateSettings(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ExportVex The active triage rules as an OpenVEX document
+// (GET /vex)
+func (_ Unimplemented) ExportVex(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -21668,6 +24068,30 @@ func (_ Unimplemented) ListVulnerabilities(w http.ResponseWriter, r *http.Reques
 // GetVulnerability One vulnerability with the components and places it affects
 // (GET /vulnerabilities/cves/{vulnId})
 func (_ Unimplemented) GetVulnerability(w http.ResponseWriter, r *http.Request, vulnId string) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListVulnerableImages Images whose content has vulnerabilities
+// (GET /vulnerabilities/images)
+func (_ Unimplemented) ListVulnerableImages(w http.ResponseWriter, r *http.Request, params ListVulnerableImagesParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetVulnerableImage The vulnerable components of one image's content
+// (GET /vulnerabilities/images/{digest})
+func (_ Unimplemented) GetVulnerableImage(w http.ResponseWriter, r *http.Request, digest PathDigest) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListVulnerableProcesses Executables of processes that load vulnerable components
+// (GET /vulnerabilities/processes)
+func (_ Unimplemented) ListVulnerableProcesses(w http.ResponseWriter, r *http.Request, params ListVulnerableProcessesParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetVulnerableProcess The vulnerable components one executable loads and where it runs
+// (GET /vulnerabilities/processes/detail)
+func (_ Unimplemented) GetVulnerableProcess(w http.ResponseWriter, r *http.Request, params GetVulnerableProcessParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -24749,6 +27173,125 @@ func (siw *ServerInterfaceWrapper) UpdateTlsEndpoint(w http.ResponseWriter, r *h
 	handler.ServeHTTP(w, r)
 }
 
+// ListTriageEvents operation middleware
+func (siw *ServerInterfaceWrapper) ListTriageEvents(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListTriageEventsParams
+
+	// ------------- Optional query parameter "after" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "after", r.URL.Query(), &params.After, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "after"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "after", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListTriageEvents(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListTriageRules operation middleware
+func (siw *ServerInterfaceWrapper) ListTriageRules(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListTriageRulesParams
+
+	// ------------- Optional query parameter "includeRevoked" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "includeRevoked", r.URL.Query(), &params.IncludeRevoked, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "includeRevoked"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "includeRevoked", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListTriageRules(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateTriageRule operation middleware
+func (siw *ServerInterfaceWrapper) CreateTriageRule(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateTriageRule(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RevokeTriageRule operation middleware
+func (siw *ServerInterfaceWrapper) RevokeTriageRule(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id PathId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RevokeTriageRule(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetUpdateSettings operation middleware
 func (siw *ServerInterfaceWrapper) GetUpdateSettings(w http.ResponseWriter, r *http.Request) {
 
@@ -24768,6 +27311,20 @@ func (siw *ServerInterfaceWrapper) SetUpdateSettings(w http.ResponseWriter, r *h
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.SetUpdateSettings(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ExportVex operation middleware
+func (siw *ServerInterfaceWrapper) ExportVex(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ExportVex(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -24834,6 +27391,19 @@ func (siw *ServerInterfaceWrapper) ListVulnerableComponents(w http.ResponseWrite
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "kev"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "kev", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "includeDeferred" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "includeDeferred", r.URL.Query(), &params.IncludeDeferred, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "includeDeferred"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "includeDeferred", Err: err})
 		}
 		return
 	}
@@ -24962,6 +27532,19 @@ func (siw *ServerInterfaceWrapper) ListVulnerabilities(w http.ResponseWriter, r 
 		return
 	}
 
+	// ------------- Optional query parameter "includeDeferred" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "includeDeferred", r.URL.Query(), &params.IncludeDeferred, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "includeDeferred"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "includeDeferred", Err: err})
+		}
+		return
+	}
+
 	// ------------- Optional query parameter "limit" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
@@ -25016,6 +27599,209 @@ func (siw *ServerInterfaceWrapper) GetVulnerability(w http.ResponseWriter, r *ht
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetVulnerability(w, r, vulnId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListVulnerableImages operation middleware
+func (siw *ServerInterfaceWrapper) ListVulnerableImages(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListVulnerableImagesParams
+
+	// ------------- Optional query parameter "q" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "q", r.URL.Query(), &params.Q, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "q"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "q", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "includeDeferred" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "includeDeferred", r.URL.Query(), &params.IncludeDeferred, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "includeDeferred"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "includeDeferred", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "offset" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "offset", r.URL.Query(), &params.Offset, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "offset"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "offset", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListVulnerableImages(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetVulnerableImage operation middleware
+func (siw *ServerInterfaceWrapper) GetVulnerableImage(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "digest" -------------
+	var digest PathDigest
+
+	err = runtime.BindStyledParameterWithOptions("simple", "digest", chi.URLParam(r, "digest"), &digest, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "digest", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetVulnerableImage(w, r, digest)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListVulnerableProcesses operation middleware
+func (siw *ServerInterfaceWrapper) ListVulnerableProcesses(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListVulnerableProcessesParams
+
+	// ------------- Optional query parameter "q" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "q", r.URL.Query(), &params.Q, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "q"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "q", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "includeDeferred" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "includeDeferred", r.URL.Query(), &params.IncludeDeferred, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "includeDeferred"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "includeDeferred", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "offset" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "offset", r.URL.Query(), &params.Offset, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "offset"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "offset", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListVulnerableProcesses(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetVulnerableProcess operation middleware
+func (siw *ServerInterfaceWrapper) GetVulnerableProcess(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetVulnerableProcessParams
+
+	// ------------- Required query parameter "exe" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "exe", r.URL.Query(), &params.Exe, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "exe"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "exe", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetVulnerableProcess(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -25364,6 +28150,33 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/assets/{id}/vulnerabilities", wrapper.ListAssetVulnerabilities)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/vulnerabilities/processes", wrapper.ListVulnerableProcesses)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/vulnerabilities/processes/detail", wrapper.GetVulnerableProcess)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/vulnerabilities/images", wrapper.ListVulnerableImages)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/vulnerabilities/images/{digest}", wrapper.GetVulnerableImage)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/triage-rules", wrapper.ListTriageRules)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/triage-rules", wrapper.CreateTriageRule)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/triage-rules/{id}", wrapper.RevokeTriageRule)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/triage-events", wrapper.ListTriageEvents)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/vex", wrapper.ExportVex)
 	})
 
 	return r
@@ -30082,6 +32895,274 @@ func (response UpdateTlsEndpointdefaultJSONResponse) VisitUpdateTlsEndpointRespo
 	return err
 }
 
+type ListTriageEventsRequestObject struct {
+	Params ListTriageEventsParams
+}
+
+type ListTriageEventsResponseObject interface {
+	VisitListTriageEventsResponse(w http.ResponseWriter) error
+}
+
+type ListTriageEvents200JSONResponse TriageEventList
+
+func (response ListTriageEvents200JSONResponse) VisitListTriageEventsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListTriageEvents400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response ListTriageEvents400JSONResponse) VisitListTriageEventsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListTriageEvents401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response ListTriageEvents401JSONResponse) VisitListTriageEventsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListTriageEventsdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ListTriageEventsdefaultJSONResponse) VisitListTriageEventsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListTriageRulesRequestObject struct {
+	Params ListTriageRulesParams
+}
+
+type ListTriageRulesResponseObject interface {
+	VisitListTriageRulesResponse(w http.ResponseWriter) error
+}
+
+type ListTriageRules200JSONResponse TriageRuleList
+
+func (response ListTriageRules200JSONResponse) VisitListTriageRulesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListTriageRules401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response ListTriageRules401JSONResponse) VisitListTriageRulesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListTriageRulesdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ListTriageRulesdefaultJSONResponse) VisitListTriageRulesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateTriageRuleRequestObject struct {
+	Body *CreateTriageRuleJSONRequestBody
+}
+
+type CreateTriageRuleResponseObject interface {
+	VisitCreateTriageRuleResponse(w http.ResponseWriter) error
+}
+
+type CreateTriageRule201JSONResponse TriageRule
+
+func (response CreateTriageRule201JSONResponse) VisitCreateTriageRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateTriageRule400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response CreateTriageRule400JSONResponse) VisitCreateTriageRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateTriageRule401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response CreateTriageRule401JSONResponse) VisitCreateTriageRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateTriageRuledefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response CreateTriageRuledefaultJSONResponse) VisitCreateTriageRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeTriageRuleRequestObject struct {
+	Id PathId `json:"id"`
+}
+
+type RevokeTriageRuleResponseObject interface {
+	VisitRevokeTriageRuleResponse(w http.ResponseWriter) error
+}
+
+type RevokeTriageRule200JSONResponse TriageRule
+
+func (response RevokeTriageRule200JSONResponse) VisitRevokeTriageRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeTriageRule401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response RevokeTriageRule401JSONResponse) VisitRevokeTriageRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeTriageRule404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response RevokeTriageRule404JSONResponse) VisitRevokeTriageRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeTriageRule409JSONResponse struct{ ConflictJSONResponse }
+
+func (response RevokeTriageRule409JSONResponse) VisitRevokeTriageRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeTriageRuledefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response RevokeTriageRuledefaultJSONResponse) VisitRevokeTriageRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetUpdateSettingsRequestObject struct {
 }
 
@@ -30190,6 +33271,58 @@ type SetUpdateSettingsdefaultJSONResponse struct {
 }
 
 func (response SetUpdateSettingsdefaultJSONResponse) VisitSetUpdateSettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExportVexRequestObject struct {
+}
+
+type ExportVexResponseObject interface {
+	VisitExportVexResponse(w http.ResponseWriter) error
+}
+
+type ExportVex200JSONResponse map[string]interface{}
+
+func (response ExportVex200JSONResponse) VisitExportVexResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExportVex401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response ExportVex401JSONResponse) VisitExportVexResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExportVexdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ExportVexdefaultJSONResponse) VisitExportVexResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -30469,6 +33602,288 @@ func (response GetVulnerabilitydefaultJSONResponse) VisitGetVulnerabilityRespons
 	return err
 }
 
+type ListVulnerableImagesRequestObject struct {
+	Params ListVulnerableImagesParams
+}
+
+type ListVulnerableImagesResponseObject interface {
+	VisitListVulnerableImagesResponse(w http.ResponseWriter) error
+}
+
+type ListVulnerableImages200JSONResponse VulnImageList
+
+func (response ListVulnerableImages200JSONResponse) VisitListVulnerableImagesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListVulnerableImages400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response ListVulnerableImages400JSONResponse) VisitListVulnerableImagesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListVulnerableImages401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response ListVulnerableImages401JSONResponse) VisitListVulnerableImagesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListVulnerableImagesdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ListVulnerableImagesdefaultJSONResponse) VisitListVulnerableImagesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetVulnerableImageRequestObject struct {
+	Digest PathDigest `json:"digest"`
+}
+
+type GetVulnerableImageResponseObject interface {
+	VisitGetVulnerableImageResponse(w http.ResponseWriter) error
+}
+
+type GetVulnerableImage200JSONResponse VulnImageDetail
+
+func (response GetVulnerableImage200JSONResponse) VisitGetVulnerableImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetVulnerableImage401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response GetVulnerableImage401JSONResponse) VisitGetVulnerableImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetVulnerableImage404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetVulnerableImage404JSONResponse) VisitGetVulnerableImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetVulnerableImagedefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetVulnerableImagedefaultJSONResponse) VisitGetVulnerableImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListVulnerableProcessesRequestObject struct {
+	Params ListVulnerableProcessesParams
+}
+
+type ListVulnerableProcessesResponseObject interface {
+	VisitListVulnerableProcessesResponse(w http.ResponseWriter) error
+}
+
+type ListVulnerableProcesses200JSONResponse VulnProcessList
+
+func (response ListVulnerableProcesses200JSONResponse) VisitListVulnerableProcessesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListVulnerableProcesses400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response ListVulnerableProcesses400JSONResponse) VisitListVulnerableProcessesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListVulnerableProcesses401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response ListVulnerableProcesses401JSONResponse) VisitListVulnerableProcessesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListVulnerableProcessesdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ListVulnerableProcessesdefaultJSONResponse) VisitListVulnerableProcessesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetVulnerableProcessRequestObject struct {
+	Params GetVulnerableProcessParams
+}
+
+type GetVulnerableProcessResponseObject interface {
+	VisitGetVulnerableProcessResponse(w http.ResponseWriter) error
+}
+
+type GetVulnerableProcess200JSONResponse VulnProcessDetail
+
+func (response GetVulnerableProcess200JSONResponse) VisitGetVulnerableProcessResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetVulnerableProcess400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response GetVulnerableProcess400JSONResponse) VisitGetVulnerableProcessResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetVulnerableProcess401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response GetVulnerableProcess401JSONResponse) VisitGetVulnerableProcessResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetVulnerableProcess404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetVulnerableProcess404JSONResponse) VisitGetVulnerableProcessResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetVulnerableProcessdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetVulnerableProcessdefaultJSONResponse) VisitGetVulnerableProcessResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetVulnerabilitySummaryRequestObject struct {
 }
 
@@ -30715,12 +34130,27 @@ type StrictServerInterface interface {
 	// UpdateTlsEndpoint Switch a TLS configuration between automatic and manual, or replace the manual certificate
 	// (PUT /settings/tls/{endpoint})
 	UpdateTlsEndpoint(ctx context.Context, request UpdateTlsEndpointRequestObject) (UpdateTlsEndpointResponseObject, error)
+	// ListTriageEvents What happened to triage rules, oldest first
+	// (GET /triage-events)
+	ListTriageEvents(ctx context.Context, request ListTriageEventsRequestObject) (ListTriageEventsResponseObject, error)
+	// ListTriageRules Judgments that a vulnerability does not affect a scope, newest first
+	// (GET /triage-rules)
+	ListTriageRules(ctx context.Context, request ListTriageRulesRequestObject) (ListTriageRulesResponseObject, error)
+	// CreateTriageRule Judge that a vulnerability does not affect a scope, for good or until a time
+	// (POST /triage-rules)
+	CreateTriageRule(ctx context.Context, request CreateTriageRuleRequestObject) (CreateTriageRuleResponseObject, error)
+	// RevokeTriageRule Revoke a rule; its findings come back
+	// (DELETE /triage-rules/{id})
+	RevokeTriageRule(ctx context.Context, request RevokeTriageRuleRequestObject) (RevokeTriageRuleResponseObject, error)
 	// GetUpdateSettings Deployed version and update check interval
 	// (GET /update-settings)
 	GetUpdateSettings(ctx context.Context, request GetUpdateSettingsRequestObject) (GetUpdateSettingsResponseObject, error)
 	// SetUpdateSettings Change the deployed version and update check interval
 	// (PUT /update-settings)
 	SetUpdateSettings(ctx context.Context, request SetUpdateSettingsRequestObject) (SetUpdateSettingsResponseObject, error)
+	// ExportVex The active triage rules as an OpenVEX document
+	// (GET /vex)
+	ExportVex(ctx context.Context, request ExportVexRequestObject) (ExportVexResponseObject, error)
 	// ListVulnerableComponents Update actions, one per vulnerable component
 	// (GET /vulnerabilities/components)
 	ListVulnerableComponents(ctx context.Context, request ListVulnerableComponentsRequestObject) (ListVulnerableComponentsResponseObject, error)
@@ -30733,6 +34163,18 @@ type StrictServerInterface interface {
 	// GetVulnerability One vulnerability with the components and places it affects
 	// (GET /vulnerabilities/cves/{vulnId})
 	GetVulnerability(ctx context.Context, request GetVulnerabilityRequestObject) (GetVulnerabilityResponseObject, error)
+	// ListVulnerableImages Images whose content has vulnerabilities
+	// (GET /vulnerabilities/images)
+	ListVulnerableImages(ctx context.Context, request ListVulnerableImagesRequestObject) (ListVulnerableImagesResponseObject, error)
+	// GetVulnerableImage The vulnerable components of one image's content
+	// (GET /vulnerabilities/images/{digest})
+	GetVulnerableImage(ctx context.Context, request GetVulnerableImageRequestObject) (GetVulnerableImageResponseObject, error)
+	// ListVulnerableProcesses Executables of processes that load vulnerable components
+	// (GET /vulnerabilities/processes)
+	ListVulnerableProcesses(ctx context.Context, request ListVulnerableProcessesRequestObject) (ListVulnerableProcessesResponseObject, error)
+	// GetVulnerableProcess The vulnerable components one executable loads and where it runs
+	// (GET /vulnerabilities/processes/detail)
+	GetVulnerableProcess(ctx context.Context, request GetVulnerableProcessRequestObject) (GetVulnerableProcessResponseObject, error)
 	// GetVulnerabilitySummary Vulnerability figures of the dashboard and the first update actions
 	// (GET /vulnerabilities/summary)
 	GetVulnerabilitySummary(ctx context.Context, request GetVulnerabilitySummaryRequestObject) (GetVulnerabilitySummaryResponseObject, error)
@@ -32534,6 +35976,115 @@ func (sh *strictHandler) UpdateTlsEndpoint(w http.ResponseWriter, r *http.Reques
 	}
 }
 
+// ListTriageEvents operation middleware
+func (sh *strictHandler) ListTriageEvents(w http.ResponseWriter, r *http.Request, params ListTriageEventsParams) {
+	var request ListTriageEventsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListTriageEvents(ctx, request.(ListTriageEventsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListTriageEvents")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListTriageEventsResponseObject); ok {
+		if err := validResponse.VisitListTriageEventsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListTriageRules operation middleware
+func (sh *strictHandler) ListTriageRules(w http.ResponseWriter, r *http.Request, params ListTriageRulesParams) {
+	var request ListTriageRulesRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListTriageRules(ctx, request.(ListTriageRulesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListTriageRules")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListTriageRulesResponseObject); ok {
+		if err := validResponse.VisitListTriageRulesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateTriageRule operation middleware
+func (sh *strictHandler) CreateTriageRule(w http.ResponseWriter, r *http.Request) {
+	var request CreateTriageRuleRequestObject
+
+	var body CreateTriageRuleJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateTriageRule(ctx, request.(CreateTriageRuleRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateTriageRule")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateTriageRuleResponseObject); ok {
+		if err := validResponse.VisitCreateTriageRuleResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RevokeTriageRule operation middleware
+func (sh *strictHandler) RevokeTriageRule(w http.ResponseWriter, r *http.Request, id PathId) {
+	var request RevokeTriageRuleRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RevokeTriageRule(ctx, request.(RevokeTriageRuleRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RevokeTriageRule")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RevokeTriageRuleResponseObject); ok {
+		if err := validResponse.VisitRevokeTriageRuleResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetUpdateSettings operation middleware
 func (sh *strictHandler) GetUpdateSettings(w http.ResponseWriter, r *http.Request) {
 	var request GetUpdateSettingsRequestObject
@@ -32582,6 +36133,30 @@ func (sh *strictHandler) SetUpdateSettings(w http.ResponseWriter, r *http.Reques
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(SetUpdateSettingsResponseObject); ok {
 		if err := validResponse.VisitSetUpdateSettingsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ExportVex operation middleware
+func (sh *strictHandler) ExportVex(w http.ResponseWriter, r *http.Request) {
+	var request ExportVexRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ExportVex(ctx, request.(ExportVexRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ExportVex")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ExportVexResponseObject); ok {
+		if err := validResponse.VisitExportVexResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -32686,6 +36261,110 @@ func (sh *strictHandler) GetVulnerability(w http.ResponseWriter, r *http.Request
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetVulnerabilityResponseObject); ok {
 		if err := validResponse.VisitGetVulnerabilityResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListVulnerableImages operation middleware
+func (sh *strictHandler) ListVulnerableImages(w http.ResponseWriter, r *http.Request, params ListVulnerableImagesParams) {
+	var request ListVulnerableImagesRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListVulnerableImages(ctx, request.(ListVulnerableImagesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListVulnerableImages")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListVulnerableImagesResponseObject); ok {
+		if err := validResponse.VisitListVulnerableImagesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetVulnerableImage operation middleware
+func (sh *strictHandler) GetVulnerableImage(w http.ResponseWriter, r *http.Request, digest PathDigest) {
+	var request GetVulnerableImageRequestObject
+
+	request.Digest = digest
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetVulnerableImage(ctx, request.(GetVulnerableImageRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetVulnerableImage")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetVulnerableImageResponseObject); ok {
+		if err := validResponse.VisitGetVulnerableImageResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListVulnerableProcesses operation middleware
+func (sh *strictHandler) ListVulnerableProcesses(w http.ResponseWriter, r *http.Request, params ListVulnerableProcessesParams) {
+	var request ListVulnerableProcessesRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListVulnerableProcesses(ctx, request.(ListVulnerableProcessesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListVulnerableProcesses")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListVulnerableProcessesResponseObject); ok {
+		if err := validResponse.VisitListVulnerableProcessesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetVulnerableProcess operation middleware
+func (sh *strictHandler) GetVulnerableProcess(w http.ResponseWriter, r *http.Request, params GetVulnerableProcessParams) {
+	var request GetVulnerableProcessRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetVulnerableProcess(ctx, request.(GetVulnerableProcessRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetVulnerableProcess")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetVulnerableProcessResponseObject); ok {
+		if err := validResponse.VisitGetVulnerableProcessResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

@@ -5,12 +5,15 @@
 -->
 
 <script setup lang="ts">
-import { getDashboard, getVulnerabilitySummary } from '~/api'
+import { getDashboard, getVulnerabilitySummary, listProcesses } from '~/api'
 
 useHead({ title: '대시보드 · bomcensus' })
 
 const { data: dashboard, error, refresh } = useLoad('dashboard', getDashboard)
 const { data: vulns, error: vulnsError, refresh: refreshVulns } = useLoad('dashboard:vulns', getVulnerabilitySummary)
+// The dashboard shows at most 10 suspicious processes; the rest are on the processes page.
+const suspiciousLimit = 10
+const { data: suspicious } = useLoad('dashboard:suspicious', () => listProcesses({ view: 'suspicious', limit: suspiciousLimit }))
 
 const exposures = ['listening', 'running', 'installed', 'unknown'] as const
 
@@ -68,7 +71,7 @@ const coverageMax = computed(() => Math.max(1, ...(dashboard.value?.coverage.map
           <StatTile
             label="취약점"
             :value="vulns.totals.cves"
-            :hint="`컴포넌트 ${vulns.totals.components} · KEV ${vulns.totals.kev}`"
+            :hint="`컴포넌트 ${vulns.totals.components} · KEV ${vulns.totals.kev}${vulns.deferred ? ` · 유예 ${vulns.deferred}` : ''}`"
             to="/vulnerabilities"
           />
           <StatTile label="취약점이 있는 자산" :value="vulns.totals.assets" to="/assets" />
@@ -97,6 +100,43 @@ const coverageMax = computed(() => Math.max(1, ...(dashboard.value?.coverage.map
       </template>
       <Panel v-else-if="vulnsError" class="mt-4">
         <LoadError :error="vulnsError" @retry="refreshVulns" />
+      </Panel>
+
+      <Panel v-if="suspicious?.items.length" class="mt-4" title="의심 프로세스" description="교체·삭제된 실행 파일, fileless 실행" flush>
+        <div class="overflow-x-auto">
+          <table class="w-full min-w-[640px] border-collapse text-sm">
+            <thead>
+              <tr class="border-b border-line text-left text-xs text-ink-3">
+                <th class="py-2 pl-3.5 font-normal">프로세스</th>
+                <th class="px-3 py-2 font-normal">자산</th>
+                <th class="px-3 py-2 font-normal">경로</th>
+                <th class="px-3 py-2 font-normal">listen ports</th>
+                <th class="py-2 pl-3 pr-3.5 text-right font-normal">시작</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="p in suspicious.items" :key="p.id" class="border-b border-line align-top">
+                <td class="py-2 pl-3.5">
+                  <StatusBadge :tone="exeStateTone[p.exeState]" :label="exeStateLabel[p.exeState]" />
+                  <span class="mono ml-1.5">{{ p.exePath.split('/').pop() }}</span>
+                  <span class="mono ml-1 text-xs text-ink-3">{{ p.pid }} · {{ p.user }}</span>
+                </td>
+                <td class="px-3 py-2">
+                  <NuxtLink :to="`/assets/${p.assetId}?tab=processes`" class="hover:underline">{{ p.assetName }}</NuxtLink>
+                  <span v-if="p.container" class="mono ml-1 text-xs text-ink-3">{{ p.container }}</span>
+                </td>
+                <td class="mono px-3 py-2 text-xs break-all text-ink-2">{{ p.exePath }}</td>
+                <td class="mono px-3 py-2 text-xs">{{ p.listen.length ? p.listen.map((l) => `${l.proto}/${l.port}`).join(', ') : '—' }}</td>
+                <td class="py-2 pl-3 pr-3.5 text-right text-xs whitespace-nowrap"><TimeAgo :at="p.startedAt" /></td>
+              </tr>
+              <tr v-if="suspicious.total > suspicious.items.length">
+                <td colspan="5" class="px-3.5 py-2.5 text-sm">
+                  <NuxtLink to="/processes?view=suspicious" class="link">+ {{ suspicious.total - suspicious.items.length }}개 자세히 보기</NuxtLink>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </Panel>
 
       <div class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">

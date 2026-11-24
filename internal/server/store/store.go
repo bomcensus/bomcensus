@@ -24,6 +24,7 @@ type Store interface {
 	Manage
 	Vulns
 	Findings
+	Triage
 
 	// WithTx runs fn in a transaction. The Store passed to fn is bound to that
 	// transaction. Returning an error rolls back. Nested calls join the outer

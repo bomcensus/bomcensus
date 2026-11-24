@@ -1412,6 +1412,10 @@ export type VulnComponent = {
      * Executables of the loading processes, most frequent first (at most 5).
      */
     processes: Array<ProcessCount>;
+    /**
+     * Deferred findings among them (when deferred ones are included).
+     */
+    deferred?: number;
 };
 
 export type VulnComponentList = {
@@ -1444,6 +1448,14 @@ export type VulnCve = {
      * In the context of one component; the loading processes of the most exposed location.
      */
     processes?: Array<FindingProcess>;
+    /**
+     * Deferred findings among them (when deferred ones are included).
+     */
+    deferred?: number;
+    /**
+     * In the context of one component; the triage rules deciding its findings.
+     */
+    rules?: Array<TriageRule>;
 };
 
 export type VulnCveList = {
@@ -1534,6 +1546,15 @@ export type VulnCveComponent = {
     advisories: Array<VulnAdvisory>;
     assets: number;
     exposure: Exposure;
+    findings?: number;
+    /**
+     * Findings an active rule defers.
+     */
+    deferred?: number;
+    /**
+     * The triage rules deciding its findings.
+     */
+    rules?: Array<TriageRule>;
 };
 
 export type VulnCveDetail = {
@@ -1546,6 +1567,7 @@ export type AssetVuln = {
     componentId: string;
     componentName: string;
     componentVersion: string;
+    componentPurl?: string;
     container?: string;
     layer: FindingLayer;
     imageDigest?: string;
@@ -1560,6 +1582,7 @@ export type AssetVuln = {
     fixedVersion?: string;
     processes: Array<FindingProcess>;
     firstSeen: string;
+    triage?: TriageRule;
 };
 
 export type AssetVulnList = {
@@ -1589,8 +1612,169 @@ export type VulnSummary = {
      * Live components the feed server has no data for.
      */
     unsupported: number;
+    /**
+     * Vulnerabilities whose open findings are all deferred.
+     */
+    deferred: number;
     actions: Array<VulnComponent>;
     actionsTotal: number;
+};
+
+/**
+ * CycloneDX VEX justification of a `not_affected` judgment.
+ */
+export type TriageJustification = 'code_not_present' | 'code_not_reachable' | 'requires_configuration' | 'requires_environment' | 'protected_at_runtime' | 'protected_by_mitigating_control';
+
+export type TriageScope = {
+    kind: 'purl' | 'asset' | 'group';
+    /**
+     * A purl (pattern), an asset id or an asset group.
+     */
+    value: string;
+};
+
+export type TriageRuleCreate = {
+    vulnId: string;
+    scope: TriageScope;
+    justification: TriageJustification;
+    note?: string;
+    /**
+     * End of the deferral; absent for a permanent one. Must be in the future.
+     */
+    expiresAt?: string;
+};
+
+export type TriageRule = {
+    id: string;
+    vulnId: string;
+    scope: TriageScope;
+    /**
+     * Asset name of an asset scope.
+     */
+    scopeName?: string;
+    status: 'not_affected';
+    justification: TriageJustification;
+    note?: string;
+    expiresAt?: string;
+    /**
+     * When the end of the deferral was recorded.
+     */
+    expiredAt?: string;
+    /**
+     * The rule defers findings now.
+     */
+    active: boolean;
+    createdBy: string;
+    createdAt: string;
+    revokedAt?: string;
+    revokedBy?: string;
+    /**
+     * Open findings it decides now.
+     */
+    findings?: number;
+    assets?: number;
+};
+
+export type TriageRuleList = {
+    items: Array<TriageRule>;
+    total: number;
+};
+
+export type TriageEvent = {
+    id: number;
+    kind: 'created' | 'revoked' | 'expired';
+    at: string;
+    actor?: string;
+    /**
+     * Open findings the rule decided; for `expired`, those that came back.
+     */
+    findings: number;
+    rule: TriageRule;
+};
+
+export type TriageEventList = {
+    items: Array<TriageEvent>;
+};
+
+export type VulnProcess = {
+    exe: string;
+    assets: number;
+    processes: number;
+    /**
+     * Processes listening on a non-loopback address.
+     */
+    listening: number;
+    components: number;
+    cves: number;
+    kev: number;
+    score?: number;
+    severity?: Severity;
+    severityCounts: SeverityCounts;
+};
+
+export type VulnProcessList = {
+    items: Array<VulnProcess>;
+    total: number;
+};
+
+export type VulnProcessDetail = {
+    process: VulnProcess;
+    components: Array<VulnComponent>;
+    locations: Array<VulnLocation>;
+};
+
+export type VulnImage = {
+    digest: string;
+    tags: Array<string>;
+    components: number;
+    cves: number;
+    kev: number;
+    score?: number;
+    severity?: Severity;
+    epss?: number;
+    severityCounts: SeverityCounts;
+    /**
+     * Current containers running it.
+     */
+    containers: number;
+    assets: number;
+};
+
+export type VulnImageList = {
+    items: Array<VulnImage>;
+    total: number;
+};
+
+export type VulnImageCve = {
+    vulnId: string;
+    summary?: string;
+    severity?: Severity;
+    score?: number;
+    kev: boolean;
+    epss?: number;
+    fixState: FixState;
+    fixedVersion?: string;
+    /**
+     * A rule with a component scope defers it.
+     */
+    deferred: boolean;
+};
+
+export type VulnImageComponent = {
+    componentId: string;
+    name: string;
+    version: string;
+    type: ComponentType;
+    purl?: string;
+    locations: Array<string>;
+    fixedVersion?: string;
+    fixedVersions: Array<string>;
+    cves: Array<VulnImageCve>;
+};
+
+export type VulnImageDetail = {
+    image: VulnImage;
+    components: Array<VulnImageComponent>;
 };
 
 /**
@@ -1665,6 +1849,11 @@ export type QueryExposure = Exposure;
  * Keep items with a known exploited vulnerability.
  */
 export type QueryKev = boolean;
+
+/**
+ * Keep findings an active triage rule defers.
+ */
+export type QueryIncludeDeferred = boolean;
 
 export type QueryLimit = number;
 
@@ -4276,6 +4465,10 @@ export type ListVulnerableComponentsData = {
          * Keep items with a known exploited vulnerability.
          */
         kev?: boolean;
+        /**
+         * Keep findings an active triage rule defers.
+         */
+        includeDeferred?: boolean;
         limit?: number;
         offset?: number;
     };
@@ -4363,6 +4556,10 @@ export type ListVulnerabilitiesData = {
          * Keep items with a known exploited vulnerability.
          */
         kev?: boolean;
+        /**
+         * Keep findings an active triage rule defers.
+         */
+        includeDeferred?: boolean;
         limit?: number;
         offset?: number;
     };
@@ -4464,3 +4661,338 @@ export type ListAssetVulnerabilitiesResponses = {
 };
 
 export type ListAssetVulnerabilitiesResponse = ListAssetVulnerabilitiesResponses[keyof ListAssetVulnerabilitiesResponses];
+
+export type ListVulnerableProcessesData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Free-text search, case-insensitive substring match.
+         */
+        q?: string;
+        /**
+         * Keep findings an active triage rule defers.
+         */
+        includeDeferred?: boolean;
+        limit?: number;
+        offset?: number;
+    };
+    url: '/vulnerabilities/processes';
+};
+
+export type ListVulnerableProcessesErrors = {
+    /**
+     * The request is malformed or a value is invalid.
+     */
+    400: Error;
+    /**
+     * No valid session, or wrong credentials on login.
+     */
+    401: Error;
+    /**
+     * Unexpected error.
+     */
+    default: Error;
+};
+
+export type ListVulnerableProcessesError = ListVulnerableProcessesErrors[keyof ListVulnerableProcessesErrors];
+
+export type ListVulnerableProcessesResponses = {
+    /**
+     * Executables
+     */
+    200: VulnProcessList;
+};
+
+export type ListVulnerableProcessesResponse = ListVulnerableProcessesResponses[keyof ListVulnerableProcessesResponses];
+
+export type GetVulnerableProcessData = {
+    body?: never;
+    path?: never;
+    query: {
+        exe: string;
+    };
+    url: '/vulnerabilities/processes/detail';
+};
+
+export type GetVulnerableProcessErrors = {
+    /**
+     * The request is malformed or a value is invalid.
+     */
+    400: Error;
+    /**
+     * No valid session, or wrong credentials on login.
+     */
+    401: Error;
+    /**
+     * The resource does not exist.
+     */
+    404: Error;
+    /**
+     * Unexpected error.
+     */
+    default: Error;
+};
+
+export type GetVulnerableProcessError = GetVulnerableProcessErrors[keyof GetVulnerableProcessErrors];
+
+export type GetVulnerableProcessResponses = {
+    /**
+     * Executable
+     */
+    200: VulnProcessDetail;
+};
+
+export type GetVulnerableProcessResponse = GetVulnerableProcessResponses[keyof GetVulnerableProcessResponses];
+
+export type ListVulnerableImagesData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Free-text search, case-insensitive substring match.
+         */
+        q?: string;
+        /**
+         * Keep findings an active triage rule defers.
+         */
+        includeDeferred?: boolean;
+        limit?: number;
+        offset?: number;
+    };
+    url: '/vulnerabilities/images';
+};
+
+export type ListVulnerableImagesErrors = {
+    /**
+     * The request is malformed or a value is invalid.
+     */
+    400: Error;
+    /**
+     * No valid session, or wrong credentials on login.
+     */
+    401: Error;
+    /**
+     * Unexpected error.
+     */
+    default: Error;
+};
+
+export type ListVulnerableImagesError = ListVulnerableImagesErrors[keyof ListVulnerableImagesErrors];
+
+export type ListVulnerableImagesResponses = {
+    /**
+     * Images
+     */
+    200: VulnImageList;
+};
+
+export type ListVulnerableImagesResponse = ListVulnerableImagesResponses[keyof ListVulnerableImagesResponses];
+
+export type GetVulnerableImageData = {
+    body?: never;
+    path: {
+        /**
+         * Image digest, for example `sha256:0123…`.
+         */
+        digest: string;
+    };
+    query?: never;
+    url: '/vulnerabilities/images/{digest}';
+};
+
+export type GetVulnerableImageErrors = {
+    /**
+     * No valid session, or wrong credentials on login.
+     */
+    401: Error;
+    /**
+     * The resource does not exist.
+     */
+    404: Error;
+    /**
+     * Unexpected error.
+     */
+    default: Error;
+};
+
+export type GetVulnerableImageError = GetVulnerableImageErrors[keyof GetVulnerableImageErrors];
+
+export type GetVulnerableImageResponses = {
+    /**
+     * Image
+     */
+    200: VulnImageDetail;
+};
+
+export type GetVulnerableImageResponse = GetVulnerableImageResponses[keyof GetVulnerableImageResponses];
+
+export type ListTriageRulesData = {
+    body?: never;
+    path?: never;
+    query?: {
+        includeRevoked?: boolean;
+    };
+    url: '/triage-rules';
+};
+
+export type ListTriageRulesErrors = {
+    /**
+     * No valid session, or wrong credentials on login.
+     */
+    401: Error;
+    /**
+     * Unexpected error.
+     */
+    default: Error;
+};
+
+export type ListTriageRulesError = ListTriageRulesErrors[keyof ListTriageRulesErrors];
+
+export type ListTriageRulesResponses = {
+    /**
+     * Rules
+     */
+    200: TriageRuleList;
+};
+
+export type ListTriageRulesResponse = ListTriageRulesResponses[keyof ListTriageRulesResponses];
+
+export type CreateTriageRuleData = {
+    body: TriageRuleCreate;
+    path?: never;
+    query?: never;
+    url: '/triage-rules';
+};
+
+export type CreateTriageRuleErrors = {
+    /**
+     * The request is malformed or a value is invalid.
+     */
+    400: Error;
+    /**
+     * No valid session, or wrong credentials on login.
+     */
+    401: Error;
+    /**
+     * Unexpected error.
+     */
+    default: Error;
+};
+
+export type CreateTriageRuleError = CreateTriageRuleErrors[keyof CreateTriageRuleErrors];
+
+export type CreateTriageRuleResponses = {
+    /**
+     * Rule created
+     */
+    201: TriageRule;
+};
+
+export type CreateTriageRuleResponse = CreateTriageRuleResponses[keyof CreateTriageRuleResponses];
+
+export type RevokeTriageRuleData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/triage-rules/{id}';
+};
+
+export type RevokeTriageRuleErrors = {
+    /**
+     * No valid session, or wrong credentials on login.
+     */
+    401: Error;
+    /**
+     * The resource does not exist.
+     */
+    404: Error;
+    /**
+     * The request conflicts with the current state.
+     */
+    409: Error;
+    /**
+     * Unexpected error.
+     */
+    default: Error;
+};
+
+export type RevokeTriageRuleError = RevokeTriageRuleErrors[keyof RevokeTriageRuleErrors];
+
+export type RevokeTriageRuleResponses = {
+    /**
+     * Revoked rule
+     */
+    200: TriageRule;
+};
+
+export type RevokeTriageRuleResponse = RevokeTriageRuleResponses[keyof RevokeTriageRuleResponses];
+
+export type ListTriageEventsData = {
+    body?: never;
+    path?: never;
+    query?: {
+        after?: number;
+        limit?: number;
+    };
+    url: '/triage-events';
+};
+
+export type ListTriageEventsErrors = {
+    /**
+     * The request is malformed or a value is invalid.
+     */
+    400: Error;
+    /**
+     * No valid session, or wrong credentials on login.
+     */
+    401: Error;
+    /**
+     * Unexpected error.
+     */
+    default: Error;
+};
+
+export type ListTriageEventsError = ListTriageEventsErrors[keyof ListTriageEventsErrors];
+
+export type ListTriageEventsResponses = {
+    /**
+     * Events
+     */
+    200: TriageEventList;
+};
+
+export type ListTriageEventsResponse = ListTriageEventsResponses[keyof ListTriageEventsResponses];
+
+export type ExportVexData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/vex';
+};
+
+export type ExportVexErrors = {
+    /**
+     * No valid session, or wrong credentials on login.
+     */
+    401: Error;
+    /**
+     * Unexpected error.
+     */
+    default: Error;
+};
+
+export type ExportVexError = ExportVexErrors[keyof ExportVexErrors];
+
+export type ExportVexResponses = {
+    /**
+     * OpenVEX 0.2.0 document
+     */
+    200: {
+        [key: string]: unknown;
+    };
+};
+
+export type ExportVexResponse = ExportVexResponses[keyof ExportVexResponses];

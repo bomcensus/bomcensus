@@ -16,6 +16,7 @@ import type {
   CredentialSecretUpdate,
   FeedServerCreate,
   FeedServerUpdate,
+  TriageRuleCreate,
   ListenTargetCreate,
   ListenTargetUpdate,
   LoginRequest,
@@ -174,3 +175,16 @@ export const getVulnerableComponent = (id: string) => call(sdk.getVulnerableComp
 export const listVulnerabilities = (query?: Query<gen.ListVulnerabilitiesData>) => call(sdk.listVulnerabilities({ query }))
 export const getVulnerability = (vulnId: string) => call(sdk.getVulnerability({ path: { vulnId } }))
 export const listAssetVulnerabilities = (id: string) => call(sdk.listAssetVulnerabilities({ path: { id } }))
+export const listVulnerableProcesses = (query?: Query<gen.ListVulnerableProcessesData>) =>
+  call(sdk.listVulnerableProcesses({ query }))
+export const getVulnerableProcess = (exe: string) => call(sdk.getVulnerableProcess({ query: { exe } }))
+export const listVulnerableImages = (query?: Query<gen.ListVulnerableImagesData>) => call(sdk.listVulnerableImages({ query }))
+export const getVulnerableImage = (digest: string) => call(sdk.getVulnerableImage({ path: { digest } }))
+
+// ── triage ──────────────────────────────────────────────
+
+export const listTriageRules = (query?: Query<gen.ListTriageRulesData>) => call(sdk.listTriageRules({ query }))
+export const createTriageRule = (body: TriageRuleCreate) => call(sdk.createTriageRule({ body }))
+export const revokeTriageRule = (id: string) => call(sdk.revokeTriageRule({ path: { id } }))
+/** The active rules as an OpenVEX document. */
+export const exportVex = () => call(sdk.exportVex())

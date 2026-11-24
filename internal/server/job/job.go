@@ -37,6 +37,9 @@ const (
 	// KindFindingsRefresh computes the findings of assets whose inputs
 	// changed (no arguments).
 	KindFindingsRefresh = "findings_refresh"
+	// KindTriageExpire records the triage rules whose deferral ended (no
+	// arguments).
+	KindTriageExpire = "triage_expire"
 )
 
 // IngestReportArgs names a raw report stored by the upload handler.

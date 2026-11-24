@@ -9,9 +9,24 @@ import type { AssetVuln } from '~/types'
 import type { TableColumn } from '~/types/table'
 import type { ApiError } from '~/api'
 
-// Open findings of an asset, most exposed first.
-defineProps<{ items: AssetVuln[]; pending: boolean; error?: ApiError }>()
+// Open findings of an asset, most exposed first. Deferred ones are hidden unless asked for;
+// a finding can be judged not affected for its component version, this asset or its group.
+const props = defineProps<{
+  asset: { id: string; name: string; group?: string }
+  items: AssetVuln[]
+  pending: boolean
+  error?: ApiError
+}>()
 const emit = defineEmits<{ retry: [] }>()
+
+const hideDeferred = ref(true)
+const deferredCount = computed(() => props.items.filter((v) => v.triage?.active).length)
+const rows = computed(() => (hideDeferred.value ? props.items.filter((v) => !v.triage?.active) : props.items))
+
+const picker = reactive({ open: false, vulnId: '', purl: '' })
+function judge(v: AssetVuln) {
+  Object.assign(picker, { open: true, vulnId: v.vulnId, purl: v.componentPurl ?? '' })
+}
 
 const columns: TableColumn<AssetVuln>[] = [
   { key: 'vulnId', label: '취약점', sortValue: (r) => r.vulnId },
@@ -20,17 +35,24 @@ const columns: TableColumn<AssetVuln>[] = [
   { key: 'where', label: '위치', sortValue: (r) => r.container ?? '', hideBelow: 'md' },
   { key: 'exposure', label: '영향도', sortValue: (r) => -exposureLevel[r.exposure] },
   { key: 'fix', label: '수정', hideBelow: 'sm' },
+  { key: 'triage', label: '판정' },
   { key: 'firstSeen', label: '발견', align: 'right', sortValue: (r) => r.firstSeen, hideBelow: 'md' },
 ]
 </script>
 
 <template>
   <Panel title="취약점" description="feed 서버가 찾은 취약점입니다. 영향도가 높은 것부터 보입니다." flush>
+    <template #actions>
+      <label class="inline-flex items-center gap-1.5 text-sm">
+        <input v-model="hideDeferred" type="checkbox" class="size-[15px] accent-(--accent)" /> 유예 숨김
+        <span v-if="deferredCount" class="mono text-xs text-ink-3">{{ deferredCount }}</span>
+      </label>
+    </template>
     <LoadError v-if="error" :error="error" @retry="emit('retry')" />
     <DataTable
       v-else
       :columns="columns"
-      :rows="items"
+      :rows="rows"
       :row-key="(r) => `${r.container ?? ''}/${r.componentId}/${r.vulnId}`"
       :loading="pending && !items.length"
       :page-size="50"
@@ -61,6 +83,11 @@ const columns: TableColumn<AssetVuln>[] = [
         <span v-else class="whitespace-nowrap text-xs text-ink-3">{{ fixStateLabel[row.fixState] }}</span>
       </template>
       <template #cell-firstSeen="{ row }"><span class="whitespace-nowrap text-xs">{{ formatDate(row.firstSeen) }}</span></template>
+      <template #cell-triage="{ row }">
+        <TriageRuleBadge v-if="row.triage" :rule="row.triage" @changed="emit('retry')" />
+        <button v-if="!row.triage?.active" type="button" class="link block text-xs" @click="judge(row)">판정…</button>
+      </template>
     </DataTable>
+    <TriagePicker v-model:open="picker.open" :vuln-id="picker.vulnId" :purl="picker.purl" :asset="asset" @saved="emit('retry')" />
   </Panel>
 </template>
