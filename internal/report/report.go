@@ -216,6 +216,9 @@ const (
 
 type ArtifactsSection struct {
 	SectionMeta
+	// WalkPaths are the directories that were walked. The other artifacts
+	// come from running processes. Not part of the digest.
+	WalkPaths []string   `json:"walk_paths,omitempty"`
 	Artifacts []Artifact `json:"artifacts,omitempty"`
 }
 
@@ -431,6 +434,11 @@ type Policy struct {
 	// ExcludePaths are skipped by the file system walk, in addition to the
 	// built-in ones (/proc, /sys, /dev, network mounts).
 	ExcludePaths []string `json:"exclude_paths,omitempty"`
+	// WalkPaths are the absolute directories of the inspected host walked
+	// for software. Empty means no walk: only the executables of running
+	// processes and the archives they hold open are inspected. Container
+	// roots are image content and are always walked whole.
+	WalkPaths []string `json:"walk_paths,omitempty"`
 	// CollectCmdline can be turned off to leave command lines out entirely.
 	CollectCmdline bool `json:"collect_cmdline"`
 	// ScanContainers reads the content of running containers on a host.

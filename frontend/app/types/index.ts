@@ -95,6 +95,10 @@ export type {
   ScanTargetUpdate,
   CredentialKind,
   Credential,
+  // detection
+  DetectDir,
+  DetectDirCreate,
+  DetectDirUpdate,
   // settings
   TlsEndpointName,
   TlsCertMode,

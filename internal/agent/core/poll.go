@@ -248,6 +248,9 @@ func PolicyFromConfig(p agentapi.Policy) report.Policy {
 	if p.ExcludePaths != nil {
 		out.ExcludePaths = append([]string(nil), *p.ExcludePaths...)
 	}
+	if p.WalkPaths != nil {
+		out.WalkPaths = append([]string(nil), *p.WalkPaths...)
+	}
 	if p.MaxRuntimeSeconds != nil {
 		out.MaxRuntimeSeconds = *p.MaxRuntimeSeconds
 	}

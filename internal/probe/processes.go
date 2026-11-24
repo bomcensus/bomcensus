@@ -164,11 +164,11 @@ func rootKeyOf(p string) (rootKey, bool) {
 
 // openFileIndex maps a process root to the jars its JVMs hold open, by the
 // path the process sees.
-type openFileIndex map[rootKey]map[string][]int
+type openFileIndex map[rootKey]map[string][]artifact.OpenRef
 
 // forRoot returns the open jars of processes whose root is the directory
 // root (a path the probe can open).
-func (ix openFileIndex) forRoot(root string) map[string][]int {
+func (ix openFileIndex) forRoot(root string) map[string][]artifact.OpenRef {
 	if len(ix) == 0 {
 		return nil
 	}
@@ -179,9 +179,10 @@ func (ix openFileIndex) forRoot(root string) map[string][]int {
 	return ix[k]
 }
 
-// openJars lists the Java archives that running JVMs hold open. Paths are
-// those the process sees, which inside a container are relative to the
-// container root.
+// openJars lists the Java archives that running JVMs hold open, with one
+// descriptor per process. Paths are those the process sees, which inside a
+// container are relative to the container root; deleted archives are kept,
+// without the " (deleted)" suffix, since the descriptor still reads them.
 func openJars(procDir string, sec *report.ProcessesSection) openFileIndex {
 	if sec == nil {
 		return nil
@@ -204,11 +205,11 @@ func openJars(procDir string, sec *report.ProcessesSection) openFileIndex {
 		for _, j := range processJars(filepath.Join(dir, "fd"), maxOpenJars-jars) {
 			m := ix[k]
 			if m == nil {
-				m = map[string][]int{}
+				m = map[string][]artifact.OpenRef{}
 				ix[k] = m
 			}
-			if pids := m[j]; len(pids) == 0 || pids[len(pids)-1] != p.PID {
-				m[j] = append(pids, p.PID)
+			if refs := m[j.path]; len(refs) == 0 || refs[len(refs)-1].PID != p.PID {
+				m[j.path] = append(refs, artifact.OpenRef{PID: p.PID, FD: j.fd})
 				jars++
 			}
 		}
@@ -257,26 +258,37 @@ func isJVM(exe string) bool {
 	return len(base) <= maxJVMExeNameSize && jvmNames[base]
 }
 
+// openJar is an archive open as descriptor fd.
+type openJar struct {
+	path string
+	fd   int
+}
+
 // processJars returns the Java archives among the open files in fdDir.
-func processJars(fdDir string, limit int) []string {
+func processJars(fdDir string, limit int) []openJar {
 	d, err := os.Open(fdDir)
 	if err != nil {
 		return nil
 	}
 	defer d.Close()
-	var out []string
+	var out []openJar
 	seen := 0
 	for seen < maxFDsPerJVM && len(out) < limit {
 		names, err := d.Readdirnames(256)
 		for _, n := range names {
 			seen++
-			target, err := os.Readlink(filepath.Join(fdDir, n))
-			if err != nil || !strings.HasPrefix(target, "/") || strings.HasSuffix(target, " (deleted)") {
+			fd, err := strconv.Atoi(n)
+			if err != nil {
 				continue
 			}
+			target, err := os.Readlink(filepath.Join(fdDir, n))
+			if err != nil || !strings.HasPrefix(target, "/") {
+				continue
+			}
+			target = strings.TrimSuffix(target, " (deleted)")
 			switch strings.ToLower(path.Ext(target)) {
 			case ".jar", ".war", ".ear":
-				out = append(out, path.Clean(target))
+				out = append(out, openJar{path: path.Clean(target), fd: fd})
 			}
 		}
 		if err != nil {

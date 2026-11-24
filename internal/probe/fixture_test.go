@@ -171,6 +171,11 @@ func (f *testFixture) run(t *testing.T, req report.Request) *report.Report {
 	if reflect.DeepEqual(req.Policy, report.Policy{}) {
 		req.Policy = report.DefaultPolicy()
 	}
+	// The fixture host is walked whole unless the test sets walk paths
+	// (an empty, non-nil list means none).
+	if req.Policy.WalkPaths == nil {
+		req.Policy.WalkPaths = []string{"/"}
+	}
 	p := privileged
 	rep, err := Run(context.Background(), req, Options{Root: f.root, Proc: f.proc, Privilege: &p})
 	if err != nil {
@@ -223,6 +228,48 @@ func TestFixtureSections(t *testing.T) {
 	for _, a := range rep.Artifacts.Artifacts {
 		if strings.Contains(a.Path, "/var/lib/docker") {
 			t.Errorf("container storage walked on the host: %s", a.Path)
+		}
+	}
+}
+
+// TestFixtureWalkPaths checks that the host is walked only under the walk
+// paths, while container roots are walked whole.
+func TestFixtureWalkPaths(t *testing.T) {
+	f := newFixture(t, false)
+	for _, c := range []struct {
+		walk  []string
+		paths []string
+	}{
+		{walk: []string{}, paths: nil},
+		{walk: []string{"/opt", "/opt/app", "/missing"}, paths: []string{"/opt/app/lib/bar.jar"}},
+	} {
+		policy := report.DefaultPolicy()
+		policy.WalkPaths = c.walk
+		rep := f.run(t, report.Request{Sections: []string{report.SectionArtifacts, report.SectionContainers}, Policy: policy})
+		sec := rep.Artifacts
+		if sec == nil || sec.Coverage != report.CoverageFull {
+			t.Fatalf("walk %v: artifacts = %+v", c.walk, sec)
+		}
+		var paths []string
+		for _, a := range sec.Artifacts {
+			if a.Nested == nil {
+				paths = append(paths, a.Path)
+			}
+		}
+		if !slices.Equal(paths, c.paths) {
+			t.Errorf("walk %v: paths = %v, want %v", c.walk, paths, c.paths)
+		}
+		if want := c.paths != nil; want != slices.Equal(sec.WalkPaths, []string{"/opt"}) {
+			t.Errorf("walk %v: walked = %v", c.walk, sec.WalkPaths)
+		}
+		image := false
+		for _, s := range rep.Containers.ImageScopes {
+			for _, a := range s.Artifacts {
+				image = image || a.Path == "/app/image.jar"
+			}
+		}
+		if !image {
+			t.Errorf("walk %v: container image not walked", c.walk)
 		}
 	}
 }

@@ -264,6 +264,9 @@ func CollectContainer(ctx context.Context, c *Client, t ExecTarget, d Deps) (*re
 	req.Policy.MaxRuntimeSeconds = int(d.MaxRuntime / time.Second)
 	req.Policy.MemoryLimitMB = d.MemoryLimitMB
 	req.Policy.ScanContainers = false
+	// The root of the container is image content: it is walked whole,
+	// whatever the walk paths configured for hosts are.
+	req.Policy.WalkPaths = []string{"/"}
 	reqJSON, err := json.Marshal(req)
 	if err != nil {
 		return nil, finish(agentapi.CoverageFailed, "encode request"), fmt.Errorf("kube: encode request: %w", err)

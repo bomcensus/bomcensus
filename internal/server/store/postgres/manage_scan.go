@@ -123,7 +123,11 @@ func (d *DB) DeleteCredential(ctx context.Context, id string) error {
 
 const mgScanTargetColumns = `id::text, name, address, port, credential_id::text, coalesce(scanner_id::text, ''),
 	sudo, host_key, interval_minutes, coalesce(asset_id::text, ''), last_run_at, last_run_result,
-	last_run_message, last_run_duration_ms, created_at`
+	last_run_message, last_run_duration_ms, created_at,
+	array(SELECT x.dir_id::text FROM scan_target_detect_dirs x JOIN detect_dirs dd ON dd.id = x.dir_id
+		WHERE x.target_id = scan_targets.id ORDER BY dd.path),
+	array(SELECT dd.path FROM scan_target_detect_dirs x JOIN detect_dirs dd ON dd.id = x.dir_id
+		WHERE x.target_id = scan_targets.id ORDER BY dd.path)`
 
 func mgScanScanTarget(r mgRow, extra ...any) (store.ScanTarget, error) {
 	var t store.ScanTarget
@@ -132,7 +136,8 @@ func mgScanScanTarget(r mgRow, extra ...any) (store.ScanTarget, error) {
 	var message string
 	var durMS int64
 	dest := []any{&t.ID, &t.Name, &t.Address, &t.Port, &t.CredentialID, &t.ScannerID, &t.Sudo, &t.HostKey,
-		&t.IntervalMinutes, &t.AssetID, &runAt, &result, &message, &durMS, &t.CreatedAt}
+		&t.IntervalMinutes, &t.AssetID, &runAt, &result, &message, &durMS, &t.CreatedAt,
+		&t.DetectDirIDs, &t.DetectPaths}
 	if err := r.Scan(append(dest, extra...)...); err != nil {
 		return store.ScanTarget{}, err
 	}

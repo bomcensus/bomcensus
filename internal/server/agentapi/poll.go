@@ -66,8 +66,9 @@ func defaultPolicy() gen.Policy {
 	return gen.Policy{ExecVersion: p.ExecVersion, CollectCmdline: p.CollectCmdline, ScanContainers: p.ScanContainers}
 }
 
-// agentConfig builds the configuration part of a poll response.
-func (h *Handlers) agentConfig(ctx context.Context, bundleSerial int64) (gen.AgentConfig, error) {
+// agentConfig builds the configuration part of a poll response for agent
+// a. Walk paths come from the agent's detect directories only.
+func (h *Handlers) agentConfig(ctx context.Context, a store.Agent, bundleSerial int64) (gen.AgentConfig, error) {
 	var cp CollectPolicy
 	raw, err := h.st.GetSetting(ctx, SettingCollectPolicy)
 	switch {
@@ -102,6 +103,11 @@ func (h *Handlers) agentConfig(ctx context.Context, bundleSerial int64) (gen.Age
 	}
 	if cp.Policy != nil {
 		cfg.Policy = *cp.Policy
+	}
+	cfg.Policy.WalkPaths = nil
+	if a.Kind == store.AgentKindAgent && len(a.DetectPaths) > 0 {
+		paths := slices.Clone(a.DetectPaths)
+		cfg.Policy.WalkPaths = &paths
 	}
 	return cfg, nil
 }
@@ -157,7 +163,7 @@ func (h *Handlers) Poll(ctx context.Context, req gen.PollRequestObject) (gen.Pol
 	if err != nil {
 		return nil, err
 	}
-	cfg, err := h.agentConfig(ctx, bundle.Serial)
+	cfg, err := h.agentConfig(ctx, a, bundle.Serial)
 	if err != nil {
 		return nil, err
 	}

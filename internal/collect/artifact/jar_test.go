@@ -271,8 +271,9 @@ func TestCollectJars(t *testing.T) {
 	}
 	os.WriteFile(filepath.Join(root, "opt", "app", "broken.war"), []byte("nope"), 0o644)
 	env := testEnv(root)
+	env.Proc = t.TempDir() // the descriptor below does not exist
 	in := Inputs{
-		OpenFiles: map[string][]int{"/opt/app/foo-1.2.3.jar": {42}},
+		OpenFiles: map[string][]OpenRef{"/opt/app/foo-1.2.3.jar": {{PID: 42, FD: 3}}},
 		Owner: func(p string) (string, bool) {
 			return "app-pkg", p == "/opt/app/foo-1.2.3.jar"
 		},
@@ -315,4 +316,39 @@ func FuzzScanJar(f *testing.F) {
 			t.Fatal("no artifact for the outer file")
 		}
 	})
+}
+
+// TestCollectOpenJar finds a jar held open by a process outside the walk
+// paths, also after it was deleted, through the descriptor.
+func TestCollectOpenJar(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "Downloads", "tool-1.0.jar")
+	os.MkdirAll(filepath.Dir(p), 0o755)
+	jar := buildZip(t, pomEntry("org.example", "tool", "1.0"))
+	if err := os.WriteFile(p, jar, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	f, err := os.Open(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	in := Inputs{OpenFiles: map[string][]OpenRef{p: {{PID: os.Getpid(), FD: int(f.Fd())}}}}
+	check := func(name string, sec *report.ArtifactsSection) {
+		t.Helper()
+		if len(sec.Artifacts) != 1 {
+			t.Fatalf("%s: artifacts = %+v", name, sec.Artifacts)
+		}
+		a := sec.Artifacts[0]
+		if a.Path != p || a.Name != "tool" || a.Version != "1.0" || !a.InUse || a.SHA1 != sha1hex(jar) {
+			t.Fatalf("%s: artifact = %+v", name, a)
+		}
+	}
+	check("open", newCollector(testEnv("/"), in).run(context.Background()))
+	// Walked and open: reported once.
+	check("walked", testCollector(testEnv("/"), in, dir).run(context.Background()))
+	if err := os.Remove(p); err != nil {
+		t.Fatal(err)
+	}
+	check("deleted", newCollector(testEnv("/"), in).run(context.Background()))
 }

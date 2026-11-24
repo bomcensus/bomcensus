@@ -11,6 +11,7 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"errors"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -256,6 +257,18 @@ func newUUID(t *testing.T) string {
 	return h[:8] + "-" + h[8:12] + "-4" + h[13:16] + "-a" + h[17:20] + "-" + h[20:32]
 }
 
+// detectDirs assigns new detect directories with paths to the target.
+func (f *fixture) detectDirs(targetID string, paths ...string) {
+	f.t.Helper()
+	var ids []string
+	for _, p := range paths {
+		d, err := f.db.CreateDetectDir(f.ctx, store.DetectDir{Path: p})
+		must(f.t, err)
+		ids = append(ids, d.ID)
+	}
+	must(f.t, f.db.SetScanTargetDetectDirs(f.ctx, targetID, ids))
+}
+
 // ── tests ───────────────────────────────────────────────────────────────
 
 func TestJobIDs(t *testing.T) {
@@ -276,6 +289,7 @@ func TestEmbeddedScheduleNoDoubleRunAndPinning(t *testing.T) {
 	f.run.gate = make(chan struct{})
 	tg := f.target("", 60)
 	f.target("", 0) // on demand only: never scheduled
+	f.detectDirs(tg.ID, "/opt")
 
 	must(t, f.svc.ScheduleSSH(f.ctx))
 	must(t, f.svc.ScheduleSSH(f.ctx))
@@ -289,7 +303,8 @@ func TestEmbeddedScheduleNoDoubleRunAndPinning(t *testing.T) {
 		t.Fatalf("ssh runs: %d", n)
 	}
 	j := f.run.ssh[0]
-	if j.Credential.Password != "hunter2" || j.User != "scan" || !j.Sudo || j.HostKey != nil || !j.Policy.ExecVersion {
+	if j.Credential.Password != "hunter2" || j.User != "scan" || !j.Sudo || j.HostKey != nil || !j.Policy.ExecVersion ||
+		!slices.Equal(j.Policy.WalkPaths, []string{"/opt"}) {
 		t.Fatalf("job %+v", j)
 	}
 	got, err := f.db.GetScanTarget(f.ctx, tg.ID)
@@ -373,6 +388,7 @@ func TestRemoteSSHDispatch(t *testing.T) {
 	sc, priv := f.scanner()
 	other, _ := f.scanner()
 	tg := f.target(sc.ID, 60)
+	f.detectDirs(tg.ID, "/srv", "/opt")
 
 	must(t, f.svc.ScheduleSSH(f.ctx))
 	must(t, f.svc.ScheduleSSH(f.ctx))
@@ -385,7 +401,8 @@ func TestRemoteSSHDispatch(t *testing.T) {
 	}
 	var d agentapi.ScanSshDirective
 	must(t, json.Unmarshal(ds[0].Payload, &d))
-	if d.ScanTargetId != tg.ID || d.Address != "10.0.0.9" || d.Username != "scan" || !d.Sudo || d.HostKeyFingerprint != nil || d.HostKey != nil {
+	if d.ScanTargetId != tg.ID || d.Address != "10.0.0.9" || d.Username != "scan" || !d.Sudo || d.HostKeyFingerprint != nil || d.HostKey != nil ||
+		d.Policy.WalkPaths == nil || !slices.Equal(*d.Policy.WalkPaths, []string{"/opt", "/srv"}) {
 		t.Fatalf("directive %+v", d)
 	}
 	// The credential opens only with this scanner's key, job and field.

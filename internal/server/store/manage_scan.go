@@ -90,6 +90,10 @@ type ScanTarget struct {
 	AssetID         string
 	LastRun         *ScanRun
 	CreatedAt       time.Time
+	// DetectDirIDs are the assigned detect directories and DetectPaths
+	// their paths, both ordered by path. Read-only; see DetectDirs.
+	DetectDirIDs []string
+	DetectPaths  []string
 }
 
 // ScanTargetFilter narrows ListScanTargets. Zero fields do not filter.

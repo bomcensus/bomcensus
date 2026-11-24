@@ -226,7 +226,7 @@ func (r *runner) artifacts(owner *pkgdb.Index, running []artifact.RunningExe, op
 	if r.expired() {
 		return &report.ArtifactsSection{SectionMeta: r.skipped(false)}
 	}
-	in := artifact.Inputs{Running: running, OpenFiles: open.forRoot(r.env.Path("/"))}
+	in := artifact.Inputs{Running: running, OpenFiles: open.forRoot(r.env.Path("/")), WalkPaths: r.env.Policy.WalkPaths}
 	if owner != nil {
 		in.Owner = owner.Owner
 	}

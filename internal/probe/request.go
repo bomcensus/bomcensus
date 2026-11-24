@@ -136,7 +136,7 @@ func applyKnownDigests(rep *report.Report, known map[string]string) {
 		rep.Processes = &report.ProcessesSection{SectionMeta: unchanged(s.SectionMeta)}
 	}
 	if s := rep.Artifacts; s != nil && same(report.SectionArtifacts, &s.SectionMeta) {
-		rep.Artifacts = &report.ArtifactsSection{SectionMeta: unchanged(s.SectionMeta)}
+		rep.Artifacts = &report.ArtifactsSection{SectionMeta: unchanged(s.SectionMeta), WalkPaths: s.WalkPaths}
 	}
 	if s := rep.Containers; s != nil && same(report.SectionContainers, &s.SectionMeta) {
 		rep.Containers = &report.ContainersSection{SectionMeta: unchanged(s.SectionMeta)}

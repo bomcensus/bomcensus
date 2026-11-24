@@ -11,6 +11,7 @@ const route = useRoute()
 const tabs = [
   { to: '/settings/tls', label: 'TLS' },
   { to: '/settings/feed', label: '취약점 피드' },
+  { to: '/settings/detect-dirs', label: '감지 대상 디렉터리' },
 ]
 </script>
 

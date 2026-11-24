@@ -22,7 +22,11 @@ const mgAgentColumns = `a.id::text, a.kind, a.hostname, a.description, a.identit
 	coalesce(a.register_key_id, ''), a.state, a.version, a.os, a.arch, a.connect_mode, a.listen_address,
 	a.tls_mode, a.observed_issuer, a.privilege, a.exec_helper, a.address, a.trust_bundle_version,
 	a.update_state, a.update_message, coalesce(a.asset_id::text, ''), a.enrolled_at, a.approved_at, a.revoked_at, a.last_seen,
-	(SELECT max(c.not_after) FROM agent_certs c WHERE c.agent_id = a.id AND c.revoked_at IS NULL), a.features`
+	(SELECT max(c.not_after) FROM agent_certs c WHERE c.agent_id = a.id AND c.revoked_at IS NULL), a.features,
+	array(SELECT x.dir_id::text FROM agent_detect_dirs x JOIN detect_dirs dd ON dd.id = x.dir_id
+		WHERE x.agent_id = a.id ORDER BY dd.path),
+	array(SELECT dd.path FROM agent_detect_dirs x JOIN detect_dirs dd ON dd.id = x.dir_id
+		WHERE x.agent_id = a.id ORDER BY dd.path)`
 
 // mgScanAgent scans mgAgentColumns followed by extra.
 func mgScanAgent(r mgRow, extra ...any) (store.Agent, error) {
@@ -31,7 +35,7 @@ func mgScanAgent(r mgRow, extra ...any) (store.Agent, error) {
 		&a.RegisterKeyID, &a.State, &a.Version, &a.OS, &a.Arch, &a.ConnectMode, &a.ListenAddress,
 		&a.TLSMode, &a.ObservedIssuer, &a.Privilege, &a.ExecHelper, &a.Address, &a.TrustBundleVersion,
 		&a.UpdateState, &a.UpdateMessage, &a.AssetID, &a.EnrolledAt, &a.ApprovedAt, &a.RevokedAt, &a.LastSeen,
-		&a.CertNotAfter, &a.Features}
+		&a.CertNotAfter, &a.Features, &a.DetectDirIDs, &a.DetectPaths}
 	if err := r.Scan(append(dest, extra...)...); err != nil {
 		return store.Agent{}, err
 	}

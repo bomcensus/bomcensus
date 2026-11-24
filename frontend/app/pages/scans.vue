@@ -17,6 +17,7 @@ import {
   fetchAll,
   listAgents,
   listCredentials,
+  listDetectDirs,
   listScanTargets,
   rotateCredentialSecret,
   runScanTarget,
@@ -39,6 +40,7 @@ const {
   refresh: refreshCredentials,
 } = useLoad('credentials', () => fetchAll((page) => listCredentials(page)), () => [])
 const { data: agents } = useLoad('agents', () => fetchAll((page) => listAgents(page)), () => [])
+const { data: detectDirs, refresh: refreshDetectDirs } = useLoad('detect-dirs', async () => (await listDetectDirs()).items, () => [])
 
 const tab = ref('targets')
 
@@ -62,6 +64,8 @@ const agentById = computed(() => new Map(agents.value.map((a) => [a.id, a])))
 const credentialName = (t: ScanTarget) => credentialById.value.get(t.credentialId)?.name ?? t.credentialId
 // Absent scannerId means the server's embedded scanner.
 const scannerName = (t: ScanTarget) => (t.scannerId ? agentById.value.get(t.scannerId)?.hostname ?? t.scannerId : '내장 Scanner')
+const detectDirById = computed(() => new Map(detectDirs.value.map((d) => [d.id, d])))
+const detectPaths = (t: ScanTarget) => t.detectDirIds.map((id) => detectDirById.value.get(id)?.path ?? id)
 
 const intervalPresets = [
   { minutes: 0, label: '수동' },
@@ -92,6 +96,7 @@ const targetColumns: TableColumn<ScanTarget>[] = [
   { key: 'sudo', label: 'sudo', hideBelow: 'md' },
   { key: 'hostKey', label: 'host key', hideBelow: 'md' },
   { key: 'schedule', label: '일정', sortValue: (t) => t.intervalMinutes, hideBelow: 'md' },
+  { key: 'detectDirs', label: '감지 대상 디렉터리', sortValue: (t) => t.detectDirIds.length, hideBelow: 'lg' },
   { key: 'lastRun', label: '최근 결과', sortValue: (t) => t.lastRun?.at ?? '' },
   { key: 'actions', label: '', align: 'right' },
 ]
@@ -143,6 +148,7 @@ const emptyTarget = () => ({
   hostKey: '',
   intervalMinutes: 0,
   resetHostKey: false,
+  detectDirIds: [] as string[],
 })
 const targetForm = reactive(emptyTarget())
 // Set while the form edits an existing target; unset when it adds one.
@@ -180,6 +186,7 @@ function openEditTarget(t: ScanTarget) {
     scannerId: t.scannerId ?? '',
     sudo: t.sudo,
     intervalMinutes: t.intervalMinutes,
+    detectDirIds: [...t.detectDirIds],
   })
   targetError.value = ''
   targetOpen.value = true
@@ -200,6 +207,7 @@ async function addTarget() {
         sudo: targetForm.sudo,
         intervalMinutes: targetForm.intervalMinutes,
         resetHostKey: editing.hostKeyPinned && targetForm.resetHostKey ? true : undefined,
+        detectDirIds: targetForm.detectDirIds,
       })
     } else {
       await createScanTarget({
@@ -212,10 +220,11 @@ async function addTarget() {
         sudo: targetForm.sudo,
         hostKey: targetForm.hostKeyMode === 'pinned' ? targetForm.hostKey.trim() : undefined,
         intervalMinutes: targetForm.intervalMinutes,
+        detectDirIds: targetForm.detectDirIds,
       })
     }
     targetOpen.value = false
-    await Promise.all([refreshTargets(), refreshCredentials()])
+    await Promise.all([refreshTargets(), refreshCredentials(), refreshDetectDirs()])
   } catch (e) {
     const err = toApiError(e)
     targetError.value = err.status === 409 ? '같은 이름이나 주소의 대상이 있습니다' : err.message
@@ -424,6 +433,10 @@ async function removeCred() {
               <span v-else>최초 접속 시 저장</span>
             </template>
             <template #cell-schedule="{ row }"><span class="whitespace-nowrap">{{ intervalLabel(row.intervalMinutes) }}</span></template>
+            <template #cell-detectDirs="{ row }">
+              <span v-if="row.detectDirIds.length === 0" class="whitespace-nowrap text-ink-3">실행 중인 것만</span>
+              <span v-for="p in detectPaths(row)" v-else :key="p" class="mono block text-xs [overflow-wrap:anywhere]">{{ p }}</span>
+            </template>
             <template #cell-lastRun="{ row }">
               <template v-if="row.lastRun">
                 <div class="flex flex-wrap items-center gap-1.5">
@@ -533,6 +546,11 @@ async function removeCred() {
             {{ p.label }}
           </AppButton>
         </div>
+        <fieldset>
+          <legend class="mb-1 block text-xs font-medium text-ink-2">감지 대상 디렉터리</legend>
+          <DetectDirPicker v-model="targetForm.detectDirIds" :dirs="detectDirs" :disabled="targetBusy" />
+          <p class="mt-1 text-xs text-ink-3">고른 디렉터리만 하위까지 탐색합니다. 고르지 않으면 실행 중인 소프트웨어만 수집합니다.</p>
+        </fieldset>
         <p v-if="targetError" class="note note-danger" role="alert">{{ targetError }}</p>
       </form>
       <template #footer>

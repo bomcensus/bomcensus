@@ -26,6 +26,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -322,7 +323,8 @@ func forbidden(format string, args ...any) error {
 	return &permanentError{fmt.Errorf("scansvc: "+format, args...)}
 }
 
-// policy is the collection policy configured for agents.
+// policy is the collection policy configured for agents, without walk
+// paths: those come from the detect directories of each host.
 func (s *Service) policy(ctx context.Context) report.Policy {
 	p := report.DefaultPolicy()
 	raw, err := s.st.GetSetting(ctx, serveragent.SettingCollectPolicy)
@@ -336,7 +338,17 @@ func (s *Service) policy(ctx context.Context) report.Policy {
 	if err := json.Unmarshal(raw, &cp); err != nil || cp.Policy == nil {
 		return p
 	}
-	return runner.PolicyFromAPI(*cp.Policy)
+	p = runner.PolicyFromAPI(*cp.Policy)
+	p.WalkPaths = nil
+	return p
+}
+
+// sshPolicy is the policy of a scan of t: the agent policy with the paths
+// of the target's detect directories.
+func (s *Service) sshPolicy(ctx context.Context, t store.ScanTarget) report.Policy {
+	p := s.policy(ctx)
+	p.WalkPaths = slices.Clone(t.DetectPaths)
+	return p
 }
 
 func (s *Service) syncInterval(ctx context.Context) time.Duration {

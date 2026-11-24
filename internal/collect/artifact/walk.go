@@ -231,37 +231,101 @@ func unescapeMount(s string) string {
 	return b.String()
 }
 
-// walk visits every directory under walkStart once.
-func (c *collector) walk(ctx context.Context) {
-	c.walkDir(ctx, c.walkStart, 0, true, 0)
+// cleanWalkPaths returns the absolute paths of ps, cleaned, sorted and
+// without paths inside another one.
+func cleanWalkPaths(ps []string) []string {
+	var all []string
+	for _, p := range ps {
+		if !strings.HasPrefix(p, "/") {
+			continue
+		}
+		all = append(all, path.Clean(p))
+	}
+	slices.Sort(all)
+	var out []string
+	for _, p := range all {
+		if len(out) > 0 && under(p, out[len(out)-1]) {
+			continue
+		}
+		out = append(out, p)
+	}
+	return out
 }
 
-func (c *collector) walkDir(ctx context.Context, logical string, parentDev uint64, top bool, depth int) {
+// openRoot checks that the inspected root can be opened. When it cannot,
+// nothing of the file system is seen and coverage is none.
+func (c *collector) openRoot() bool {
+	root := c.env.Path("/")
+	if !strings.HasSuffix(root, "/") {
+		// The root may be a symbolic link, such as /proc/<pid>/root of a
+		// container; the trailing slash makes the open follow it.
+		root += "/"
+	}
+	fd, err := syscall.Open(root, syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_CLOEXEC|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		c.st.rootErr = err
+		return false
+	}
+	syscall.Close(fd)
+	return true
+}
+
+// walk visits every directory under the walk paths once.
+func (c *collector) walk(ctx context.Context) {
+	for _, p := range c.walkPaths {
+		if ctx.Err() != nil {
+			return
+		}
+		if p != "/" && c.excluded(p) {
+			continue
+		}
+		if c.walkDir(ctx, p, c.parentDev(p), true, 0) {
+			c.walked = append(c.walked, p)
+		}
+	}
+}
+
+// parentDev returns the device of the directory above the walk path p, so
+// that a walk path that is a mount point is checked like one met during the
+// walk. It returns 0 when unknown, which makes the check use statfs.
+func (c *collector) parentDev(p string) uint64 {
+	if p == "/" {
+		return 0
+	}
+	var st syscall.Stat_t
+	if err := syscall.Stat(c.env.Path(path.Dir(p)), &st); err != nil {
+		return 0
+	}
+	return uint64(st.Dev)
+}
+
+// walkDir walks the directory logical. top is set for a walk path; the
+// result tells whether a walk path was walked.
+func (c *collector) walkDir(ctx context.Context, logical string, parentDev uint64, top bool, depth int) bool {
 	if ctx.Err() != nil {
-		return
+		return false
 	}
 	if depth > maxWalkDepth {
 		c.st.tooDeep++
-		return
+		return false
 	}
 	real := c.env.Path(logical)
 	open := real
 	if top && logical == "/" && !strings.HasSuffix(open, "/") {
 		// The inspected root itself may be a symbolic link, such as
 		// /proc/<pid>/root of a container; the trailing slash makes the
-		// open follow it. Everything below is opened with O_NOFOLLOW.
+		// open follow it. Everything below, and any other walk path, is
+		// opened with O_NOFOLLOW.
 		open += "/"
 	}
 	fd, err := syscall.Open(open, syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_NOFOLLOW|syscall.O_CLOEXEC|syscall.O_NONBLOCK, 0)
 	if err != nil {
-		if top {
-			c.st.rootErr = err
-			return
-		}
+		// A walk path that does not exist on this host, or is a symbolic
+		// link, is not walked and does not reduce coverage.
 		if !errors.Is(err, syscall.ENOENT) && !errors.Is(err, syscall.ELOOP) && !errors.Is(err, syscall.ENOTDIR) {
 			c.st.unreadableDirs++
 		}
-		return
+		return false
 	}
 	dir := os.NewFile(uintptr(fd), real)
 	defer func() {
@@ -272,16 +336,18 @@ func (c *collector) walkDir(ctx context.Context, logical string, parentDev uint6
 	var st syscall.Stat_t
 	if err := syscall.Fstat(fd, &st); err != nil {
 		c.st.unreadableDirs++
-		return
+		return false
 	}
 	dev := uint64(st.Dev)
-	if !top && !c.enterMount(fd, logical, dev, parentDev) {
-		return
+	// The root of the inspected file system is always walked; any other
+	// directory, a walk path included, may be a mount point to skip.
+	if !(top && logical == "/") && !c.enterMount(fd, logical, dev, parentDev) {
+		return false
 	}
 	id := fileID{Dev: dev, Ino: st.Ino}
 	if top || dev != parentDev || c.mounts != nil && c.mounts.byPoint[logical].id != 0 {
 		if c.visitedDirs[id] {
-			return
+			return true
 		}
 		c.visitedDirs[id] = true
 	}
@@ -307,7 +373,7 @@ func (c *collector) walkDir(ctx context.Context, logical string, parentDev uint6
 			break
 		}
 		if ctx.Err() != nil {
-			return
+			return true
 		}
 	}
 	dir.Close()
@@ -317,6 +383,7 @@ func (c *collector) walkDir(ctx context.Context, logical string, parentDev uint6
 	for _, name := range subdirs {
 		c.walkDir(ctx, path.Join(logical, name), dev, false, depth+1)
 	}
+	return true
 }
 
 // enterMount decides whether a directory that may be a mount point is

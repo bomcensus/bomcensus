@@ -120,7 +120,7 @@ func (s *Service) runEmbeddedSSH(ctx context.Context, t store.ScanTarget, jobID 
 	}
 	job := runner.SSHJob{
 		JobID: jobID, TargetID: t.ID, Address: t.Address, Port: t.Port, User: cred.Username,
-		Credential: secret, Sudo: t.Sudo, HostKey: t.HostKey, Policy: s.policy(ctx),
+		Credential: secret, Sudo: t.Sudo, HostKey: t.HostKey, Policy: s.sshPolicy(ctx, t),
 		GoSymbols: s.goSymbols(ctx, t.AssetID, ""),
 	}
 	if _, err := s.run.RunSSH(ctx, job, s.deps(sink)); err != nil {
@@ -177,7 +177,7 @@ func (s *Service) dispatchSSH(ctx context.Context, sc store.Agent, t store.ScanT
 	}
 	d := agentapi.ScanSshDirective{
 		Type: agentapi.ScanSsh, JobId: jobID, ScanTargetId: t.ID, Address: t.Address, Port: port,
-		Username: cred.Username, Sudo: t.Sudo, Credential: sealed, Policy: runner.PolicyToAPI(s.policy(ctx)),
+		Username: cred.Username, Sudo: t.Sudo, Credential: sealed, Policy: runner.PolicyToAPI(s.sshPolicy(ctx, t)),
 	}
 	if sc.HasFeature(store.FeatureGoSymbols) {
 		d.GoSymbols = reportapi.APIGoSymbolQueryPtr(s.goSymbols(ctx, t.AssetID, ""))

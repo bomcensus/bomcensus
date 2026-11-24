@@ -81,7 +81,7 @@ func main() {
 			}
 			r.Packages = &report.PackagesSection{SectionMeta: m, Packages: []report.Package{{Type: report.PackageAPK, Name: "fake", Version: "1.0-r0"}}}
 		case report.SectionArtifacts:
-			r.Artifacts = &report.ArtifactsSection{SectionMeta: meta}
+			r.Artifacts = &report.ArtifactsSection{SectionMeta: meta, WalkPaths: req.Policy.WalkPaths}
 		case report.SectionProcesses:
 			r.Processes = &report.ProcessesSection{SectionMeta: meta, Processes: []report.Process{{PID: os.Getpid(), Exe: "/fake"}}}
 		}

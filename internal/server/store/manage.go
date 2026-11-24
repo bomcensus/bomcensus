@@ -23,6 +23,7 @@ type Manage interface {
 	Releases
 	Credentials
 	ScanTargets
+	DetectDirs
 	ListenTargets
 	Settings
 	Directives

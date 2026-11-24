@@ -94,6 +94,10 @@ type Agent struct {
 	// Features are the optional features reported in the last poll
 	// (FeatureGoSymbols).
 	Features []string
+	// DetectDirIDs are the assigned detect directories and DetectPaths
+	// their paths, both ordered by path. Read-only; see DetectDirs.
+	DetectDirIDs []string
+	DetectPaths  []string
 
 	EnrolledAt time.Time
 	ApprovedAt *time.Time

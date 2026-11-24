@@ -194,3 +194,51 @@ func TestExcluded(t *testing.T) {
 }
 
 func mkfifo(p string) error { return syscall.Mkfifo(p, 0o644) }
+
+func TestCleanWalkPaths(t *testing.T) {
+	got := cleanWalkPaths([]string{"/opt/app/", "relative", "/opt", "/srv/x/../y", "/optional", "", "/opt/app/lib"})
+	if want := []string{"/opt", "/optional", "/srv/y"}; !slices.Equal(got, want) {
+		t.Errorf("cleanWalkPaths = %v, want %v", got, want)
+	}
+	if got := cleanWalkPaths([]string{"/opt", "/"}); !slices.Equal(got, []string{"/"}) {
+		t.Errorf("with / = %v", got)
+	}
+}
+
+// TestWalkPaths walks only the walk paths. Missing paths, symbolic links and
+// excluded paths are not walked and do not reduce coverage.
+func TestWalkPaths(t *testing.T) {
+	root := t.TempDir()
+	jar := buildZip(t, pomEntry("g", "a", "1"))
+	for _, p := range []string{"opt/app/a-1.jar", "opt/app/lib/b-1.jar", "srv/c-1.jar", "home/u/Downloads/d-1.jar", "data/skip/e-1.jar"} {
+		full := filepath.Join(root, p)
+		os.MkdirAll(filepath.Dir(full), 0o755)
+		if err := os.WriteFile(full, jar, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	os.Symlink(filepath.Join(root, "srv"), filepath.Join(root, "srvlink"))
+	env := testEnv(root)
+	env.Policy.ExcludePaths = []string{"/data/skip"}
+	in := Inputs{WalkPaths: []string{"/opt/app/lib", "/opt/app", "/missing", "/srvlink", "/data/skip", "/srv"}}
+	sec := newCollector(env, in).run(context.Background())
+	var paths []string
+	for _, a := range sec.Artifacts {
+		paths = append(paths, a.Path)
+	}
+	if want := []string{"/opt/app/a-1.jar", "/opt/app/lib/b-1.jar", "/srv/c-1.jar"}; !slices.Equal(paths, want) {
+		t.Errorf("paths = %v, want %v", paths, want)
+	}
+	if want := []string{"/opt/app", "/srv"}; !slices.Equal(sec.WalkPaths, want) {
+		t.Errorf("walked = %v, want %v", sec.WalkPaths, want)
+	}
+	if sec.Coverage != report.CoverageFull {
+		t.Errorf("coverage %s %q", sec.Coverage, sec.Reason)
+	}
+
+	// No walk paths: nothing on disk is read.
+	sec = newCollector(env, Inputs{}).run(context.Background())
+	if len(sec.Artifacts) != 0 || sec.WalkPaths != nil || sec.Coverage != report.CoverageFull {
+		t.Errorf("no walk: %+v", sec)
+	}
+}

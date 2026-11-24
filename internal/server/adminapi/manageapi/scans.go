@@ -73,6 +73,7 @@ func scanTargetDTO(t store.ScanTarget) gen.ScanTarget {
 		IntervalMinutes: t.IntervalMinutes,
 		AssetId:         optString(t.AssetID),
 		CreatedAt:       t.CreatedAt,
+		DetectDirIds:    orEmpty(t.DetectDirIDs),
 	}
 	if len(t.HostKey) > 0 {
 		fp := SSHFingerprint(t.HostKey)
@@ -165,7 +166,25 @@ func (h *Handlers) CreateScanTarget(ctx context.Context, req gen.CreateScanTarge
 	if err := h.checkScanner(ctx, t.ScannerID); err != nil {
 		return nil, err
 	}
-	created, err := h.st.CreateScanTarget(ctx, t)
+	var dirs []string
+	if b.DetectDirIds != nil {
+		dirs = *b.DetectDirIds
+	}
+	if err := h.checkDetectDirs(ctx, dirs); err != nil {
+		return nil, err
+	}
+	var created store.ScanTarget
+	err := h.st.WithTx(ctx, func(tx store.Store) error {
+		var err error
+		if created, err = tx.CreateScanTarget(ctx, t); err != nil || len(dirs) == 0 {
+			return err
+		}
+		if err := tx.SetScanTargetDetectDirs(ctx, created.ID, dirs); err != nil {
+			return err
+		}
+		created, err = tx.GetScanTarget(ctx, created.ID)
+		return err
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -270,10 +289,20 @@ func (h *Handlers) UpdateScanTarget(ctx context.Context, req gen.UpdateScanTarge
 			return nil, err
 		}
 	}
+	if b.DetectDirIds != nil {
+		if err := h.checkDetectDirs(ctx, *b.DetectDirIds); err != nil {
+			return nil, err
+		}
+	}
 	reset := deref(b.ResetHostKey)
 	err = h.st.WithTx(ctx, func(tx store.Store) error {
 		if err := tx.UpdateScanTarget(ctx, t); err != nil {
 			return err
+		}
+		if b.DetectDirIds != nil {
+			if err := tx.SetScanTargetDetectDirs(ctx, t.ID, *b.DetectDirIds); err != nil {
+				return err
+			}
 		}
 		if reset {
 			return tx.ClearScanTargetHostKey(ctx, t.ID)

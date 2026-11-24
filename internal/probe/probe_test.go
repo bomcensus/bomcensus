@@ -9,10 +9,12 @@ package probe
 import (
 	"context"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/bomcensus/bomcensus/internal/collect/artifact"
 	"github.com/bomcensus/bomcensus/internal/report"
 )
 
@@ -161,17 +163,21 @@ func TestOpenJars(t *testing.T) {
 	if !isJVM("/usr/lib/jvm/x/bin/java") || isJVM(self) {
 		t.Fatal("isJVM")
 	}
-	got := processJars("/proc/self/fd", 10)
-	found := false
-	for _, j := range got {
-		found = found || j == jar
-	}
-	if !found {
+	held := openJar{path: jar, fd: int(f.Fd())}
+	if got := processJars("/proc/self/fd", 10); !slices.Contains(got, held) {
 		t.Errorf("open jar not found: %v", got)
+	}
+	// A deleted archive is still listed, by its path, with the descriptor
+	// that reads it.
+	if err := os.Remove(jar); err != nil {
+		t.Fatal(err)
+	}
+	if got := processJars("/proc/self/fd", 10); !slices.Contains(got, held) {
+		t.Errorf("deleted open jar not found: %v", got)
 	}
 	ix := openFileIndex{}
 	k, _ := rootKeyOf("/proc/self/root")
-	ix[k] = map[string][]int{jar: {os.Getpid()}}
+	ix[k] = map[string][]artifact.OpenRef{jar: {{PID: os.Getpid(), FD: held.fd}}}
 	if m := ix.forRoot("/"); len(m[jar]) != 1 {
 		t.Errorf("forRoot(/) = %v", m)
 	}

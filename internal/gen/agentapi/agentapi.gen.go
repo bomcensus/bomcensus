@@ -750,6 +750,9 @@ type Policy struct {
 	MaxRuntimeSeconds *int      `json:"max_runtime_seconds,omitempty"`
 	MemoryLimitMb     *int      `json:"memory_limit_mb,omitempty"`
 	ScanContainers    bool      `json:"scan_containers"`
+
+	// WalkPaths Absolute directories of the host walked for software. Absent or empty: only running executables and the archives they hold open are inspected. Container roots are always walked whole.
+	WalkPaths *[]string `json:"walk_paths,omitempty"`
 }
 
 // PollRequest defines model for PollRequest.

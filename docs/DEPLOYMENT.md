@@ -679,3 +679,19 @@ On Windows the defaults are `%ProgramFiles%\bomcensus` for `--install` and `%Pro
 | `--backlog` | `64` | scan jobs waiting for a worker |
 | `--kube-allow-external-credentials` | `false` | allow kubeconfigs from the server to run credential plugins or read local files |
 | `--log-level` | `$BOMCENSUS_LOG_LEVEL` or `info` | log level |
+
+### 6.6 What is collected from the file system
+
+Agents and SSH scan targets do not walk the whole file system. By default they report:
+
+- the OS packages of the package database;
+- the executables of running processes (read through `/proc/<pid>/exe`, so deleted and replaced binaries count);
+- the Java archives that running JVMs hold open (read through `/proc/<pid>/fd`), for example `XXXX.jar` of `java -jar XXXX.jar`.
+
+Files that are only stored on a host, such as downloads in a home directory, are not reported.
+
+To inventory software that is installed but not running, add **detect directories** in the console (Settings, "감지 대상 디렉터리") and assign them to agents (agent page) and to scan targets (scan target form). Each assigned directory is walked recursively with the built-in exclusions (`/proc`, `/sys`, `/dev`, `/run`, container storage, pseudo and network file systems). A directory that does not exist on a host, or is a symbolic link, is skipped without reducing coverage. Changing the directories of an agent makes it collect its artifacts on its next poll.
+
+Container roots are image content and are always walked whole: containers seen by a host agent and containers collected through Kubernetes exec.
+
+When upgrading from a version that walked the whole file system, hosts have no detect directories at first. Their next collection only reports running software, and findings of files that are no longer reported are resolved.

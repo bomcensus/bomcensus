@@ -774,10 +774,18 @@ export type Agent = {
     updateMessage?: string;
     enrolledAt: string;
     lastSeen: string;
+    /**
+     * Detect directories walked on the agent's host, ordered by path. Always empty for scanners.
+     */
+    detectDirIds: Array<string>;
 };
 
 export type AgentUpdate = {
     description?: string;
+    /**
+     * Replaces the detect directories of an agent. Rejected with `400` for scanners.
+     */
+    detectDirIds?: Array<string>;
 };
 
 export type AgentList = {
@@ -956,6 +964,10 @@ export type ScanTarget = {
     assetId?: string;
     lastRun?: ScanRun;
     createdAt: string;
+    /**
+     * Detect directories walked on the target, ordered by path.
+     */
+    detectDirIds: Array<string>;
 };
 
 /**
@@ -981,6 +993,7 @@ export type ScanTargetCreate = {
      * Minutes between scheduled scans. 0 means on demand only.
      */
     intervalMinutes?: number;
+    detectDirIds?: Array<string>;
 };
 
 export type ScanTargetUpdate = {
@@ -991,10 +1004,56 @@ export type ScanTargetUpdate = {
     sudo?: boolean;
     intervalMinutes?: number;
     resetHostKey?: boolean;
+    /**
+     * Replaces the detect directories of the target.
+     */
+    detectDirIds?: Array<string>;
 };
 
 export type ScanTargetList = {
     items: Array<ScanTarget>;
+    total: number;
+};
+
+export type DetectDir = {
+    id: string;
+    /**
+     * Absolute directory on the host, walked recursively.
+     */
+    path: string;
+    /**
+     * Absent when none.
+     */
+    description?: string;
+    /**
+     * Agents the directory is assigned to.
+     */
+    agents: number;
+    /**
+     * Scan targets the directory is assigned to.
+     */
+    scanTargets: number;
+    createdAt: string;
+};
+
+export type DetectDirCreate = {
+    /**
+     * Absolute path. It is cleaned (`/opt/app/` becomes `/opt/app`); glob characters are rejected.
+     */
+    path: string;
+    description?: string;
+};
+
+export type DetectDirUpdate = {
+    path?: string;
+    /**
+     * An empty value removes it.
+     */
+    description?: string;
+};
+
+export type DetectDirList = {
+    items: Array<DetectDir>;
     total: number;
 };
 
@@ -3896,6 +3955,150 @@ export type RunScanTargetResponses = {
      */
     202: unknown;
 };
+
+export type ListDetectDirsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/detect-dirs';
+};
+
+export type ListDetectDirsErrors = {
+    /**
+     * No valid session, or wrong credentials on login.
+     */
+    401: Error;
+    /**
+     * Unexpected error.
+     */
+    default: Error;
+};
+
+export type ListDetectDirsError = ListDetectDirsErrors[keyof ListDetectDirsErrors];
+
+export type ListDetectDirsResponses = {
+    /**
+     * Detect directories
+     */
+    200: DetectDirList;
+};
+
+export type ListDetectDirsResponse = ListDetectDirsResponses[keyof ListDetectDirsResponses];
+
+export type CreateDetectDirData = {
+    body: DetectDirCreate;
+    path?: never;
+    query?: never;
+    url: '/detect-dirs';
+};
+
+export type CreateDetectDirErrors = {
+    /**
+     * The request is malformed or a value is invalid.
+     */
+    400: Error;
+    /**
+     * No valid session, or wrong credentials on login.
+     */
+    401: Error;
+    /**
+     * The request conflicts with the current state.
+     */
+    409: Error;
+    /**
+     * Unexpected error.
+     */
+    default: Error;
+};
+
+export type CreateDetectDirError = CreateDetectDirErrors[keyof CreateDetectDirErrors];
+
+export type CreateDetectDirResponses = {
+    /**
+     * Detect directory added
+     */
+    201: DetectDir;
+};
+
+export type CreateDetectDirResponse = CreateDetectDirResponses[keyof CreateDetectDirResponses];
+
+export type DeleteDetectDirData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/detect-dirs/{id}';
+};
+
+export type DeleteDetectDirErrors = {
+    /**
+     * No valid session, or wrong credentials on login.
+     */
+    401: Error;
+    /**
+     * The resource does not exist.
+     */
+    404: Error;
+    /**
+     * Unexpected error.
+     */
+    default: Error;
+};
+
+export type DeleteDetectDirError = DeleteDetectDirErrors[keyof DeleteDetectDirErrors];
+
+export type DeleteDetectDirResponses = {
+    /**
+     * Detect directory deleted
+     */
+    204: void;
+};
+
+export type DeleteDetectDirResponse = DeleteDetectDirResponses[keyof DeleteDetectDirResponses];
+
+export type UpdateDetectDirData = {
+    body: DetectDirUpdate;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/detect-dirs/{id}';
+};
+
+export type UpdateDetectDirErrors = {
+    /**
+     * The request is malformed or a value is invalid.
+     */
+    400: Error;
+    /**
+     * No valid session, or wrong credentials on login.
+     */
+    401: Error;
+    /**
+     * The resource does not exist.
+     */
+    404: Error;
+    /**
+     * The request conflicts with the current state.
+     */
+    409: Error;
+    /**
+     * Unexpected error.
+     */
+    default: Error;
+};
+
+export type UpdateDetectDirError = UpdateDetectDirErrors[keyof UpdateDetectDirErrors];
+
+export type UpdateDetectDirResponses = {
+    /**
+     * Detect directory updated
+     */
+    200: DetectDir;
+};
+
+export type UpdateDetectDirResponse = UpdateDetectDirResponses[keyof UpdateDetectDirResponses];
 
 export type ListCredentialsData = {
     body?: never;

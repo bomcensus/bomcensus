@@ -93,11 +93,28 @@ func (c *collector) signal() {
 
 func (c *collector) setConfig(_ context.Context, cfg agentapi.AgentConfig) {
 	c.mu.Lock()
+	if c.cfg != nil && !sameWalkPaths(c.cfg.Policy.WalkPaths, cfg.Policy.WalkPaths) {
+		// Other directories are to be walked: collect the artifacts now
+		// rather than at their next scheduled run.
+		c.manual[report.SectionArtifacts] = true
+	}
 	c.cfg = &cfg
 	// Recompute the schedule from the last run times.
 	c.next = map[string]time.Time{}
 	c.mu.Unlock()
 	c.signal()
+}
+
+// sameWalkPaths compares two walk path lists, in any order.
+func sameWalkPaths(a, b *[]string) bool {
+	var x, y []string
+	if a != nil {
+		x = slices.Sorted(slices.Values(*a))
+	}
+	if b != nil {
+		y = slices.Sorted(slices.Values(*b))
+	}
+	return slices.Equal(x, y)
 }
 
 func (c *collector) handleCollect(_ context.Context, d agentapi.Directive) error {

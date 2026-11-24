@@ -17,6 +17,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -116,6 +117,9 @@ func (c *collector) hashes(f *os.File, fi os.FileInfo, withSHA1 bool) (string, s
 // inspectJar reports a Java archive, its nested archives and any archive
 // detector that matches it.
 func (c *collector) inspectJar(ctx context.Context, logical string, f *os.File, fi os.FileInfo) {
+	if id, ok := idOf(fi); ok {
+		c.seenJar[id] = true
+	}
 	var res jarResult
 	if !c.env.Cache.Extra(fi, cacheJar, &res) {
 		res = scanJar(ctx, f, fi.Size(), path.Base(logical), c.limits)
@@ -376,6 +380,52 @@ func (c *collector) inspectRunning(ctx context.Context, running []RunningExe) {
 		c.seenExe[id] = true
 		f.Close()
 	}
+}
+
+// inspectOpenJars inspects the archives held open by running processes
+// that the walk did not see: archives outside the walk paths, and deleted or
+// replaced ones. They are read through the descriptor the process holds,
+// which is the file in use even when the path now holds another or none.
+func (c *collector) inspectOpenJars(ctx context.Context) {
+	paths := make([]string, 0, len(c.in.OpenFiles))
+	for p := range c.in.OpenFiles {
+		paths = append(paths, p)
+	}
+	slices.Sort(paths)
+	for _, p := range paths {
+		for _, ref := range c.in.OpenFiles[p] {
+			if ctx.Err() != nil {
+				return
+			}
+			if c.inspectOpenJar(ctx, p, ref) {
+				break
+			}
+		}
+	}
+}
+
+// inspectOpenJar inspects the archive open as ref, whose logical path is p.
+// It reports whether the descriptor could be read.
+func (c *collector) inspectOpenJar(ctx context.Context, p string, ref OpenRef) bool {
+	fdPath := filepath.Join(c.procDir(), strconv.Itoa(ref.PID), "fd", strconv.Itoa(ref.FD))
+	f, err := os.Open(fdPath)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+	fi, err := f.Stat()
+	if err != nil || !fi.Mode().IsRegular() {
+		return false
+	}
+	if id, ok := idOf(fi); ok && c.seenJar[id] {
+		return true
+	}
+	first := len(c.out)
+	c.inspectJar(ctx, p, f, fi)
+	for i := first; i < len(c.out); i++ {
+		c.out[i].InUse = true
+	}
+	return true
 }
 
 func (c *collector) procDir() string {

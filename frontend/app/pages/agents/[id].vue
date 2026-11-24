@@ -7,7 +7,7 @@
 <script setup lang="ts">
 import { Ban, Check, Pencil } from '@lucide/vue'
 import type { Agent } from '~/types'
-import { approveAgent, getAgent, getAsset, getRegisterKey, optional, revokeAgent, toApiError, updateAgent } from '~/api'
+import { approveAgent, getAgent, getAsset, getRegisterKey, listDetectDirs, optional, revokeAgent, toApiError, updateAgent } from '~/api'
 
 const route = useRoute()
 const id = String(route.params.id)
@@ -18,12 +18,19 @@ const { data: detail, error, refresh } = useLoad(`agent:${id}`, async () => {
   const asset = agent.assetId ? await optional(getAsset(agent.assetId)) : undefined
   // The key may be revoked and deleted; the agent still shows its id.
   const key = agent.registerKeyId ? await optional(getRegisterKey(agent.registerKeyId)) : undefined
-  return { agent, asset, key }
+  // Only agents take detect directories.
+  const dirs = agent.kind === 'agent' ? (await listDetectDirs()).items : []
+  return { agent, asset, key, dirs }
 })
 
 const agent = computed(() => detail.value?.agent)
 const asset = computed(() => detail.value?.asset)
 const key = computed(() => detail.value?.key)
+const dirs = computed(() => detail.value?.dirs ?? [])
+const assignedDirs = computed(() => {
+  const ids = new Set(agent.value?.detectDirIds ?? [])
+  return dirs.value.filter((d) => ids.has(d.id))
+})
 
 useHead({ title: computed(() => `${agent.value?.hostname ?? '에이전트'} · bomcensus`) })
 
@@ -75,6 +82,34 @@ async function saveDescription() {
     descError.value = toApiError(e).message
   } finally {
     descBusy.value = false
+  }
+}
+
+// ── Detect directories ────────────────────────────────
+
+const dirsOpen = ref(false)
+const dirsChosen = ref<string[]>([])
+const dirsBusy = ref(false)
+const dirsError = ref('')
+
+function openDirs() {
+  dirsChosen.value = [...(agent.value?.detectDirIds ?? [])]
+  dirsError.value = ''
+  dirsOpen.value = true
+}
+
+async function saveDirs() {
+  if (dirsBusy.value) return
+  dirsBusy.value = true
+  dirsError.value = ''
+  try {
+    await updateAgent(id, { detectDirIds: dirsChosen.value })
+    dirsOpen.value = false
+    await refresh()
+  } catch (e) {
+    dirsError.value = toApiError(e).message
+  } finally {
+    dirsBusy.value = false
   }
 }
 
@@ -204,6 +239,36 @@ async function revoke() {
           <dd>{{ formatDateTime(agent.lastSeen) }} <TimeAgo :at="agent.lastSeen" class="text-ink-3" /></dd>
         </dl>
       </Panel>
+
+      <Panel
+        v-if="agent.kind === 'agent'"
+        class="mt-4"
+        title="감지 대상 디렉터리"
+        description="고른 디렉터리만 하위까지 탐색해 소프트웨어를 찾습니다. 고르지 않으면 실행 중인 프로그램과 그 프로그램이 연 파일(jar 등)만 수집합니다."
+      >
+        <template #actions>
+          <AppButton v-if="agent.status !== 'revoked'" size="sm" :icon="Pencil" @click="openDirs">선택</AppButton>
+        </template>
+        <ul v-if="assignedDirs.length > 0" class="grid grid-cols-1 gap-1">
+          <li v-for="d in assignedDirs" :key="d.id" class="text-sm">
+            <span class="mono text-xs [overflow-wrap:anywhere]">{{ d.path }}</span>
+            <span v-if="d.description" class="ml-2 text-xs text-ink-3">{{ d.description }}</span>
+          </li>
+        </ul>
+        <p v-else class="text-sm text-ink-3">선택한 디렉터리가 없습니다. 실행 중인 소프트웨어만 수집합니다.</p>
+      </Panel>
+
+      <AppModal v-model:open="dirsOpen" title="감지 대상 디렉터리 선택">
+        <form id="agent-dirs-form" class="grid grid-cols-1 gap-3" @submit.prevent="saveDirs">
+          <DetectDirPicker v-model="dirsChosen" :dirs="dirs" :disabled="dirsBusy" />
+          <p class="text-xs text-ink-3">바꾼 내용은 에이전트가 다음에 서버에 접속할 때 반영되고, 그때 소프트웨어를 다시 수집합니다.</p>
+          <p v-if="dirsError" class="note note-danger" role="alert">{{ dirsError }}</p>
+        </form>
+        <template #footer>
+          <AppButton @click="dirsOpen = false">취소</AppButton>
+          <AppButton type="submit" form="agent-dirs-form" variant="primary" :disabled="dirsBusy">저장</AppButton>
+        </template>
+      </AppModal>
 
       <AppModal v-model:open="descOpen" title="설명 편집">
         <form id="agent-description-form" class="grid grid-cols-1 gap-3" @submit.prevent="saveDescription">

@@ -209,10 +209,10 @@ func testEnv(root string) *collect.Env {
 	return env
 }
 
-// testCollector returns a collector that walks only dir on the real root.
+// testCollector returns a collector that walks only dir.
 func testCollector(env *collect.Env, in Inputs, dir string, dets ...*Detector) *collector {
+	in.WalkPaths = []string{dir}
 	c := newCollector(env, in)
-	c.walkStart = dir
 	c.detectors = dets
 	return c
 }

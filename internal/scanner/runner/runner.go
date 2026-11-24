@@ -228,6 +228,9 @@ func PolicyFromAPI(p agentapi.Policy) report.Policy {
 	if p.ExcludePaths != nil {
 		out.ExcludePaths = append([]string(nil), (*p.ExcludePaths)...)
 	}
+	if p.WalkPaths != nil {
+		out.WalkPaths = append([]string(nil), (*p.WalkPaths)...)
+	}
 	if p.MaxRuntimeSeconds != nil {
 		out.MaxRuntimeSeconds = *p.MaxRuntimeSeconds
 	}
@@ -243,6 +246,10 @@ func PolicyToAPI(p report.Policy) agentapi.Policy {
 	if len(p.ExcludePaths) > 0 {
 		ex := append([]string(nil), p.ExcludePaths...)
 		out.ExcludePaths = &ex
+	}
+	if len(p.WalkPaths) > 0 {
+		w := append([]string(nil), p.WalkPaths...)
+		out.WalkPaths = &w
 	}
 	if p.MaxRuntimeSeconds > 0 {
 		v := p.MaxRuntimeSeconds

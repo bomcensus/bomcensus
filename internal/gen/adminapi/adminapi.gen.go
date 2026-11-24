@@ -2016,13 +2016,16 @@ type Agent struct {
 	ConnMode      ConnMode   `json:"connMode"`
 
 	// Description Set by an administrator to tell agents apart. Absent when none.
-	Description *string   `json:"description,omitempty"`
-	EnrolledAt  time.Time `json:"enrolledAt"`
-	ExecHelper  bool      `json:"execHelper"`
-	Hostname    string    `json:"hostname"`
-	Id          string    `json:"id"`
-	Kind        AgentKind `json:"kind"`
-	LastSeen    time.Time `json:"lastSeen"`
+	Description *string `json:"description,omitempty"`
+
+	// DetectDirIds Detect directories walked on the agent's host, ordered by path. Always empty for scanners.
+	DetectDirIds []string  `json:"detectDirIds"`
+	EnrolledAt   time.Time `json:"enrolledAt"`
+	ExecHelper   bool      `json:"execHelper"`
+	Hostname     string    `json:"hostname"`
+	Id           string    `json:"id"`
+	Kind         AgentKind `json:"kind"`
+	LastSeen     time.Time `json:"lastSeen"`
 
 	// ListenAddress Address the server dials (`connMode=listen`).
 	ListenAddress  *string        `json:"listenAddress,omitempty"`
@@ -2076,6 +2079,9 @@ type AgentStatus string
 // AgentUpdate defines model for AgentUpdate.
 type AgentUpdate struct {
 	Description *string `json:"description,omitempty"`
+
+	// DetectDirIds Replaces the detect directories of an agent. Rejected with `400` for scanners.
+	DetectDirIds *[]string `json:"detectDirIds,omitempty"`
 }
 
 // Asset defines model for Asset.
@@ -2641,6 +2647,44 @@ type DashboardAssets struct {
 type DashboardProcesses struct {
 	RestartRequired int `json:"restartRequired"`
 	Suspicious      int `json:"suspicious"`
+}
+
+// DetectDir defines model for DetectDir.
+type DetectDir struct {
+	// Agents Agents the directory is assigned to.
+	Agents    int       `json:"agents"`
+	CreatedAt time.Time `json:"createdAt"`
+
+	// Description Absent when none.
+	Description *string `json:"description,omitempty"`
+	Id          string  `json:"id"`
+
+	// Path Absolute directory on the host, walked recursively.
+	Path string `json:"path"`
+
+	// ScanTargets Scan targets the directory is assigned to.
+	ScanTargets int `json:"scanTargets"`
+}
+
+// DetectDirCreate defines model for DetectDirCreate.
+type DetectDirCreate struct {
+	Description *string `json:"description,omitempty"`
+
+	// Path Absolute path. It is cleaned (`/opt/app/` becomes `/opt/app`); glob characters are rejected.
+	Path string `json:"path"`
+}
+
+// DetectDirList defines model for DetectDirList.
+type DetectDirList struct {
+	Items []DetectDir `json:"items"`
+	Total int         `json:"total"`
+}
+
+// DetectDirUpdate defines model for DetectDirUpdate.
+type DetectDirUpdate struct {
+	// Description An empty value removes it.
+	Description *string `json:"description,omitempty"`
+	Path        *string `json:"path,omitempty"`
 }
 
 // DetectMethod defines model for DetectMethod.
@@ -3302,6 +3346,9 @@ type ScanTarget struct {
 	CreatedAt    time.Time `json:"createdAt"`
 	CredentialId string    `json:"credentialId"`
 
+	// DetectDirIds Detect directories walked on the target, ordered by path.
+	DetectDirIds []string `json:"detectDirIds"`
+
 	// HostKeyFingerprint Pinned host key, `SHA256:<base64>`.
 	HostKeyFingerprint *string `json:"hostKeyFingerprint,omitempty"`
 
@@ -3325,8 +3372,9 @@ type ScanTarget struct {
 // host keys, not fingerprints, so `hostKeyFingerprint` is rejected with
 // `400`; give the key itself in `hostKey`.
 type ScanTargetCreate struct {
-	Address      string `json:"address"`
-	CredentialId string `json:"credentialId"`
+	Address      string    `json:"address"`
+	CredentialId string    `json:"credentialId"`
+	DetectDirIds *[]string `json:"detectDirIds,omitempty"`
 
 	// HostKey Host public key to pin, in `known_hosts` / `authorized_keys` form: `<type> <base64>` (for example `ssh-ed25519 AAAA…`).
 	HostKey            *string `json:"hostKey,omitempty"`
@@ -3349,7 +3397,10 @@ type ScanTargetList struct {
 
 // ScanTargetUpdate defines model for ScanTargetUpdate.
 type ScanTargetUpdate struct {
-	CredentialId    *string                   `json:"credentialId,omitempty"`
+	CredentialId *string `json:"credentialId,omitempty"`
+
+	// DetectDirIds Replaces the detect directories of the target.
+	DetectDirIds    *[]string                 `json:"detectDirIds,omitempty"`
 	IntervalMinutes *int                      `json:"intervalMinutes,omitempty"`
 	Name            *string                   `json:"name,omitempty"`
 	Port            *int                      `json:"port,omitempty"`
@@ -4420,6 +4471,12 @@ type CreateCredentialJSONRequestBody = CredentialCreate
 // RotateCredentialSecretJSONRequestBody defines body for RotateCredentialSecret for application/json ContentType.
 type RotateCredentialSecretJSONRequestBody = CredentialSecretUpdate
 
+// CreateDetectDirJSONRequestBody defines body for CreateDetectDir for application/json ContentType.
+type CreateDetectDirJSONRequestBody = DetectDirCreate
+
+// UpdateDetectDirJSONRequestBody defines body for UpdateDetectDir for application/json ContentType.
+type UpdateDetectDirJSONRequestBody = DetectDirUpdate
+
 // CreateFeedServerJSONRequestBody defines body for CreateFeedServer for application/json ContentType.
 type CreateFeedServerJSONRequestBody = FeedServerCreate
 
@@ -4739,6 +4796,54 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /dashboard (the `GetDashboard` operationId).
 	GetDashboard(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListDetectDirs List detect directories
+	//
+	// Directories walked for software on the agents and scan targets they
+	// are assigned to. Hosts without any only report running software and
+	// the archives it holds open. Ordered by path.
+	//
+	// Corresponds with GET /detect-dirs (the `ListDetectDirs` operationId).
+	ListDetectDirs(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateDetectDirWithBody Add a detect directory
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /detect-dirs (the `CreateDetectDir` operationId).
+	CreateDetectDirWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateDetectDir Add a detect directory
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /detect-dirs (the `CreateDetectDir` operationId).
+	CreateDetectDir(ctx context.Context, body CreateDetectDirJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteDetectDir Delete a detect directory
+	//
+	// Its assignments to agents and scan targets are removed with it.
+	//
+	// Corresponds with DELETE /detect-dirs/{id} (the `DeleteDetectDir` operationId).
+	DeleteDetectDir(ctx context.Context, id PathId, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateDetectDirWithBody Change a detect directory
+	//
+	// Absent fields are left unchanged. A new path applies to every host the directory is assigned to.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PATCH /detect-dirs/{id} (the `UpdateDetectDir` operationId).
+	UpdateDetectDirWithBody(ctx context.Context, id PathId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateDetectDir Change a detect directory
+	//
+	// Absent fields are left unchanged. A new path applies to every host the directory is assigned to.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PATCH /detect-dirs/{id} (the `UpdateDetectDir` operationId).
+	UpdateDetectDir(ctx context.Context, id PathId, body UpdateDetectDirJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetFeedInstance The key that identifies this installation to feed servers
 	//
@@ -5798,6 +5903,114 @@ func (c *Client) RotateCredentialSecret(ctx context.Context, id PathId, body Rot
 // Corresponds with GET /dashboard (the `GetDashboard` operationId).
 func (c *Client) GetDashboard(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetDashboardRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListDetectDirs List detect directories
+//
+// Directories walked for software on the agents and scan targets they
+// are assigned to. Hosts without any only report running software and
+// the archives it holds open. Ordered by path.
+//
+// Corresponds with GET /detect-dirs (the `ListDetectDirs` operationId).
+func (c *Client) ListDetectDirs(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListDetectDirsRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateDetectDirWithBody Add a detect directory
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /detect-dirs (the `CreateDetectDir` operationId).
+func (c *Client) CreateDetectDirWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateDetectDirRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateDetectDir Add a detect directory
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /detect-dirs (the `CreateDetectDir` operationId).
+func (c *Client) CreateDetectDir(ctx context.Context, body CreateDetectDirJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateDetectDirRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DeleteDetectDir Delete a detect directory
+//
+// Its assignments to agents and scan targets are removed with it.
+//
+// Corresponds with DELETE /detect-dirs/{id} (the `DeleteDetectDir` operationId).
+func (c *Client) DeleteDetectDir(ctx context.Context, id PathId, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteDetectDirRequest(c.Server, id)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateDetectDirWithBody Change a detect directory
+//
+// Absent fields are left unchanged. A new path applies to every host the directory is assigned to.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PATCH /detect-dirs/{id} (the `UpdateDetectDir` operationId).
+func (c *Client) UpdateDetectDirWithBody(ctx context.Context, id PathId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateDetectDirRequestWithBody(c.Server, id, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateDetectDir Change a detect directory
+//
+// Absent fields are left unchanged. A new path applies to every host the directory is assigned to.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PATCH /detect-dirs/{id} (the `UpdateDetectDir` operationId).
+func (c *Client) UpdateDetectDir(ctx context.Context, id PathId, body UpdateDetectDirJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateDetectDirRequest(c.Server, id, body)
 	if err != nil {
 		return nil, err
 	}
@@ -8841,6 +9054,154 @@ func NewGetDashboardRequest(server string) (*http.Request, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	return req, nil
+}
+
+// NewListDetectDirsRequest constructs an http.Request for the ListDetectDirs method
+func NewListDetectDirsRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/detect-dirs")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateDetectDirRequest calls the generic CreateDetectDir builder with application/json body
+func NewCreateDetectDirRequest(server string, body CreateDetectDirJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateDetectDirRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewCreateDetectDirRequestWithBody constructs an http.Request for the CreateDetectDir method, with any body, and a specified content type
+func NewCreateDetectDirRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/detect-dirs")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDeleteDetectDirRequest constructs an http.Request for the DeleteDetectDir method
+func NewDeleteDetectDirRequest(server string, id PathId) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/detect-dirs/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUpdateDetectDirRequest calls the generic UpdateDetectDir builder with application/json body
+func NewUpdateDetectDirRequest(server string, id PathId, body UpdateDetectDirJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateDetectDirRequestWithBody(server, id, "application/json", bodyReader)
+}
+
+// NewUpdateDetectDirRequestWithBody constructs an http.Request for the UpdateDetectDir method, with any body, and a specified content type
+func NewUpdateDetectDirRequestWithBody(server string, id PathId, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/detect-dirs/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPatch, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -12300,6 +12661,58 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /dashboard (the `GetDashboard` operationId).
 	GetDashboardWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetDashboardResponse, error)
 
+	// ListDetectDirsWithResponse List detect directories
+	//
+	// Directories walked for software on the agents and scan targets they
+	// are assigned to. Hosts without any only report running software and
+	// the archives it holds open. Ordered by path.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /detect-dirs (the `ListDetectDirs` operationId).
+	ListDetectDirsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListDetectDirsResponse, error)
+
+	// CreateDetectDirWithBodyWithResponse Add a detect directory
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /detect-dirs (the `CreateDetectDir` operationId).
+	CreateDetectDirWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateDetectDirResponse, error)
+
+	// CreateDetectDirWithResponse Add a detect directory
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /detect-dirs (the `CreateDetectDir` operationId).
+	CreateDetectDirWithResponse(ctx context.Context, body CreateDetectDirJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateDetectDirResponse, error)
+
+	// DeleteDetectDirWithResponse Delete a detect directory
+	//
+	// Its assignments to agents and scan targets are removed with it.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /detect-dirs/{id} (the `DeleteDetectDir` operationId).
+	DeleteDetectDirWithResponse(ctx context.Context, id PathId, reqEditors ...RequestEditorFn) (*DeleteDetectDirResponse, error)
+
+	// UpdateDetectDirWithBodyWithResponse Change a detect directory
+	//
+	// Absent fields are left unchanged. A new path applies to every host the directory is assigned to.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PATCH /detect-dirs/{id} (the `UpdateDetectDir` operationId).
+	UpdateDetectDirWithBodyWithResponse(ctx context.Context, id PathId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateDetectDirResponse, error)
+
+	// UpdateDetectDirWithResponse Change a detect directory
+	//
+	// Absent fields are left unchanged. A new path applies to every host the directory is assigned to.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PATCH /detect-dirs/{id} (the `UpdateDetectDir` operationId).
+	UpdateDetectDirWithResponse(ctx context.Context, id PathId, body UpdateDetectDirJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateDetectDirResponse, error)
+
 	// GetFeedInstanceWithResponse The key that identifies this installation to feed servers
 	//
 	// The key is created on first use and cannot be changed.
@@ -14571,6 +14984,261 @@ func (r GetDashboardResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r GetDashboardResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListDetectDirsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *DetectDirList
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *UnexpectedError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListDetectDirsResponse) GetJSON200() *DetectDirList {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ListDetectDirsResponse) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r ListDetectDirsResponse) GetJSONDefault() *UnexpectedError {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ListDetectDirsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListDetectDirsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListDetectDirsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListDetectDirsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type CreateDetectDirResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *DetectDir
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *BadRequest
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Conflict
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *UnexpectedError
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r CreateDetectDirResponse) GetJSON201() *DetectDir {
+	return r.JSON201
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r CreateDetectDirResponse) GetJSON400() *BadRequest {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r CreateDetectDirResponse) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r CreateDetectDirResponse) GetJSON409() *Conflict {
+	return r.JSON409
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r CreateDetectDirResponse) GetJSONDefault() *UnexpectedError {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r CreateDetectDirResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateDetectDirResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateDetectDirResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CreateDetectDirResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type DeleteDetectDirResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *UnexpectedError
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r DeleteDetectDirResponse) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r DeleteDetectDirResponse) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r DeleteDetectDirResponse) GetJSONDefault() *UnexpectedError {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r DeleteDetectDirResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteDetectDirResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteDetectDirResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeleteDetectDirResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type UpdateDetectDirResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *DetectDir
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *BadRequest
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Conflict
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *UnexpectedError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r UpdateDetectDirResponse) GetJSON200() *DetectDir {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r UpdateDetectDirResponse) GetJSON400() *BadRequest {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r UpdateDetectDirResponse) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r UpdateDetectDirResponse) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r UpdateDetectDirResponse) GetJSON409() *Conflict {
+	return r.JSON409
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r UpdateDetectDirResponse) GetJSONDefault() *UnexpectedError {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r UpdateDetectDirResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateDetectDirResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateDetectDirResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r UpdateDetectDirResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -18495,6 +19163,94 @@ func (c *ClientWithResponses) GetDashboardWithResponse(ctx context.Context, reqE
 	return ParseGetDashboardResponse(rsp)
 }
 
+// ListDetectDirsWithResponse List detect directories
+//
+// Directories walked for software on the agents and scan targets they
+// are assigned to. Hosts without any only report running software and
+// the archives it holds open. Ordered by path.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /detect-dirs (the `ListDetectDirs` operationId).
+func (c *ClientWithResponses) ListDetectDirsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListDetectDirsResponse, error) {
+	rsp, err := c.ListDetectDirs(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListDetectDirsResponse(rsp)
+}
+
+// CreateDetectDirWithBodyWithResponse Add a detect directory
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /detect-dirs (the `CreateDetectDir` operationId).
+func (c *ClientWithResponses) CreateDetectDirWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateDetectDirResponse, error) {
+	rsp, err := c.CreateDetectDirWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateDetectDirResponse(rsp)
+}
+
+// CreateDetectDirWithResponse Add a detect directory
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /detect-dirs (the `CreateDetectDir` operationId).
+func (c *ClientWithResponses) CreateDetectDirWithResponse(ctx context.Context, body CreateDetectDirJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateDetectDirResponse, error) {
+	rsp, err := c.CreateDetectDir(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateDetectDirResponse(rsp)
+}
+
+// DeleteDetectDirWithResponse Delete a detect directory
+//
+// Its assignments to agents and scan targets are removed with it.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /detect-dirs/{id} (the `DeleteDetectDir` operationId).
+func (c *ClientWithResponses) DeleteDetectDirWithResponse(ctx context.Context, id PathId, reqEditors ...RequestEditorFn) (*DeleteDetectDirResponse, error) {
+	rsp, err := c.DeleteDetectDir(ctx, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteDetectDirResponse(rsp)
+}
+
+// UpdateDetectDirWithBodyWithResponse Change a detect directory
+//
+// Absent fields are left unchanged. A new path applies to every host the directory is assigned to.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PATCH /detect-dirs/{id} (the `UpdateDetectDir` operationId).
+func (c *ClientWithResponses) UpdateDetectDirWithBodyWithResponse(ctx context.Context, id PathId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateDetectDirResponse, error) {
+	rsp, err := c.UpdateDetectDirWithBody(ctx, id, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateDetectDirResponse(rsp)
+}
+
+// UpdateDetectDirWithResponse Change a detect directory
+//
+// Absent fields are left unchanged. A new path applies to every host the directory is assigned to.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PATCH /detect-dirs/{id} (the `UpdateDetectDir` operationId).
+func (c *ClientWithResponses) UpdateDetectDirWithResponse(ctx context.Context, id PathId, body UpdateDetectDirJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateDetectDirResponse, error) {
+	rsp, err := c.UpdateDetectDir(ctx, id, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateDetectDirResponse(rsp)
+}
+
 // GetFeedInstanceWithResponse The key that identifies this installation to feed servers
 //
 // The key is created on first use and cannot be changed.
@@ -20818,6 +21574,204 @@ func ParseGetDashboardResponse(rsp *http.Response) (*GetDashboardResponse, error
 			return nil, err
 		}
 		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest UnexpectedError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListDetectDirsResponse parses an HTTP response from a ListDetectDirsWithResponse call
+func ParseListDetectDirsResponse(rsp *http.Response) (*ListDetectDirsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListDetectDirsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest DetectDirList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest UnexpectedError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateDetectDirResponse parses an HTTP response from a CreateDetectDirWithResponse call
+func ParseCreateDetectDirResponse(rsp *http.Response) (*CreateDetectDirResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateDetectDirResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest DetectDir
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest UnexpectedError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteDetectDirResponse parses an HTTP response from a DeleteDetectDirWithResponse call
+func ParseDeleteDetectDirResponse(rsp *http.Response) (*DeleteDetectDirResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteDetectDirResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest UnexpectedError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateDetectDirResponse parses an HTTP response from a UpdateDetectDirWithResponse call
+func ParseUpdateDetectDirResponse(rsp *http.Response) (*UpdateDetectDirResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateDetectDirResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest DetectDir
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest UnexpectedError
@@ -23611,6 +24565,18 @@ type ServerInterface interface {
 	// GetDashboard Counts shown on the dashboard
 	// (GET /dashboard)
 	GetDashboard(w http.ResponseWriter, r *http.Request)
+	// ListDetectDirs List detect directories
+	// (GET /detect-dirs)
+	ListDetectDirs(w http.ResponseWriter, r *http.Request)
+	// CreateDetectDir Add a detect directory
+	// (POST /detect-dirs)
+	CreateDetectDir(w http.ResponseWriter, r *http.Request)
+	// DeleteDetectDir Delete a detect directory
+	// (DELETE /detect-dirs/{id})
+	DeleteDetectDir(w http.ResponseWriter, r *http.Request, id PathId)
+	// UpdateDetectDir Change a detect directory
+	// (PATCH /detect-dirs/{id})
+	UpdateDetectDir(w http.ResponseWriter, r *http.Request, id PathId)
 	// GetFeedInstance The key that identifies this installation to feed servers
 	// (GET /feed-instance)
 	GetFeedInstance(w http.ResponseWriter, r *http.Request)
@@ -23929,6 +24895,30 @@ func (_ Unimplemented) RotateCredentialSecret(w http.ResponseWriter, r *http.Req
 // GetDashboard Counts shown on the dashboard
 // (GET /dashboard)
 func (_ Unimplemented) GetDashboard(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListDetectDirs List detect directories
+// (GET /detect-dirs)
+func (_ Unimplemented) ListDetectDirs(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// CreateDetectDir Add a detect directory
+// (POST /detect-dirs)
+func (_ Unimplemented) CreateDetectDir(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// DeleteDetectDir Delete a detect directory
+// (DELETE /detect-dirs/{id})
+func (_ Unimplemented) DeleteDetectDir(w http.ResponseWriter, r *http.Request, id PathId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// UpdateDetectDir Change a detect directory
+// (PATCH /detect-dirs/{id})
+func (_ Unimplemented) UpdateDetectDir(w http.ResponseWriter, r *http.Request, id PathId) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -25705,6 +26695,86 @@ func (siw *ServerInterfaceWrapper) GetDashboard(w http.ResponseWriter, r *http.R
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetDashboard(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListDetectDirs operation middleware
+func (siw *ServerInterfaceWrapper) ListDetectDirs(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListDetectDirs(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateDetectDir operation middleware
+func (siw *ServerInterfaceWrapper) CreateDetectDir(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateDetectDir(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteDetectDir operation middleware
+func (siw *ServerInterfaceWrapper) DeleteDetectDir(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id PathId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteDetectDir(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateDetectDir operation middleware
+func (siw *ServerInterfaceWrapper) UpdateDetectDir(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id PathId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateDetectDir(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -28302,6 +29372,18 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Post(options.BaseURL+"/scan-targets/{id}/run", wrapper.RunScanTarget)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/detect-dirs", wrapper.ListDetectDirs)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/detect-dirs", wrapper.CreateDetectDir)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/detect-dirs/{id}", wrapper.DeleteDetectDir)
+	})
+	r.Group(func(r chi.Router) {
+		r.Patch(options.BaseURL+"/detect-dirs/{id}", wrapper.UpdateDetectDir)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/credentials", wrapper.ListCredentials)
 	})
 	r.Group(func(r chi.Router) {
@@ -30218,6 +31300,296 @@ type GetDashboarddefaultJSONResponse struct {
 }
 
 func (response GetDashboarddefaultJSONResponse) VisitGetDashboardResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListDetectDirsRequestObject struct {
+}
+
+type ListDetectDirsResponseObject interface {
+	VisitListDetectDirsResponse(w http.ResponseWriter) error
+}
+
+type ListDetectDirs200JSONResponse DetectDirList
+
+func (response ListDetectDirs200JSONResponse) VisitListDetectDirsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListDetectDirs401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response ListDetectDirs401JSONResponse) VisitListDetectDirsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListDetectDirsdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ListDetectDirsdefaultJSONResponse) VisitListDetectDirsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateDetectDirRequestObject struct {
+	Body *CreateDetectDirJSONRequestBody
+}
+
+type CreateDetectDirResponseObject interface {
+	VisitCreateDetectDirResponse(w http.ResponseWriter) error
+}
+
+type CreateDetectDir201JSONResponse DetectDir
+
+func (response CreateDetectDir201JSONResponse) VisitCreateDetectDirResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateDetectDir400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response CreateDetectDir400JSONResponse) VisitCreateDetectDirResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateDetectDir401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response CreateDetectDir401JSONResponse) VisitCreateDetectDirResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateDetectDir409JSONResponse struct{ ConflictJSONResponse }
+
+func (response CreateDetectDir409JSONResponse) VisitCreateDetectDirResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateDetectDirdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response CreateDetectDirdefaultJSONResponse) VisitCreateDetectDirResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteDetectDirRequestObject struct {
+	Id PathId `json:"id"`
+}
+
+type DeleteDetectDirResponseObject interface {
+	VisitDeleteDetectDirResponse(w http.ResponseWriter) error
+}
+
+type DeleteDetectDir204Response struct {
+}
+
+func (response DeleteDetectDir204Response) VisitDeleteDetectDirResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteDetectDir401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response DeleteDetectDir401JSONResponse) VisitDeleteDetectDirResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteDetectDir404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response DeleteDetectDir404JSONResponse) VisitDeleteDetectDirResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteDetectDirdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response DeleteDetectDirdefaultJSONResponse) VisitDeleteDetectDirResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateDetectDirRequestObject struct {
+	Id   PathId `json:"id"`
+	Body *UpdateDetectDirJSONRequestBody
+}
+
+type UpdateDetectDirResponseObject interface {
+	VisitUpdateDetectDirResponse(w http.ResponseWriter) error
+}
+
+type UpdateDetectDir200JSONResponse DetectDir
+
+func (response UpdateDetectDir200JSONResponse) VisitUpdateDetectDirResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateDetectDir400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response UpdateDetectDir400JSONResponse) VisitUpdateDetectDirResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateDetectDir401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response UpdateDetectDir401JSONResponse) VisitUpdateDetectDirResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateDetectDir404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response UpdateDetectDir404JSONResponse) VisitUpdateDetectDirResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateDetectDir409JSONResponse struct{ ConflictJSONResponse }
+
+func (response UpdateDetectDir409JSONResponse) VisitUpdateDetectDirResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateDetectDirdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response UpdateDetectDirdefaultJSONResponse) VisitUpdateDetectDirResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -34226,6 +35598,18 @@ type StrictServerInterface interface {
 	// GetDashboard Counts shown on the dashboard
 	// (GET /dashboard)
 	GetDashboard(ctx context.Context, request GetDashboardRequestObject) (GetDashboardResponseObject, error)
+	// ListDetectDirs List detect directories
+	// (GET /detect-dirs)
+	ListDetectDirs(ctx context.Context, request ListDetectDirsRequestObject) (ListDetectDirsResponseObject, error)
+	// CreateDetectDir Add a detect directory
+	// (POST /detect-dirs)
+	CreateDetectDir(ctx context.Context, request CreateDetectDirRequestObject) (CreateDetectDirResponseObject, error)
+	// DeleteDetectDir Delete a detect directory
+	// (DELETE /detect-dirs/{id})
+	DeleteDetectDir(ctx context.Context, request DeleteDetectDirRequestObject) (DeleteDetectDirResponseObject, error)
+	// UpdateDetectDir Change a detect directory
+	// (PATCH /detect-dirs/{id})
+	UpdateDetectDir(ctx context.Context, request UpdateDetectDirRequestObject) (UpdateDetectDirResponseObject, error)
 	// GetFeedInstance The key that identifies this installation to feed servers
 	// (GET /feed-instance)
 	GetFeedInstance(ctx context.Context, request GetFeedInstanceRequestObject) (GetFeedInstanceResponseObject, error)
@@ -35097,6 +36481,120 @@ func (sh *strictHandler) GetDashboard(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetDashboardResponseObject); ok {
 		if err := validResponse.VisitGetDashboardResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListDetectDirs operation middleware
+func (sh *strictHandler) ListDetectDirs(w http.ResponseWriter, r *http.Request) {
+	var request ListDetectDirsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListDetectDirs(ctx, request.(ListDetectDirsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListDetectDirs")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListDetectDirsResponseObject); ok {
+		if err := validResponse.VisitListDetectDirsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateDetectDir operation middleware
+func (sh *strictHandler) CreateDetectDir(w http.ResponseWriter, r *http.Request) {
+	var request CreateDetectDirRequestObject
+
+	var body CreateDetectDirJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateDetectDir(ctx, request.(CreateDetectDirRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateDetectDir")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateDetectDirResponseObject); ok {
+		if err := validResponse.VisitCreateDetectDirResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteDetectDir operation middleware
+func (sh *strictHandler) DeleteDetectDir(w http.ResponseWriter, r *http.Request, id PathId) {
+	var request DeleteDetectDirRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteDetectDir(ctx, request.(DeleteDetectDirRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteDetectDir")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteDetectDirResponseObject); ok {
+		if err := validResponse.VisitDeleteDetectDirResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateDetectDir operation middleware
+func (sh *strictHandler) UpdateDetectDir(w http.ResponseWriter, r *http.Request, id PathId) {
+	var request UpdateDetectDirRequestObject
+
+	request.Id = id
+
+	var body UpdateDetectDirJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateDetectDir(ctx, request.(UpdateDetectDirRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateDetectDir")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateDetectDirResponseObject); ok {
+		if err := validResponse.VisitUpdateDetectDirResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

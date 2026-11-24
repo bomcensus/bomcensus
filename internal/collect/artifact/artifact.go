@@ -45,9 +45,18 @@ type Inputs struct {
 	// root directory is not env.Root (or cannot be checked) are ignored, so
 	// that container processes are not attributed to the host.
 	Running []RunningExe
-	// OpenFiles maps a logical path to the processes that have it open
-	// (jars in use). May be nil.
-	OpenFiles map[string][]int
+	// OpenFiles maps a logical path to the open descriptors of processes
+	// that hold it (jars in use). The path has no " (deleted)" suffix. May
+	// be nil.
+	OpenFiles map[string][]OpenRef
+	// WalkPaths are the logical directories walked. Empty means no walk:
+	// only Running and OpenFiles are inspected.
+	WalkPaths []string
+}
+
+// OpenRef is an open file descriptor of a process.
+type OpenRef struct {
+	PID, FD int
 }
 
 // fileID identifies a file independently of its path.
@@ -71,8 +80,11 @@ type collector struct {
 	detectors []*Detector
 	limits    archiveLimits
 	exec      execLimits
-	// walkStart is the logical directory the walk starts at.
-	walkStart string
+	// walkPaths are the logical directories the walk starts at, cleaned
+	// and without nested duplicates.
+	walkPaths []string
+	// walked are the walk paths that could be opened.
+	walked []string
 
 	excludes []string
 	mounts   *mountTable
@@ -83,6 +95,9 @@ type collector struct {
 	// seenExe holds the executables already inspected, so that a running
 	// process is not inspected again through /proc.
 	seenExe map[fileID]bool
+	// seenJar holds the archives already inspected, so that an open jar is
+	// not inspected again through /proc.
+	seenJar map[fileID]bool
 	// visitedDirs holds the mount roots already walked.
 	visitedDirs map[fileID]bool
 
@@ -98,12 +113,14 @@ type stats struct {
 	corruptArchives int
 	limitHits       map[string]int
 	cancelled       bool
-	// rootErr is set when the directory the walk starts at cannot be
-	// opened; nothing of the file system was seen then.
+	// rootErr is set when the inspected root cannot be opened; nothing of
+	// the file system was seen then.
 	rootErr error
 }
 
-// Collect walks env.Root and returns the artifacts section.
+// Collect inspects env.Root and returns the artifacts section: the
+// executables and archives of running processes, and the files under
+// in.WalkPaths.
 func Collect(ctx context.Context, env *collect.Env, in Inputs) *report.ArtifactsSection {
 	c := newCollector(env, in)
 	return c.run(ctx)
@@ -125,9 +142,10 @@ func newCollector(env *collect.Env, in Inputs) *collector {
 		detectors:     Detectors,
 		limits:        defaultArchiveLimits,
 		exec:          defaultExecLimits,
-		walkStart:     "/",
+		walkPaths:     cleanWalkPaths(in.WalkPaths),
 		runningByPath: map[string]int{},
 		seenExe:       map[fileID]bool{},
+		seenJar:       map[fileID]bool{},
 		visitedDirs:   map[fileID]bool{},
 		st:            stats{limitHits: map[string]int{}},
 	}
@@ -152,14 +170,18 @@ func (c *collector) run(ctx context.Context) *report.ArtifactsSection {
 		}
 	}
 
-	c.walk(ctx)
-	c.inspectRunning(ctx, running)
+	if c.openRoot() {
+		c.walk(ctx)
+		c.inspectRunning(ctx, running)
+		c.inspectOpenJars(ctx)
+	}
 	if ctx.Err() != nil {
 		c.st.cancelled = true
 	}
 
 	sec := &report.ArtifactsSection{}
 	sec.CollectedAt = start.UTC()
+	sec.WalkPaths = c.walked
 	sec.Artifacts = c.finish()
 	sec.Coverage, sec.Reason = c.st.coverage()
 	if d, err := report.Digest(sec.Artifacts); err == nil {

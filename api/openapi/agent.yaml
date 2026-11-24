@@ -707,6 +707,14 @@ components:
           type: array
           items:
             type: string
+        walk_paths:
+          description: >-
+            Absolute directories of the host walked for software. Absent or
+            empty: only running executables and the archives they hold open
+            are inspected. Container roots are always walked whole.
+          type: array
+          items:
+            type: string
         collect_cmdline:
           type: boolean
         scan_containers:

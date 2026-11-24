@@ -305,9 +305,9 @@ func TestReasonOf(t *testing.T) {
 }
 
 func TestPolicyConversion(t *testing.T) {
-	p := report.Policy{ExecVersion: true, ExcludePaths: []string{"/data"}, MaxRuntimeSeconds: 60, MemoryLimitMB: 64}
+	p := report.Policy{ExecVersion: true, ExcludePaths: []string{"/data"}, WalkPaths: []string{"/opt", "/srv"}, MaxRuntimeSeconds: 60, MemoryLimitMB: 64}
 	back := PolicyFromAPI(PolicyToAPI(p))
-	if back.ExecVersion != p.ExecVersion || len(back.ExcludePaths) != 1 || back.MaxRuntimeSeconds != 60 || back.MemoryLimitMB != 64 {
+	if back.ExecVersion != p.ExecVersion || len(back.ExcludePaths) != 1 || len(back.WalkPaths) != 2 || back.MaxRuntimeSeconds != 60 || back.MemoryLimitMB != 64 {
 		t.Fatalf("round trip: %+v", back)
 	}
 }

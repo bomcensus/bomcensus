@@ -71,6 +71,7 @@ func (v agentView) agent(a store.Agent) gen.Agent {
 		UpdateMessage:     optString(a.UpdateMessage),
 		EnrolledAt:        a.EnrolledAt,
 		LastSeen:          a.EnrolledAt,
+		DetectDirIds:      orEmpty(a.DetectDirIDs),
 	}
 	if a.LastSeen != nil {
 		out.LastSeen = *a.LastSeen
@@ -208,6 +209,19 @@ func (h *Handlers) UpdateAgent(ctx context.Context, req gen.UpdateAgentRequestOb
 			return nil, err
 		}
 		h.log.Info("agent description changed", "agent_id", a.ID, "hostname", a.Hostname, "by", h.who(ctx))
+	}
+	if b.DetectDirIds != nil {
+		if a.Kind != store.AgentKindAgent {
+			return nil, apierr.Invalid("detect directories apply to agents, not scanners")
+		}
+		if err := h.checkDetectDirs(ctx, *b.DetectDirIds); err != nil {
+			return nil, err
+		}
+		if err := h.st.SetAgentDetectDirs(ctx, a.ID, *b.DetectDirIds); err != nil {
+			return nil, err
+		}
+		h.log.Info("agent detect directories changed", "agent_id", a.ID, "hostname", a.Hostname,
+			"count", len(*b.DetectDirIds), "by", h.who(ctx))
 	}
 	dto, err := h.getAgentDTO(ctx, a.ID)
 	if err != nil {

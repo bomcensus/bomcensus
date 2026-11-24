@@ -13,6 +13,7 @@ import (
 	"os"
 	"reflect"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -147,6 +148,9 @@ func TestCollectFull(t *testing.T) {
 	}
 	if want := "GOMEMLIMIT=64MiB GOMAXPROCS=1 mem=64 runtime=30 scan_containers=false"; r.Host == nil || r.Host.Kernel != want {
 		t.Errorf("limits seen by the probe: %q, want %q", r.Host.Kernel, want)
+	}
+	if r.Artifacts != nil && !slices.Equal(r.Artifacts.WalkPaths, []string{"/"}) {
+		t.Errorf("walk paths seen by the probe: %v", r.Artifacts.WalkPaths)
 	}
 	if o.Dir != e.dir || o.ExitCode != 0 || o.Arch != runtime.GOARCH {
 		t.Errorf("outcome %+v", o)

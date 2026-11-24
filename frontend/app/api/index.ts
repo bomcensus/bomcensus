@@ -14,6 +14,8 @@ import type {
   K8sClusterCreate,
   K8sClusterUpdate,
   CredentialSecretUpdate,
+  DetectDirCreate,
+  DetectDirUpdate,
   FeedServerCreate,
   FeedServerUpdate,
   TriageRuleCreate,
@@ -140,6 +142,15 @@ export const rotateCredentialSecret = (id: string, body: CredentialSecretUpdate)
   call(sdk.rotateCredentialSecret({ path: { id }, body }))
 export const deleteCredential = async (id: string) => {
   await call(sdk.deleteCredential({ path: { id } }))
+}
+
+// ── detection ───────────────────────────────────────────
+
+export const listDetectDirs = () => call(sdk.listDetectDirs())
+export const createDetectDir = (body: DetectDirCreate) => call(sdk.createDetectDir({ body }))
+export const updateDetectDir = (id: string, body: DetectDirUpdate) => call(sdk.updateDetectDir({ path: { id }, body }))
+export const deleteDetectDir = async (id: string) => {
+  await call(sdk.deleteDetectDir({ path: { id } }))
 }
 
 // ── settings ────────────────────────────────────────────

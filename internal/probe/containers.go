@@ -325,7 +325,9 @@ func (r *runner) scanImage(ctx context.Context, ct *report.Container, root strin
 	}
 	pkgs, ix := pkgdb.Collect(ctx, env)
 	img.owner = ix
-	in := artifact.Inputs{Owner: ix.Owner, Running: running, OpenFiles: open.forRoot(root)}
+	// The container root is image content: it is walked whole whatever the
+	// walk paths of the host are.
+	in := artifact.Inputs{Owner: ix.Owner, Running: running, OpenFiles: open.forRoot(root), WalkPaths: []string{"/"}}
 	arts := artifact.Collect(ctx, env, in)
 
 	img.coverage = report.CoverageFull
@@ -377,7 +379,7 @@ func (r *runner) scanUpper(ctx context.Context, ct *report.Container, root strin
 		_, img.owner = pkgdb.Collect(ctx, r.env.WithRoot(root))
 	}
 	env := r.env.WithRoot(dir)
-	var in artifact.Inputs
+	in := artifact.Inputs{WalkPaths: []string{"/"}}
 	if img != nil && img.owner != nil {
 		in.Owner = img.owner.Owner
 	}

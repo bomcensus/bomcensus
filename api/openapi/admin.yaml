@@ -57,6 +57,8 @@ tags:
     description: Releases and the deployed version
   - name: scans
     description: Agentless scan targets and credentials
+  - name: detection
+    description: Directories walked for software on agents and scan targets
   - name: settings
     description: TLS configuration
   - name: feed
@@ -1580,6 +1582,98 @@ paths:
           $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/Conflict"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /detect-dirs:
+    get:
+      tags: [detection]
+      operationId: listDetectDirs
+      summary: List detect directories
+      description: |
+        Directories walked for software on the agents and scan targets they
+        are assigned to. Hosts without any only report running software and
+        the archives it holds open. Ordered by path.
+      responses:
+        "200":
+          description: Detect directories
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DetectDirList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+    post:
+      tags: [detection]
+      operationId: createDetectDir
+      summary: Add a detect directory
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DetectDirCreate"
+      responses:
+        "201":
+          description: Detect directory added
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DetectDir"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /detect-dirs/{id}:
+    parameters:
+      - $ref: "#/components/parameters/PathId"
+    patch:
+      tags: [detection]
+      operationId: updateDetectDir
+      summary: Change a detect directory
+      description: Absent fields are left unchanged. A new path applies to every host the directory is assigned to.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DetectDirUpdate"
+      responses:
+        "200":
+          description: Detect directory updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DetectDir"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+    delete:
+      tags: [detection]
+      operationId: deleteDetectDir
+      summary: Delete a detect directory
+      description: Its assignments to agents and scan targets are removed with it.
+      responses:
+        "204":
+          description: Detect directory deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
         default:
           $ref: "#/components/responses/UnexpectedError"
 
@@ -3593,7 +3687,7 @@ components:
       enum: [up_to_date, pending, updating, rolled_back]
     Agent:
       type: object
-      required: [id, kind, hostname, version, os, arch, status, connMode, tlsMode, privilege, execHelper, registerKeyId, address, trustBundleSynced, updateState, enrolledAt, lastSeen]
+      required: [id, kind, hostname, version, os, arch, status, connMode, tlsMode, privilege, execHelper, registerKeyId, address, trustBundleSynced, updateState, enrolledAt, lastSeen, detectDirIds]
       properties:
         id:
           type: string
@@ -3654,12 +3748,23 @@ components:
         lastSeen:
           type: string
           format: date-time
+        detectDirIds:
+          description: Detect directories walked on the agent's host, ordered by path. Always empty for scanners.
+          type: array
+          items:
+            type: string
     AgentUpdate:
       type: object
       properties:
         description:
           type: string
           maxLength: 200
+        detectDirIds:
+          description: Replaces the detect directories of an agent. Rejected with `400` for scanners.
+          type: array
+          maxItems: 500
+          items:
+            type: string
     AgentList:
       type: object
       required: [items, total]
@@ -3921,7 +4026,7 @@ components:
           type: integer
     ScanTarget:
       type: object
-      required: [id, name, protocol, address, port, credentialId, sudo, hostKeyPinned, intervalMinutes, createdAt]
+      required: [id, name, protocol, address, port, credentialId, sudo, hostKeyPinned, intervalMinutes, createdAt, detectDirIds]
       properties:
         id:
           type: string
@@ -3957,6 +4062,11 @@ components:
         createdAt:
           type: string
           format: date-time
+        detectDirIds:
+          description: Detect directories walked on the target, ordered by path.
+          type: array
+          items:
+            type: string
     ScanTargetCreate:
       description: |
         Without `hostKey` the first host key seen is pinned. The server stores
@@ -3998,6 +4108,11 @@ components:
           type: integer
           minimum: 0
           default: 0
+        detectDirIds:
+          type: array
+          maxItems: 500
+          items:
+            type: string
     ScanTargetUpdate:
       type: object
       properties:
@@ -4026,6 +4141,12 @@ components:
         resetHostKey:
           type: boolean
           default: false
+        detectDirIds:
+          description: Replaces the detect directories of the target.
+          type: array
+          maxItems: 500
+          items:
+            type: string
     ScanTargetList:
       type: object
       required: [items, total]
@@ -4034,6 +4155,61 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ScanTarget"
+        total:
+          type: integer
+
+    DetectDir:
+      type: object
+      required: [id, path, agents, scanTargets, createdAt]
+      properties:
+        id:
+          type: string
+        path:
+          description: Absolute directory on the host, walked recursively.
+          type: string
+        description:
+          description: Absent when none.
+          type: string
+        agents:
+          description: Agents the directory is assigned to.
+          type: integer
+        scanTargets:
+          description: Scan targets the directory is assigned to.
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+    DetectDirCreate:
+      type: object
+      required: [path]
+      properties:
+        path:
+          description: Absolute path. It is cleaned (`/opt/app/` becomes `/opt/app`); glob characters are rejected.
+          type: string
+          minLength: 1
+          maxLength: 1024
+        description:
+          type: string
+          maxLength: 200
+    DetectDirUpdate:
+      type: object
+      properties:
+        path:
+          type: string
+          minLength: 1
+          maxLength: 1024
+        description:
+          description: An empty value removes it.
+          type: string
+          maxLength: 200
+    DetectDirList:
+      type: object
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/DetectDir"
         total:
           type: integer
 

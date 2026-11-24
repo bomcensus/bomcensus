@@ -464,3 +464,49 @@ func TestClientGone(t *testing.T) {
 		t.Fatal("other error reported as client cancellation")
 	}
 }
+
+func TestPollSendsDetectPaths(t *testing.T) {
+	e := newEnv(t, envOpts{})
+	c := enrolledAgent(t, e)
+	ctx := context.Background()
+	poll := func() gen.Policy {
+		t.Helper()
+		req := gen.PollRequest{
+			Version: "0.2.0", Os: gen.Linux, Arch: gen.Amd64, ConnectMode: gen.Connect, TlsMode: gen.Pinned,
+			Privilege:      gen.Privilege{Level: gen.PrivilegeLevel("non_root"), Uid: 1000},
+			SectionDigests: map[string]string{}, TrustBundleSerial: 1,
+			Update: gen.UpdateStatus{State: gen.UpdateStateUpToDate},
+		}
+		b, _ := json.Marshal(req)
+		resp, body, err := c.do(t, http.MethodPost, "/agent/v1/poll", b)
+		if err != nil || resp.StatusCode != http.StatusOK {
+			t.Fatalf("poll: %v %v %s", resp, err, body)
+		}
+		var res gen.PollResult
+		if err := json.Unmarshal(body, &res); err != nil {
+			t.Fatal(err)
+		}
+		return res.Config.Policy
+	}
+	// Walk paths in the global policy are not used.
+	if err := e.db.PutSetting(ctx, SettingCollectPolicy, json.RawMessage(`{"policy":{"exec_version":true,"collect_cmdline":true,"scan_containers":true,"walk_paths":["/"]}}`)); err != nil {
+		t.Fatal(err)
+	}
+	if p := poll(); p.WalkPaths != nil {
+		t.Fatalf("walk paths without detect dirs: %v", *p.WalkPaths)
+	}
+	var ids []string
+	for _, p := range []string{"/srv", "/opt"} {
+		d, err := e.db.CreateDetectDir(ctx, store.DetectDir{Path: p})
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, d.ID)
+	}
+	if err := e.db.SetAgentDetectDirs(ctx, c.id, ids); err != nil {
+		t.Fatal(err)
+	}
+	if p := poll(); p.WalkPaths == nil || !slices.Equal(*p.WalkPaths, []string{"/opt", "/srv"}) || !p.ExecVersion {
+		t.Fatalf("policy %+v", p)
+	}
+}
