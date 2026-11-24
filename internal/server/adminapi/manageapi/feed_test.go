@@ -8,11 +8,13 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/bomcensus/feed-protocol/instancekey"
 
 	gen "github.com/bomcensus/bomcensus/internal/gen/adminapi"
 	"github.com/bomcensus/bomcensus/internal/server/adminapi/apierr"
+	"github.com/bomcensus/bomcensus/internal/server/store"
 )
 
 func TestFeedServers(t *testing.T) {
@@ -110,3 +112,52 @@ func TestFeedServers(t *testing.T) {
 	e.want(e.do("DELETE", "/feed-servers/"+mirror.Id, nil), 404, apierr.CodeNotFound)
 }
 
+type fakeMatcher struct {
+	triggers int
+	rematch  []string
+}
+
+func (m *fakeMatcher) Trigger(context.Context, time.Duration) error { m.triggers++; return nil }
+func (m *fakeMatcher) Rematch(_ context.Context, id string) error {
+	m.rematch = append(m.rematch, id)
+	return nil
+}
+
+func TestFeedMatching(t *testing.T) {
+	e := newEnv(t, false)
+	ctx := context.Background()
+	builtin := decode[gen.FeedServerList](t, e.do("GET", "/feed-servers", nil)).Items[0]
+
+	e.want(e.do("POST", "/feed-servers/"+builtin.Id+"/rematch", nil), 503, "")
+	m := &fakeMatcher{}
+	e.h.matcher = m
+	e.want(e.do("POST", "/feed-servers/"+builtin.Id+"/rematch", nil), 202, "")
+	if len(m.rematch) != 1 || m.rematch[0] != builtin.Id {
+		t.Fatalf("rematch %+v", m.rematch)
+	}
+	other := decode[gen.FeedServer](t, e.do("POST", "/feed-servers", gen.FeedServerCreate{Name: "o", Url: "https://o.example"}))
+	e.want(e.do("POST", "/feed-servers/"+other.Id+"/rematch", nil), 409, CodeFeedNotActive)
+
+	// Activating another server starts matching.
+	e.want(e.do("PATCH", "/feed-servers/"+other.Id, map[string]any{"active": true}), 200, "")
+	if m.triggers != 1 {
+		t.Fatalf("triggers %d", m.triggers)
+	}
+
+	// Counts appear once the active server's data status is known.
+	if s := decode[gen.FeedServerList](t, e.do("GET", "/feed-servers", nil)).Items[1]; s.Matching != nil {
+		t.Fatalf("counts before status %+v", s.Matching)
+	}
+	if err := e.db.RecordFeedData(ctx, other.Id, store.FeedData{Revision: 1}); err != nil {
+		t.Fatal(err)
+	}
+	var active gen.FeedServer
+	for _, s := range decode[gen.FeedServerList](t, e.do("GET", "/feed-servers", nil)).Items {
+		if s.Active {
+			active = s
+		}
+	}
+	if active.Matching == nil || active.Matching.Pending != 0 || active.Matching.Checked != 0 {
+		t.Fatalf("counts %+v", active.Matching)
+	}
+}

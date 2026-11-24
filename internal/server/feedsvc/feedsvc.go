@@ -50,6 +50,10 @@ const (
 // ErrInvalid wraps rejected input, such as a malformed URL.
 var ErrInvalid = errors.New("feedsvc: invalid input")
 
+// ErrNoServer means there is no active server that may be used: none is
+// active, it is disabled, or its key changed.
+var ErrNoServer = errors.New("feedsvc: no usable active feed server")
+
 // Config holds the dependencies of Service.
 type Config struct {
 	Store store.FeedServers
@@ -257,6 +261,8 @@ func (s *Service) record(ctx context.Context, srv store.FeedServer, tr *client.T
 		err = s.st.RecordFeedServerKeyChange(ctx, srv.ID, kc.Presented.String())
 	case contactErr != nil:
 		err = s.st.RecordFeedServerError(ctx, srv.ID, errorText(contactErr))
+	case tr == nil:
+		return
 	default:
 		info, _ := tr.Session()
 		err = s.st.RecordFeedServerOK(ctx, srv.ID, store.FeedSession{Grade: info.Grade, ExpiresAt: info.Expires})
@@ -386,6 +392,59 @@ func (s *Service) Kick() {
 }
 
 // ── session of the active server ────────────────────────────────────────
+
+// Session returns the active server and a RoundTripper that sends requests
+// to it in this replica's session (shared with Run). Errors of requests
+// sent through it should be passed to Report.
+func (s *Service) Session(ctx context.Context) (store.FeedServer, http.RoundTripper, error) {
+	srv, err := s.st.GetActiveFeedServer(ctx)
+	if errors.Is(err, store.ErrNotFound) {
+		return store.FeedServer{}, nil, ErrNoServer
+	}
+	if err != nil {
+		return store.FeedServer{}, nil, err
+	}
+	if !srv.Enabled || srv.Status == store.FeedServerKeyChanged {
+		return store.FeedServer{}, nil, ErrNoServer
+	}
+	c, err := s.conn(ctx, srv)
+	if err != nil {
+		return store.FeedServer{}, nil, err
+	}
+	return srv, c.tr, nil
+}
+
+// Report stores the outcome of a request sent through Session's
+// RoundTripper: a changed server key, a failure, or (nil) success.
+func (s *Service) Report(ctx context.Context, srv store.FeedServer, err error) {
+	s.mu.Lock()
+	c := s.active
+	s.mu.Unlock()
+	if c == nil || c.id != srv.ID {
+		if err != nil {
+			s.record(ctx, srv, nil, err)
+		}
+		return
+	}
+	s.record(ctx, srv, c.tr, err)
+}
+
+// RefreshData reads the data status of the active server in rt's session
+// and stores it.
+func (s *Service) RefreshData(ctx context.Context, srv store.FeedServer, rt http.RoundTripper) (store.FeedData, error) {
+	tr, ok := rt.(*client.Transport)
+	if !ok {
+		return store.FeedData{}, errors.New("feedsvc: not a feed transport")
+	}
+	data, err := s.fetchStatus(ctx, tr)
+	if err != nil {
+		return store.FeedData{}, err
+	}
+	if err := s.st.RecordFeedData(ctx, srv.ID, data); err != nil {
+		return store.FeedData{}, err
+	}
+	return data, nil
+}
 
 // Run keeps a session to the active server until ctx ends: it re-reads the
 // active server every tick (or after Kick), replaces the transport when the

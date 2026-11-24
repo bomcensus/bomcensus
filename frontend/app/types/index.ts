@@ -109,6 +109,13 @@ export type {
   FeedServer,
   FeedServerCreate,
   FeedServerUpdate,
+  FeedMatchCounts,
+  // vulnerabilities
+  Severity,
+  FixState,
+  VulnAdvisory,
+  ComponentMatchState,
+  ComponentVulnerability,
 } from '~/api/gen/types.gen'
 
 // Request bodies with write-only fields (secrets) use the writable variant.

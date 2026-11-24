@@ -14,10 +14,12 @@ import type {
   Coverage,
   DetectMethod,
   ExeState,
+  FixState,
   K8sPodPhase,
   PrivilegeLevel,
   SectionCoverageLevel,
   SectionName,
+  Severity,
   TlsMode,
   UpdateState,
 } from '~/types'
@@ -208,4 +210,20 @@ export function parseScanMessage(message: string): { label?: string; detail: str
   const label = m ? scanReasonLabel[m[1]!] : undefined
   if (!m || !label) return { detail: message }
   return { label, detail: m[2] ?? '' }
+}
+
+export const severityLabel: Record<Severity, string> = {
+  critical: 'Critical',
+  high: 'High',
+  medium: 'Medium',
+  low: 'Low',
+  none: 'None',
+}
+
+export const fixStateLabel: Record<FixState, string> = {
+  fixed: '수정 버전 있음',
+  not_fixed: '수정 없음',
+  will_not_fix: '수정 안 함',
+  under_investigation: '조사 중',
+  unknown: '확인 안 됨',
 }

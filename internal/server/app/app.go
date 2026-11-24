@@ -40,6 +40,7 @@ import (
 	"github.com/bomcensus/bomcensus/internal/server/secret"
 	"github.com/bomcensus/bomcensus/internal/server/store/postgres"
 	"github.com/bomcensus/bomcensus/internal/server/updatesvc"
+	"github.com/bomcensus/bomcensus/internal/server/vulnsvc"
 	"github.com/bomcensus/bomcensus/internal/version"
 )
 
@@ -157,10 +158,15 @@ func Run(ctx context.Context, cfg config.Config, log *slog.Logger, opts Options)
 	queue := job.NewRiver(db.Pool(), log.With("component", "queue"), job.RiverConfig{})
 	jobLog := log.With("component", "job")
 	cleanup := cleanupStore{Store: db, auth: authSvc, enroll: enroll, dispatch: disp}
+	matcher, err := vulnsvc.New(vulnsvc.Config{Store: db, Feed: feed, Queue: queue, Logger: log.With("component", "match")})
+	if err != nil {
+		return err
+	}
 	if err := errors.Join(
-		queue.Register(job.KindIngestReport, job.IngestReportHandler(ing, jobLog)),
+		queue.Register(job.KindIngestReport, matchAfterIngest(job.IngestReportHandler(ing, jobLog), matcher, jobLog)),
 		queue.Register(job.KindCleanup, job.CleanupHandler(cleanup, job.DefaultRetention(), jobLog, nil)),
 		queue.Periodic(job.KindCleanup, opts.CleanupInterval, job.CleanupArgs{}),
+		matcher.Register(queue, vulnsvc.DefaultInterval),
 	); err != nil {
 		return err
 	}
@@ -192,6 +198,7 @@ func Run(ctx context.Context, cfg config.Config, log *slog.Logger, opts Options)
 		Updates: upd,
 		Secrets: box,
 		Feed:    feed,
+		Matcher: matcher,
 		PrincipalID: func(ctx context.Context) string {
 			p, _ := auth.FromContext(ctx)
 			return p.ID
@@ -311,6 +318,21 @@ func Run(ctx context.Context, cfg config.Config, log *slog.Logger, opts Options)
 	}
 	log.Info("listeners closed, stopping")
 	return nil
+}
+
+// matchAfterIngest queues a match run shortly after a report was applied,
+// for the components it brought. Reports that arrive in the meantime share
+// the run.
+func matchAfterIngest(h job.Handler, m *vulnsvc.Matcher, log *slog.Logger) job.Handler {
+	return func(ctx context.Context, j job.Job) error {
+		if err := h(ctx, j); err != nil {
+			return err
+		}
+		if err := m.Trigger(ctx, time.Minute); err != nil {
+			log.Warn("queue component matching", "error", err)
+		}
+		return nil
+	}
 }
 
 // consoleAPI is the complete console API. The management handlers sit one

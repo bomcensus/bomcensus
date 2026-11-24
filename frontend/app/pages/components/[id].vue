@@ -5,9 +5,9 @@
 -->
 
 <script setup lang="ts">
-import type { ComponentAssetRow } from '~/types'
+import type { ComponentAssetRow, ComponentVulnerability } from '~/types'
 import type { TableColumn } from '~/types/table'
-import { fetchAll, getComponent, listComponentAssets } from '~/api'
+import { fetchAll, getComponent, listComponentAssets, listComponentVulnerabilities } from '~/api'
 
 const route = useRoute()
 // When only the id changes on the same page, NuxtPage recreates it, so the value at setup time is enough
@@ -21,7 +21,31 @@ const {
   refresh: refreshInstalled,
 } = useLoad(`component:${id}:assets`, () => fetchAll((page) => listComponentAssets(id, page)), () => [])
 
+const {
+  data: vulns,
+  pending: vulnsPending,
+  error: vulnsError,
+  refresh: refreshVulns,
+} = useLoad(`component:${id}:vulns`, () => listComponentVulnerabilities(id))
+
 useHead({ title: computed(() => `${component.value?.name ?? '컴포넌트'} · bomcensus`) })
+
+const vulnColumns: TableColumn<ComponentVulnerability>[] = [
+  { key: 'vulnId', label: '취약점', sortValue: (r) => r.vulnId },
+  { key: 'severity', label: '심각도', sortValue: (r) => -(r.score ?? -1) },
+  { key: 'kev', label: 'KEV', sortValue: (r) => (r.kev ? 0 : 1), hideBelow: 'sm' },
+  { key: 'epss', label: 'EPSS', align: 'right', sortValue: (r) => -(r.epss ?? -1), hideBelow: 'sm' },
+  { key: 'fix', label: '수정', sortValue: (r) => r.fixState },
+  { key: 'source', label: '근거', hideBelow: 'md' },
+]
+
+const matchNote = computed(() => {
+  const m = vulns.value?.match
+  if (!m) return '아직 feed 서버로 확인하지 않았습니다.'
+  if (m.status === 'unsupported') return `feed 서버에 이 컴포넌트의 데이터가 없습니다. 취약점이 없다는 뜻은 아닙니다.${m.reason ? ` (${m.reason})` : ''}`
+  if (m.status === 'invalid') return `식별자를 해석하지 못했습니다.${m.reason ? ` (${m.reason})` : ''}`
+  return ''
+})
 
 const assetColumns: TableColumn<ComponentAssetRow>[] = [
   { key: 'asset', label: '자산', sortValue: (r) => r.asset.name },
@@ -83,6 +107,46 @@ function showRaw(row: ComponentAssetRow) {
           <dd>{{ component.vendor ?? '—' }}</dd>
         </dl>
       </Panel>
+
+      <div class="mt-4">
+        <Panel title="취약점" :description="vulns?.match ? `${formatDateTime(vulns.match.matchedAt)} 확인 · 데이터 리비전 ${vulns.match.revision}${vulns.match.osKey ? ` · ${vulns.match.osKey}` : ''}` : undefined" flush>
+          <LoadError v-if="vulnsError" :error="vulnsError" @retry="refreshVulns" />
+          <LoadingText v-else-if="vulnsPending && !vulns" class="p-3.5" />
+          <p v-else-if="matchNote" class="px-3.5 py-3 text-sm text-ink-2">{{ matchNote }}</p>
+          <DataTable
+            v-else
+            :columns="vulnColumns"
+            :rows="vulns?.items ?? []"
+            :row-key="(r) => `${r.vulnId}/${r.method}`"
+            :page-size="25"
+            empty="알려진 취약점이 없습니다"
+          >
+            <template #cell-vulnId="{ row }">
+              <span class="mono whitespace-nowrap font-medium">{{ row.vulnId }}</span>
+              <div v-if="row.summary" class="max-w-[48ch] text-xs text-ink-2">{{ row.summary }}</div>
+            </template>
+            <template #cell-severity="{ row }"><SeverityBadge :severity="row.severity" :score="row.score" /></template>
+            <template #cell-kev="{ row }">
+              <StatusBadge v-if="row.kev" tone="danger" label="KEV" />
+              <span v-else class="text-ink-3">—</span>
+            </template>
+            <template #cell-epss="{ row }">
+              <span v-if="row.epss !== undefined" class="mono whitespace-nowrap">{{ (row.epss * 100).toFixed(1) }}%</span>
+              <span v-else class="text-ink-3">—</span>
+            </template>
+            <template #cell-fix="{ row }">
+              <span v-if="row.fixState === 'fixed' && row.fixedVersion" class="mono whitespace-nowrap">→ {{ row.fixedVersion }}</span>
+              <span v-else class="whitespace-nowrap text-ink-2">{{ fixStateLabel[row.fixState] }}</span>
+            </template>
+            <template #cell-source="{ row }">
+              <span class="text-xs text-ink-2">
+                {{ row.method === 'cpe' ? `CPE ${row.cpeMatch === 'exact' ? '일치' : '범위'}${row.rangeSource ? ` · ${row.rangeSource}` : ''}` : row.advisories.map((a) => a.id).join(', ') }}
+              </span>
+              <div v-if="row.platforms.length" class="text-xs text-ink-3">조건: {{ row.platforms.join(', ') }}</div>
+            </template>
+          </DataTable>
+        </Panel>
+      </div>
 
       <div class="mt-4">
         <Panel title="설치 자산" flush>

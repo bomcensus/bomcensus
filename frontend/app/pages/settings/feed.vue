@@ -12,6 +12,7 @@ import {
   deleteFeedServer,
   getFeedInstance,
   listFeedServers,
+  rematchFeedServer,
   testFeedServer,
   toApiError,
   trustFeedServerKey,
@@ -76,6 +77,14 @@ const activate = (s: FeedServer) =>
 const setTelemetry = (s: FeedServer, telemetry: boolean) => run(s.id, async () => replace(await updateFeedServer(s.id, { telemetry })))
 const setEnabled = (s: FeedServer, enabled: boolean) => run(s.id, async () => replace(await updateFeedServer(s.id, { enabled })))
 const test = (s: FeedServer) => run(s.id, async () => replace(await testFeedServer(s.id)))
+
+const rematchQueued = ref(false)
+const rematch = (s: FeedServer) =>
+  run(s.id, async () => {
+    await rematchFeedServer(s.id)
+    rematchQueued.value = true
+    await refresh()
+  })
 
 // ── Key change ────────────────────────────────────────
 
@@ -279,8 +288,12 @@ async function remove() {
     <Panel
       v-if="active"
       :title="`활성 서버 데이터 · ${active.name}`"
-      description="데이터 리비전이나 규칙이 바뀌면 고유 컴포넌트를 다시 조회합니다."
+      description="데이터 리비전이나 규칙이 바뀌면 고유 컴포넌트를 다시 조회합니다. 15분마다 확인합니다."
     >
+      <template #actions>
+        <AppButton size="sm" :disabled="!!busy" @click="rematch(active)">전체 재조회</AppButton>
+      </template>
+      <p v-if="rematchQueued" class="note mb-3">재조회를 예약했습니다. 컴포넌트 수에 따라 몇 분 걸립니다.</p>
       <div v-if="active.revision !== undefined" class="grid grid-cols-1 gap-4 md:grid-cols-2">
         <dl class="kv">
           <dt>데이터 리비전</dt>
@@ -294,6 +307,16 @@ async function remove() {
           </dd>
           <dt>확인 시각</dt>
           <dd>{{ formatDateTime(active.statusCheckedAt) }}</dd>
+          <template v-if="active.matching">
+            <dt>매칭</dt>
+            <dd>
+              <span class="mono">{{ formatNumber(active.matching.checked) }}</span> 컴포넌트 ·
+              <span class="mono">{{ formatNumber(active.matching.unsupported) }}</span> unsupported
+              <template v-if="active.matching.pending > 0"> · <span class="mono">{{ formatNumber(active.matching.pending) }}</span> 대기</template>
+            </dd>
+            <dt>취약 컴포넌트</dt>
+            <dd class="mono">{{ formatNumber(active.matching.vulnerable) }}</dd>
+          </template>
         </dl>
         <p v-if="active.sources.length === 0" class="text-sm text-ink-3">서버가 알려 준 원본이 없습니다.</p>
         <table v-else class="w-full text-sm">

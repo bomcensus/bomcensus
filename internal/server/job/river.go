@@ -83,6 +83,9 @@ func (w *riverWorker) Work(ctx context.Context, j *river.Job[riverArgs]) error {
 	if err != nil && IsPermanent(err) {
 		return river.JobCancel(err)
 	}
+	if d, ok := snoozeOf(err); ok {
+		return river.JobSnooze(d)
+	}
 	return err
 }
 

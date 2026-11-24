@@ -23,6 +23,7 @@ const (
 	CodeFeedActive     = "feed_server_active"
 	CodeFeedDisabled   = "feed_server_disabled"
 	CodeFeedKeyMissing = "feed_key_not_presented"
+	CodeFeedNotActive  = "feed_server_not_active"
 )
 
 func (h *Handlers) feedService() (*feedsvc.Service, error) {
@@ -85,9 +86,47 @@ func (h *Handlers) ListFeedServers(ctx context.Context, _ gen.ListFeedServersReq
 	}
 	out := gen.ListFeedServers200JSONResponse{Items: make([]gen.FeedServer, 0, len(list)), Total: len(list)}
 	for _, s := range list {
-		out.Items = append(out.Items, feedServerDTO(s))
+		dto := feedServerDTO(s)
+		if s.Active && s.Revision != nil {
+			c, err := h.st.CountMatches(ctx, store.MatchEpoch{ServerID: s.ID, Revision: *s.Revision, Rules: deref(s.RulesDigest)})
+			if err != nil {
+				return nil, err
+			}
+			dto.Matching = &gen.FeedMatchCounts{Checked: c.Checked, Unsupported: c.Unsupported, Invalid: c.Invalid,
+				Pending: c.Pending, Vulnerable: c.Vulnerable}
+		}
+		out.Items = append(out.Items, dto)
 	}
 	return out, nil
+}
+
+// match queues a match run; failures are logged, the change stands.
+func (h *Handlers) match(ctx context.Context) {
+	if h.matcher == nil {
+		return
+	}
+	if err := h.matcher.Trigger(ctx, 0); err != nil {
+		h.log.Warn("queue component matching", "error", err)
+	}
+}
+
+// RematchFeedServer implements rematchFeedServer.
+func (h *Handlers) RematchFeedServer(ctx context.Context, req gen.RematchFeedServerRequestObject) (gen.RematchFeedServerResponseObject, error) {
+	if h.matcher == nil {
+		return nil, apierr.Unavailable("matching is not configured")
+	}
+	cur, err := h.st.GetFeedServer(ctx, req.Id)
+	if err != nil {
+		return nil, err
+	}
+	if !cur.Active {
+		return nil, apierr.New(http.StatusConflict, CodeFeedNotActive, "only the active feed server is matched against")
+	}
+	if err := h.matcher.Rematch(ctx, cur.ID); err != nil {
+		return nil, err
+	}
+	h.log.Info("components queued for matching again", "server", cur.URL, "by", h.who(ctx))
+	return gen.RematchFeedServer202Response{}, nil
 }
 
 // CreateFeedServer implements createFeedServer.
@@ -168,6 +207,9 @@ func (h *Handlers) UpdateFeedServer(ctx context.Context, req gen.UpdateFeedServe
 	if h.feed != nil {
 		h.feed.Kick()
 	}
+	if b.Active != nil && !cur.Active {
+		h.match(ctx)
+	}
 	return gen.UpdateFeedServer200JSONResponse(feedServerDTO(out)), nil
 }
 
@@ -227,5 +269,8 @@ func (h *Handlers) TrustFeedServerKey(ctx context.Context, req gen.TrustFeedServ
 	// An audit record: who replaced which key with which.
 	h.log.Warn("feed server key replaced", "server", s.URL, "previous", cur.ServerKey, "trusted", s.ServerKey,
 		"by", h.who(ctx), "at", h.now().UTC().Format(time.RFC3339))
+	if s.Active {
+		h.match(ctx)
+	}
 	return gen.TrustFeedServerKey200JSONResponse(feedServerDTO(s)), nil
 }

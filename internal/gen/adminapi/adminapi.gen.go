@@ -145,6 +145,27 @@ func (e ComponentLayer) Valid() bool {
 	}
 }
 
+// Defines values for ComponentMatchStateStatus.
+const (
+	ComponentMatchStateStatusChecked     ComponentMatchStateStatus = "checked"
+	ComponentMatchStateStatusInvalid     ComponentMatchStateStatus = "invalid"
+	ComponentMatchStateStatusUnsupported ComponentMatchStateStatus = "unsupported"
+)
+
+// Valid indicates whether the value is a known member of the ComponentMatchStateStatus enum.
+func (e ComponentMatchStateStatus) Valid() bool {
+	switch e {
+	case ComponentMatchStateStatusChecked:
+		return true
+	case ComponentMatchStateStatusInvalid:
+		return true
+	case ComponentMatchStateStatusUnsupported:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ComponentOrigin.
 const (
 	Distro     ComponentOrigin = "distro"
@@ -193,6 +214,63 @@ func (e ComponentType) Valid() bool {
 	case Middleware:
 		return true
 	case Rpm:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ComponentVulnerabilityCpeMatch.
+const (
+	Exact ComponentVulnerabilityCpeMatch = "exact"
+	Range ComponentVulnerabilityCpeMatch = "range"
+)
+
+// Valid indicates whether the value is a known member of the ComponentVulnerabilityCpeMatch enum.
+func (e ComponentVulnerabilityCpeMatch) Valid() bool {
+	switch e {
+	case Exact:
+		return true
+	case Range:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ComponentVulnerabilityMethod.
+const (
+	Cpe     ComponentVulnerabilityMethod = "cpe"
+	Package ComponentVulnerabilityMethod = "package"
+)
+
+// Valid indicates whether the value is a known member of the ComponentVulnerabilityMethod enum.
+func (e ComponentVulnerabilityMethod) Valid() bool {
+	switch e {
+	case Cpe:
+		return true
+	case Package:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ComponentVulnerabilityRangeSource.
+const (
+	Cna       ComponentVulnerabilityRangeSource = "cna"
+	Nvd       ComponentVulnerabilityRangeSource = "nvd"
+	Vulncheck ComponentVulnerabilityRangeSource = "vulncheck"
+)
+
+// Valid indicates whether the value is a known member of the ComponentVulnerabilityRangeSource enum.
+func (e ComponentVulnerabilityRangeSource) Valid() bool {
+	switch e {
+	case Cna:
+		return true
+	case Nvd:
+		return true
+	case Vulncheck:
 		return true
 	default:
 		return false
@@ -376,6 +454,33 @@ func (e FeedServerStatus) Valid() bool {
 	case FeedServerStatusKeyChanged:
 		return true
 	case FeedServerStatusNever:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for FixState.
+const (
+	FixStateFixed              FixState = "fixed"
+	FixStateNotFixed           FixState = "not_fixed"
+	FixStateUnderInvestigation FixState = "under_investigation"
+	FixStateUnknown            FixState = "unknown"
+	FixStateWillNotFix         FixState = "will_not_fix"
+)
+
+// Valid indicates whether the value is a known member of the FixState enum.
+func (e FixState) Valid() bool {
+	switch e {
+	case FixStateFixed:
+		return true
+	case FixStateNotFixed:
+		return true
+	case FixStateUnderInvestigation:
+		return true
+	case FixStateUnknown:
+		return true
+	case FixStateWillNotFix:
 		return true
 	default:
 		return false
@@ -664,6 +769,33 @@ func (e SectionName) Valid() bool {
 	case SectionNamePackages:
 		return true
 	case SectionNameProcesses:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for Severity.
+const (
+	SeverityCritical Severity = "critical"
+	SeverityHigh     Severity = "high"
+	SeverityLow      Severity = "low"
+	SeverityMedium   Severity = "medium"
+	SeverityNone     Severity = "none"
+)
+
+// Valid indicates whether the value is a known member of the Severity enum.
+func (e Severity) Valid() bool {
+	switch e {
+	case SeverityCritical:
+		return true
+	case SeverityHigh:
+		return true
+	case SeverityLow:
+		return true
+	case SeverityMedium:
+		return true
+	case SeverityNone:
 		return true
 	default:
 		return false
@@ -1961,6 +2093,22 @@ type ComponentList struct {
 	Total int                `json:"total"`
 }
 
+// ComponentMatchState defines model for ComponentMatchState.
+type ComponentMatchState struct {
+	MatchedAt time.Time `json:"matchedAt"`
+
+	// OsKey The release OS packages were matched against.
+	//
+	// Example: ubuntu:24.04
+	OsKey    *string                   `json:"osKey,omitempty"`
+	Reason   *string                   `json:"reason,omitempty"`
+	Revision int64                     `json:"revision"`
+	Status   ComponentMatchStateStatus `json:"status"`
+}
+
+// ComponentMatchStateStatus defines model for ComponentMatchState.Status.
+type ComponentMatchStateStatus string
+
 // ComponentOrigin `distro`: distribution package. `third_party`: package from a third-party repository. `upstream`: software that is not a package.
 type ComponentOrigin string
 
@@ -1991,6 +2139,55 @@ type ComponentSummary struct {
 
 // ComponentType defines model for ComponentType.
 type ComponentType string
+
+// ComponentVulnerabilities defines model for ComponentVulnerabilities.
+type ComponentVulnerabilities struct {
+	Items []ComponentVulnerability `json:"items"`
+	Match *ComponentMatchState     `json:"match,omitempty"`
+}
+
+// ComponentVulnerability defines model for ComponentVulnerability.
+type ComponentVulnerability struct {
+	Advisories     []VulnAdvisory                  `json:"advisories"`
+	Aliases        []string                        `json:"aliases"`
+	CpeMatch       *ComponentVulnerabilityCpeMatch `json:"cpeMatch,omitempty"`
+	Ecosystem      *string                         `json:"ecosystem,omitempty"`
+	Epss           *float64                        `json:"epss,omitempty"`
+	EpssPercentile *float64                        `json:"epssPercentile,omitempty"`
+	FixState       FixState                        `json:"fixState"`
+	FixedVersion   *string                         `json:"fixedVersion,omitempty"`
+
+	// Kev Listed in the CISA Known Exploited Vulnerabilities catalog.
+	Kev      bool                `json:"kev"`
+	KevAdded *openapi_types.Date `json:"kevAdded,omitempty"`
+
+	// Method `package`: an advisory of the package's ecosystem. `cpe`: a CPE configuration (NVD, VulnCheck or the CNA).
+	Method ComponentVulnerabilityMethod `json:"method"`
+
+	// Platforms The match holds only together with one of these CPEs, which were not checked.
+	Platforms   []string                           `json:"platforms"`
+	Published   *time.Time                         `json:"published,omitempty"`
+	RangeSource *ComponentVulnerabilityRangeSource `json:"rangeSource,omitempty"`
+
+	// Score Highest CVSS base score.
+	Score *float64 `json:"score,omitempty"`
+
+	// Severity CVSS rating of the highest base score.
+	Severity *Severity `json:"severity,omitempty"`
+	Summary  *string   `json:"summary,omitempty"`
+
+	// VulnId Example: CVE-2024-6387
+	VulnId string `json:"vulnId"`
+}
+
+// ComponentVulnerabilityCpeMatch defines model for ComponentVulnerability.CpeMatch.
+type ComponentVulnerabilityCpeMatch string
+
+// ComponentVulnerabilityMethod `package`: an advisory of the package's ecosystem. `cpe`: a CPE configuration (NVD, VulnCheck or the CNA).
+type ComponentVulnerabilityMethod string
+
+// ComponentVulnerabilityRangeSource defines model for ComponentVulnerability.RangeSource.
+type ComponentVulnerabilityRangeSource string
 
 // ConnMode defines model for ConnMode.
 type ConnMode string
@@ -2203,6 +2400,20 @@ type FeedInstance struct {
 	InstanceId string `json:"instanceId"`
 }
 
+// FeedMatchCounts Active server only, after the first status check: live components by
+// match state against the current data revision and rules.
+type FeedMatchCounts struct {
+	Checked int `json:"checked"`
+	Invalid int `json:"invalid"`
+	Pending int `json:"pending"`
+
+	// Unsupported The feed server has no data for these; they are not known to be safe.
+	Unsupported int `json:"unsupported"`
+
+	// Vulnerable Checked components with at least one vulnerability.
+	Vulnerable int `json:"vulnerable"`
+}
+
 // FeedServer defines model for FeedServer.
 type FeedServer struct {
 	// Active Components are matched against this server.
@@ -2220,8 +2431,12 @@ type FeedServer struct {
 	LastError    *string    `json:"lastError,omitempty"`
 	LastErrorAt  *time.Time `json:"lastErrorAt,omitempty"`
 	LastOkAt     *time.Time `json:"lastOkAt,omitempty"`
-	Name         string     `json:"name"`
-	PresentedAt  *time.Time `json:"presentedAt,omitempty"`
+
+	// Matching Active server only, after the first status check: live components by
+	// match state against the current data revision and rules.
+	Matching    *FeedMatchCounts `json:"matching,omitempty"`
+	Name        string           `json:"name"`
+	PresentedAt *time.Time       `json:"presentedAt,omitempty"`
 
 	// PresentedKey Key the server presented in the `key_changed` state.
 	PresentedKey *string `json:"presentedKey,omitempty"`
@@ -2299,6 +2514,9 @@ type FeedSource struct {
 	// UpdatedAt Last successful collection.
 	UpdatedAt *time.Time `json:"updatedAt,omitempty"`
 }
+
+// FixState defines model for FixState.
+type FixState string
 
 // ImageComponent defines model for ImageComponent.
 type ImageComponent struct {
@@ -2834,6 +3052,9 @@ type SectionCoverageLevel string
 // SectionName defines model for SectionName.
 type SectionName string
 
+// Severity CVSS rating of the highest base score.
+type Severity string
+
 // SoftwareComponent defines model for SoftwareComponent.
 type SoftwareComponent struct {
 	Arch   *string `json:"arch,omitempty"`
@@ -2937,6 +3158,18 @@ type UpdateSettings struct {
 
 // UpdateState defines model for UpdateState.
 type UpdateState string
+
+// VulnAdvisory defines model for VulnAdvisory.
+type VulnAdvisory struct {
+	// Id Example: DEBIAN-CVE-2024-6387
+	Id string `json:"id"`
+
+	// Severity The distribution's rating, when it has one.
+	Severity *string `json:"severity,omitempty"`
+
+	// Source Example: osv
+	Source string `json:"source"`
+}
 
 // PathDigest defines model for PathDigest.
 type PathDigest = string
@@ -3538,6 +3771,15 @@ type ClientInterface interface {
 	// Corresponds with GET /components/{id}/assets (the `ListComponentAssets` operationId).
 	ListComponentAssets(ctx context.Context, id PathId, params *ListComponentAssetsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ListComponentVulnerabilities Vulnerabilities the active feed server matched to a component
+	//
+	// `match` is absent while the component has not been matched. An empty
+	// `items` with `match.status` `checked` means no known vulnerability;
+	// `unsupported` means the feed server has no data for it.
+	//
+	// Corresponds with GET /components/{id}/vulnerabilities (the `ListComponentVulnerabilities` operationId).
+	ListComponentVulnerabilities(ctx context.Context, id PathId, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListCredentials List credentials
 	//
 	// Secrets are write-only and never returned. `q` matches name and username.
@@ -3653,6 +3895,13 @@ type ClientInterface interface {
 	//
 	// Corresponds with PATCH /feed-servers/{id} (the `UpdateFeedServer` operationId).
 	UpdateFeedServer(ctx context.Context, id PathId, body UpdateFeedServerJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RematchFeedServer Match every component against this server again
+	//
+	// Applies to the active server (`409` otherwise). Matching runs in the background.
+	//
+	// Corresponds with POST /feed-servers/{id}/rematch (the `RematchFeedServer` operationId).
+	RematchFeedServer(ctx context.Context, id PathId, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// TestFeedServer Connect to a feed server and read its data status
 	//
@@ -4377,6 +4626,25 @@ func (c *Client) ListComponentAssets(ctx context.Context, id PathId, params *Lis
 	return c.Client.Do(req)
 }
 
+// ListComponentVulnerabilities Vulnerabilities the active feed server matched to a component
+//
+// `match` is absent while the component has not been matched. An empty
+// `items` with `match.status` `checked` means no known vulnerability;
+// `unsupported` means the feed server has no data for it.
+//
+// Corresponds with GET /components/{id}/vulnerabilities (the `ListComponentVulnerabilities` operationId).
+func (c *Client) ListComponentVulnerabilities(ctx context.Context, id PathId, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListComponentVulnerabilitiesRequest(c.Server, id)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // ListCredentials List credentials
 //
 // Secrets are write-only and never returned. `q` matches name and username.
@@ -4623,6 +4891,23 @@ func (c *Client) UpdateFeedServerWithBody(ctx context.Context, id PathId, conten
 // Corresponds with PATCH /feed-servers/{id} (the `UpdateFeedServer` operationId).
 func (c *Client) UpdateFeedServer(ctx context.Context, id PathId, body UpdateFeedServerJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewUpdateFeedServerRequest(c.Server, id, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// RematchFeedServer Match every component against this server again
+//
+// Applies to the active server (`409` otherwise). Matching runs in the background.
+//
+// Corresponds with POST /feed-servers/{id}/rematch (the `RematchFeedServer` operationId).
+func (c *Client) RematchFeedServer(ctx context.Context, id PathId, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRematchFeedServerRequest(c.Server, id)
 	if err != nil {
 		return nil, err
 	}
@@ -6934,6 +7219,40 @@ func NewListComponentAssetsRequest(server string, id PathId, params *ListCompone
 	return req, nil
 }
 
+// NewListComponentVulnerabilitiesRequest constructs an http.Request for the ListComponentVulnerabilities method
+func NewListComponentVulnerabilitiesRequest(server string, id PathId) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/components/%s/vulnerabilities", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewListCredentialsRequest constructs an http.Request for the ListCredentials method
 func NewListCredentialsRequest(server string, params *ListCredentialsParams) (*http.Request, error) {
 	var err error
@@ -7355,6 +7674,40 @@ func NewUpdateFeedServerRequestWithBody(server string, id PathId, contentType st
 	}
 
 	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewRematchFeedServerRequest constructs an http.Request for the RematchFeedServer method
+func NewRematchFeedServerRequest(server string, id PathId) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/feed-servers/%s/rematch", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
 
 	return req, nil
 }
@@ -9648,6 +10001,17 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /components/{id}/assets (the `ListComponentAssets` operationId).
 	ListComponentAssetsWithResponse(ctx context.Context, id PathId, params *ListComponentAssetsParams, reqEditors ...RequestEditorFn) (*ListComponentAssetsResponse, error)
 
+	// ListComponentVulnerabilitiesWithResponse Vulnerabilities the active feed server matched to a component
+	//
+	// `match` is absent while the component has not been matched. An empty
+	// `items` with `match.status` `checked` means no known vulnerability;
+	// `unsupported` means the feed server has no data for it.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /components/{id}/vulnerabilities (the `ListComponentVulnerabilities` operationId).
+	ListComponentVulnerabilitiesWithResponse(ctx context.Context, id PathId, reqEditors ...RequestEditorFn) (*ListComponentVulnerabilitiesResponse, error)
+
 	// ListCredentialsWithResponse List credentials
 	//
 	// Secrets are write-only and never returned. `q` matches name and username.
@@ -9775,6 +10139,15 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with PATCH /feed-servers/{id} (the `UpdateFeedServer` operationId).
 	UpdateFeedServerWithResponse(ctx context.Context, id PathId, body UpdateFeedServerJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateFeedServerResponse, error)
+
+	// RematchFeedServerWithResponse Match every component against this server again
+	//
+	// Applies to the active server (`409` otherwise). Matching runs in the background.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /feed-servers/{id}/rematch (the `RematchFeedServer` operationId).
+	RematchFeedServerWithResponse(ctx context.Context, id PathId, reqEditors ...RequestEditorFn) (*RematchFeedServerResponse, error)
 
 	// TestFeedServerWithResponse Connect to a feed server and read its data status
 	//
@@ -11390,6 +11763,68 @@ func (r ListComponentAssetsResponse) ContentType() string {
 	return ""
 }
 
+type ListComponentVulnerabilitiesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *ComponentVulnerabilities
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *UnexpectedError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListComponentVulnerabilitiesResponse) GetJSON200() *ComponentVulnerabilities {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ListComponentVulnerabilitiesResponse) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r ListComponentVulnerabilitiesResponse) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r ListComponentVulnerabilitiesResponse) GetJSONDefault() *UnexpectedError {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ListComponentVulnerabilitiesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListComponentVulnerabilitiesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListComponentVulnerabilitiesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListComponentVulnerabilitiesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type ListCredentialsResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -12018,6 +12453,68 @@ func (r UpdateFeedServerResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r UpdateFeedServerResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type RematchFeedServerResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Conflict
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *UnexpectedError
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r RematchFeedServerResponse) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r RematchFeedServerResponse) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r RematchFeedServerResponse) GetJSON409() *Conflict {
+	return r.JSON409
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r RematchFeedServerResponse) GetJSONDefault() *UnexpectedError {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r RematchFeedServerResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r RematchFeedServerResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RematchFeedServerResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r RematchFeedServerResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -14571,6 +15068,23 @@ func (c *ClientWithResponses) ListComponentAssetsWithResponse(ctx context.Contex
 	return ParseListComponentAssetsResponse(rsp)
 }
 
+// ListComponentVulnerabilitiesWithResponse Vulnerabilities the active feed server matched to a component
+//
+// `match` is absent while the component has not been matched. An empty
+// `items` with `match.status` `checked` means no known vulnerability;
+// `unsupported` means the feed server has no data for it.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /components/{id}/vulnerabilities (the `ListComponentVulnerabilities` operationId).
+func (c *ClientWithResponses) ListComponentVulnerabilitiesWithResponse(ctx context.Context, id PathId, reqEditors ...RequestEditorFn) (*ListComponentVulnerabilitiesResponse, error) {
+	rsp, err := c.ListComponentVulnerabilities(ctx, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListComponentVulnerabilitiesResponse(rsp)
+}
+
 // ListCredentialsWithResponse List credentials
 //
 // Secrets are write-only and never returned. `q` matches name and username.
@@ -14781,6 +15295,21 @@ func (c *ClientWithResponses) UpdateFeedServerWithResponse(ctx context.Context, 
 		return nil, err
 	}
 	return ParseUpdateFeedServerResponse(rsp)
+}
+
+// RematchFeedServerWithResponse Match every component against this server again
+//
+// Applies to the active server (`409` otherwise). Matching runs in the background.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /feed-servers/{id}/rematch (the `RematchFeedServer` operationId).
+func (c *ClientWithResponses) RematchFeedServerWithResponse(ctx context.Context, id PathId, reqEditors ...RequestEditorFn) (*RematchFeedServerResponse, error) {
+	rsp, err := c.RematchFeedServer(ctx, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRematchFeedServerResponse(rsp)
 }
 
 // TestFeedServerWithResponse Connect to a feed server and read its data status
@@ -16420,6 +16949,53 @@ func ParseListComponentAssetsResponse(rsp *http.Response) (*ListComponentAssetsR
 	return response, nil
 }
 
+// ParseListComponentVulnerabilitiesResponse parses an HTTP response from a ListComponentVulnerabilitiesWithResponse call
+func ParseListComponentVulnerabilitiesResponse(rsp *http.Response) (*ListComponentVulnerabilitiesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListComponentVulnerabilitiesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ComponentVulnerabilities
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest UnexpectedError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseListCredentialsResponse parses an HTTP response from a ListCredentialsWithResponse call
 func ParseListCredentialsResponse(rsp *http.Response) (*ListCredentialsResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -16876,6 +17452,56 @@ func ParseUpdateFeedServerResponse(rsp *http.Response) (*UpdateFeedServerRespons
 			return nil, err
 		}
 		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest UnexpectedError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRematchFeedServerResponse parses an HTTP response from a RematchFeedServerWithResponse call
+func ParseRematchFeedServerResponse(rsp *http.Response) (*RematchFeedServerResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RematchFeedServerResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 202:
+		break // No content-type
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
 		var dest Unauthorized
@@ -18723,6 +19349,9 @@ type ServerInterface interface {
 	// ListComponentAssets Assets on which a component is installed
 	// (GET /components/{id}/assets)
 	ListComponentAssets(w http.ResponseWriter, r *http.Request, id PathId, params ListComponentAssetsParams)
+	// ListComponentVulnerabilities Vulnerabilities the active feed server matched to a component
+	// (GET /components/{id}/vulnerabilities)
+	ListComponentVulnerabilities(w http.ResponseWriter, r *http.Request, id PathId)
 	// ListCredentials List credentials
 	// (GET /credentials)
 	ListCredentials(w http.ResponseWriter, r *http.Request, params ListCredentialsParams)
@@ -18753,6 +19382,9 @@ type ServerInterface interface {
 	// UpdateFeedServer Change a feed server
 	// (PATCH /feed-servers/{id})
 	UpdateFeedServer(w http.ResponseWriter, r *http.Request, id PathId)
+	// RematchFeedServer Match every component against this server again
+	// (POST /feed-servers/{id}/rematch)
+	RematchFeedServer(w http.ResponseWriter, r *http.Request, id PathId)
 	// TestFeedServer Connect to a feed server and read its data status
 	// (POST /feed-servers/{id}/test)
 	TestFeedServer(w http.ResponseWriter, r *http.Request, id PathId)
@@ -18972,6 +19604,12 @@ func (_ Unimplemented) ListComponentAssets(w http.ResponseWriter, r *http.Reques
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// ListComponentVulnerabilities Vulnerabilities the active feed server matched to a component
+// (GET /components/{id}/vulnerabilities)
+func (_ Unimplemented) ListComponentVulnerabilities(w http.ResponseWriter, r *http.Request, id PathId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // ListCredentials List credentials
 // (GET /credentials)
 func (_ Unimplemented) ListCredentials(w http.ResponseWriter, r *http.Request, params ListCredentialsParams) {
@@ -19029,6 +19667,12 @@ func (_ Unimplemented) DeleteFeedServer(w http.ResponseWriter, r *http.Request, 
 // UpdateFeedServer Change a feed server
 // (PATCH /feed-servers/{id})
 func (_ Unimplemented) UpdateFeedServer(w http.ResponseWriter, r *http.Request, id PathId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// RematchFeedServer Match every component against this server again
+// (POST /feed-servers/{id}/rematch)
+func (_ Unimplemented) RematchFeedServer(w http.ResponseWriter, r *http.Request, id PathId) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -20477,6 +21121,32 @@ func (siw *ServerInterfaceWrapper) ListComponentAssets(w http.ResponseWriter, r 
 	handler.ServeHTTP(w, r)
 }
 
+// ListComponentVulnerabilities operation middleware
+func (siw *ServerInterfaceWrapper) ListComponentVulnerabilities(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id PathId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListComponentVulnerabilities(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListCredentials operation middleware
 func (siw *ServerInterfaceWrapper) ListCredentials(w http.ResponseWriter, r *http.Request) {
 
@@ -20727,6 +21397,32 @@ func (siw *ServerInterfaceWrapper) UpdateFeedServer(w http.ResponseWriter, r *ht
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UpdateFeedServer(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RematchFeedServer operation middleware
+func (siw *ServerInterfaceWrapper) RematchFeedServer(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id PathId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RematchFeedServer(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -22423,6 +23119,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Get(options.BaseURL+"/components/{id}/assets", wrapper.ListComponentAssets)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/components/{id}/vulnerabilities", wrapper.ListComponentVulnerabilities)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/processes", wrapper.ListProcesses)
 	})
 	r.Group(func(r chi.Router) {
@@ -22565,6 +23264,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/feed-servers/{id}/trust-key", wrapper.TrustFeedServerKey)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/feed-servers/{id}/rematch", wrapper.RematchFeedServer)
 	})
 
 	return r
@@ -23913,6 +24615,73 @@ func (response ListComponentAssetsdefaultJSONResponse) VisitListComponentAssetsR
 	return err
 }
 
+type ListComponentVulnerabilitiesRequestObject struct {
+	Id PathId `json:"id"`
+}
+
+type ListComponentVulnerabilitiesResponseObject interface {
+	VisitListComponentVulnerabilitiesResponse(w http.ResponseWriter) error
+}
+
+type ListComponentVulnerabilities200JSONResponse ComponentVulnerabilities
+
+func (response ListComponentVulnerabilities200JSONResponse) VisitListComponentVulnerabilitiesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListComponentVulnerabilities401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response ListComponentVulnerabilities401JSONResponse) VisitListComponentVulnerabilitiesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListComponentVulnerabilities404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ListComponentVulnerabilities404JSONResponse) VisitListComponentVulnerabilitiesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListComponentVulnerabilitiesdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ListComponentVulnerabilitiesdefaultJSONResponse) VisitListComponentVulnerabilitiesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListCredentialsRequestObject struct {
 	Params ListCredentialsParams
 }
@@ -24615,6 +25384,81 @@ type UpdateFeedServerdefaultJSONResponse struct {
 }
 
 func (response UpdateFeedServerdefaultJSONResponse) VisitUpdateFeedServerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RematchFeedServerRequestObject struct {
+	Id PathId `json:"id"`
+}
+
+type RematchFeedServerResponseObject interface {
+	VisitRematchFeedServerResponse(w http.ResponseWriter) error
+}
+
+type RematchFeedServer202Response struct {
+}
+
+func (response RematchFeedServer202Response) VisitRematchFeedServerResponse(w http.ResponseWriter) error {
+	w.WriteHeader(202)
+	return nil
+}
+
+type RematchFeedServer401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response RematchFeedServer401JSONResponse) VisitRematchFeedServerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RematchFeedServer404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response RematchFeedServer404JSONResponse) VisitRematchFeedServerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RematchFeedServer409JSONResponse struct{ ConflictJSONResponse }
+
+func (response RematchFeedServer409JSONResponse) VisitRematchFeedServerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RematchFeedServerdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response RematchFeedServerdefaultJSONResponse) VisitRematchFeedServerResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -27249,6 +28093,9 @@ type StrictServerInterface interface {
 	// ListComponentAssets Assets on which a component is installed
 	// (GET /components/{id}/assets)
 	ListComponentAssets(ctx context.Context, request ListComponentAssetsRequestObject) (ListComponentAssetsResponseObject, error)
+	// ListComponentVulnerabilities Vulnerabilities the active feed server matched to a component
+	// (GET /components/{id}/vulnerabilities)
+	ListComponentVulnerabilities(ctx context.Context, request ListComponentVulnerabilitiesRequestObject) (ListComponentVulnerabilitiesResponseObject, error)
 	// ListCredentials List credentials
 	// (GET /credentials)
 	ListCredentials(ctx context.Context, request ListCredentialsRequestObject) (ListCredentialsResponseObject, error)
@@ -27279,6 +28126,9 @@ type StrictServerInterface interface {
 	// UpdateFeedServer Change a feed server
 	// (PATCH /feed-servers/{id})
 	UpdateFeedServer(ctx context.Context, request UpdateFeedServerRequestObject) (UpdateFeedServerResponseObject, error)
+	// RematchFeedServer Match every component against this server again
+	// (POST /feed-servers/{id}/rematch)
+	RematchFeedServer(ctx context.Context, request RematchFeedServerRequestObject) (RematchFeedServerResponseObject, error)
 	// TestFeedServer Connect to a feed server and read its data status
 	// (POST /feed-servers/{id}/test)
 	TestFeedServer(ctx context.Context, request TestFeedServerRequestObject) (TestFeedServerResponseObject, error)
@@ -27905,6 +28755,32 @@ func (sh *strictHandler) ListComponentAssets(w http.ResponseWriter, r *http.Requ
 	}
 }
 
+// ListComponentVulnerabilities operation middleware
+func (sh *strictHandler) ListComponentVulnerabilities(w http.ResponseWriter, r *http.Request, id PathId) {
+	var request ListComponentVulnerabilitiesRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListComponentVulnerabilities(ctx, request.(ListComponentVulnerabilitiesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListComponentVulnerabilities")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListComponentVulnerabilitiesResponseObject); ok {
+		if err := validResponse.VisitListComponentVulnerabilitiesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ListCredentials operation middleware
 func (sh *strictHandler) ListCredentials(w http.ResponseWriter, r *http.Request, params ListCredentialsParams) {
 	var request ListCredentialsRequestObject
@@ -28176,6 +29052,32 @@ func (sh *strictHandler) UpdateFeedServer(w http.ResponseWriter, r *http.Request
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(UpdateFeedServerResponseObject); ok {
 		if err := validResponse.VisitUpdateFeedServerResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RematchFeedServer operation middleware
+func (sh *strictHandler) RematchFeedServer(w http.ResponseWriter, r *http.Request, id PathId) {
+	var request RematchFeedServerRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RematchFeedServer(ctx, request.(RematchFeedServerRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RematchFeedServer")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RematchFeedServerResponseObject); ok {
+		if err := validResponse.VisitRematchFeedServerResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

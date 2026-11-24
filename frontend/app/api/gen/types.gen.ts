@@ -1215,7 +1215,27 @@ export type FeedServer = {
     rulesDigest?: string;
     sources: Array<FeedSource>;
     statusCheckedAt?: string;
+    matching?: FeedMatchCounts;
     createdAt: string;
+};
+
+/**
+ * Active server only, after the first status check: live components by
+ * match state against the current data revision and rules.
+ *
+ */
+export type FeedMatchCounts = {
+    checked: number;
+    /**
+     * The feed server has no data for these; they are not known to be safe.
+     */
+    unsupported: number;
+    invalid: number;
+    pending: number;
+    /**
+     * Checked components with at least one vulnerability.
+     */
+    vulnerable: number;
 };
 
 export type FeedServerList = {
@@ -1244,6 +1264,71 @@ export type FeedServerTrustKey = {
      * The presented key, `x25519 <base64>`.
      */
     key: string;
+};
+
+/**
+ * CVSS rating of the highest base score.
+ */
+export type Severity = 'critical' | 'high' | 'medium' | 'low' | 'none';
+
+export type FixState = 'fixed' | 'not_fixed' | 'will_not_fix' | 'under_investigation' | 'unknown';
+
+export type VulnAdvisory = {
+    source: string;
+    id: string;
+    /**
+     * The distribution's rating, when it has one.
+     */
+    severity?: string;
+};
+
+export type ComponentMatchState = {
+    status: 'checked' | 'unsupported' | 'invalid';
+    reason?: string;
+    /**
+     * The release OS packages were matched against.
+     */
+    osKey?: string;
+    revision: number;
+    matchedAt: string;
+};
+
+export type ComponentVulnerability = {
+    vulnId: string;
+    aliases: Array<string>;
+    summary?: string;
+    severity?: Severity;
+    /**
+     * Highest CVSS base score.
+     */
+    score?: number;
+    /**
+     * Listed in the CISA Known Exploited Vulnerabilities catalog.
+     */
+    kev: boolean;
+    kevAdded?: string;
+    epss?: number;
+    epssPercentile?: number;
+    published?: string;
+    /**
+     * `package`: an advisory of the package's ecosystem. `cpe`: a CPE configuration (NVD, VulnCheck or the CNA).
+     */
+    method: 'package' | 'cpe';
+    ecosystem?: string;
+    fixState: FixState;
+    fixedVersion?: string;
+    cpeMatch?: 'exact' | 'range';
+    rangeSource?: 'nvd' | 'vulncheck' | 'cna';
+    /**
+     * The match holds only together with one of these CPEs, which were not checked.
+     */
+    platforms: Array<string>;
+    advisories: Array<VulnAdvisory>;
+};
+
+export type ComponentVulnerabilities = {
+    match?: ComponentMatchState;
+    items: Array<ComponentVulnerability>;
 };
 
 /**
@@ -1928,6 +2013,41 @@ export type ListComponentAssetsResponses = {
 };
 
 export type ListComponentAssetsResponse = ListComponentAssetsResponses[keyof ListComponentAssetsResponses];
+
+export type ListComponentVulnerabilitiesData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/components/{id}/vulnerabilities';
+};
+
+export type ListComponentVulnerabilitiesErrors = {
+    /**
+     * No valid session, or wrong credentials on login.
+     */
+    401: Error;
+    /**
+     * The resource does not exist.
+     */
+    404: Error;
+    /**
+     * Unexpected error.
+     */
+    default: Error;
+};
+
+export type ListComponentVulnerabilitiesError = ListComponentVulnerabilitiesErrors[keyof ListComponentVulnerabilitiesErrors];
+
+export type ListComponentVulnerabilitiesResponses = {
+    /**
+     * Vulnerabilities, known exploited first, then by score
+     */
+    200: ComponentVulnerabilities;
+};
+
+export type ListComponentVulnerabilitiesResponse = ListComponentVulnerabilitiesResponses[keyof ListComponentVulnerabilitiesResponses];
 
 export type ListProcessesData = {
     body?: never;
@@ -3792,3 +3912,40 @@ export type TrustFeedServerKeyResponses = {
 };
 
 export type TrustFeedServerKeyResponse = TrustFeedServerKeyResponses[keyof TrustFeedServerKeyResponses];
+
+export type RematchFeedServerData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/feed-servers/{id}/rematch';
+};
+
+export type RematchFeedServerErrors = {
+    /**
+     * No valid session, or wrong credentials on login.
+     */
+    401: Error;
+    /**
+     * The resource does not exist.
+     */
+    404: Error;
+    /**
+     * The request conflicts with the current state.
+     */
+    409: Error;
+    /**
+     * Unexpected error.
+     */
+    default: Error;
+};
+
+export type RematchFeedServerError = RematchFeedServerErrors[keyof RematchFeedServerErrors];
+
+export type RematchFeedServerResponses = {
+    /**
+     * Matching queued
+     */
+    202: unknown;
+};

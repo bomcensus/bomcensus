@@ -31,6 +31,9 @@ const (
 	// KindRenewCertificates renews server and agent certificates that are
 	// close to expiry (RenewCertificatesArgs).
 	KindRenewCertificates = "renew_certificates"
+	// KindFeedMatch matches pending components against the active feed
+	// server (no arguments).
+	KindFeedMatch = "feed_match"
 )
 
 // IngestReportArgs names a raw report stored by the upload handler.
@@ -163,6 +166,24 @@ type permanentError struct{ err error }
 func (e *permanentError) Error() string   { return e.err.Error() }
 func (e *permanentError) Unwrap() error   { return e.err }
 func (e *permanentError) Permanent() bool { return true }
+
+// Snooze returns an error that runs the job again after d without using an
+// attempt: for a job that stopped early with work left, or that was asked
+// to wait.
+func Snooze(d time.Duration) error { return &snoozeError{d: d} }
+
+type snoozeError struct{ d time.Duration }
+
+func (e *snoozeError) Error() string { return fmt.Sprintf("job: snoozed for %s", e.d) }
+
+// snoozeOf returns the delay of a Snooze error.
+func snoozeOf(err error) (time.Duration, bool) {
+	var s *snoozeError
+	if errors.As(err, &s) {
+		return max(s.d, 0), true
+	}
+	return 0, false
+}
 
 // IsPermanent reports whether err (or an error it wraps) says it is
 // permanent.

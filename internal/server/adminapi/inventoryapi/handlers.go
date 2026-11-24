@@ -27,6 +27,7 @@ type Store interface {
 	store.InventoryQuery
 	store.K8sClusters
 	store.AssetRequests
+	store.VulnQuery
 }
 
 // AgentStore gives the agent numbers of the dashboard and checks scanner

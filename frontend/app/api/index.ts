@@ -62,6 +62,7 @@ export const listComponents = (query?: Query<gen.ListComponentsData>) => call(sd
 export const getComponent = (id: string) => call(sdk.getComponent({ path: { id } }))
 export const listComponentAssets = (id: string, query?: Query<gen.ListComponentAssetsData>) =>
   call(sdk.listComponentAssets({ path: { id }, query }))
+export const listComponentVulnerabilities = (id: string) => call(sdk.listComponentVulnerabilities({ path: { id } }))
 
 // ── processes ───────────────────────────────────────────
 
@@ -159,3 +160,7 @@ export const deleteFeedServer = async (id: string) => {
 /** Contacts the server; the outcome is in the returned server's status and lastError. */
 export const testFeedServer = (id: string) => call(sdk.testFeedServer({ path: { id } }))
 export const trustFeedServerKey = (id: string, key: string) => call(sdk.trustFeedServerKey({ path: { id }, body: { key } }))
+/** Queues matching every component against the active server again. */
+export const rematchFeedServer = async (id: string) => {
+  await call(sdk.rematchFeedServer({ path: { id } }))
+}

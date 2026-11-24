@@ -224,8 +224,15 @@ func (m *Memory) run(j *memJob, h Handler) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.running--
+	d, snoozed := snoozeOf(err)
 	switch {
 	case err == nil:
+	case snoozed && m.ctx.Err() == nil:
+		j.Attempt--
+		j.runAt = time.Now().Add(d)
+		m.pending = append(m.pending, j)
+		m.signal()
+		return
 	case IsPermanent(err) || j.Attempt >= j.MaxAttempts || m.ctx.Err() != nil:
 		m.log.Warn("job discarded", "kind", j.Kind, "id", j.ID, "attempt", j.Attempt, "err", err)
 	default:

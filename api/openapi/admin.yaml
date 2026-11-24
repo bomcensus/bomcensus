@@ -564,6 +564,31 @@ paths:
         default:
           $ref: "#/components/responses/UnexpectedError"
 
+  /components/{id}/vulnerabilities:
+    parameters:
+      - $ref: "#/components/parameters/PathId"
+    get:
+      tags: [components]
+      operationId: listComponentVulnerabilities
+      summary: Vulnerabilities the active feed server matched to a component
+      description: |
+        `match` is absent while the component has not been matched. An empty
+        `items` with `match.status` `checked` means no known vulnerability;
+        `unsupported` means the feed server has no data for it.
+      responses:
+        "200":
+          description: Vulnerabilities, known exploited first, then by score
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ComponentVulnerabilities"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
   /processes:
     get:
       tags: [processes]
@@ -1929,6 +1954,26 @@ paths:
                 $ref: "#/components/schemas/FeedServer"
         "400":
           $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /feed-servers/{id}/rematch:
+    parameters:
+      - $ref: "#/components/parameters/PathId"
+    post:
+      tags: [feed]
+      operationId: rematchFeedServer
+      summary: Match every component against this server again
+      description: Applies to the active server (`409` otherwise). Matching runs in the background.
+      responses:
+        "202":
+          description: Matching queued
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
@@ -3872,9 +3917,30 @@ components:
         statusCheckedAt:
           type: string
           format: date-time
+        matching:
+          $ref: "#/components/schemas/FeedMatchCounts"
         createdAt:
           type: string
           format: date-time
+    FeedMatchCounts:
+      description: |
+        Active server only, after the first status check: live components by
+        match state against the current data revision and rules.
+      type: object
+      required: [checked, unsupported, invalid, pending, vulnerable]
+      properties:
+        checked:
+          type: integer
+        unsupported:
+          description: The feed server has no data for these; they are not known to be safe.
+          type: integer
+        invalid:
+          type: integer
+        pending:
+          type: integer
+        vulnerable:
+          description: Checked components with at least one vulnerability.
+          type: integer
     FeedServerList:
       type: object
       required: [items, total]
@@ -3922,3 +3988,114 @@ components:
         key:
           description: The presented key, `x25519 <base64>`.
           type: string
+
+    # ── vulnerabilities ─────────────────────────────────────────────────
+
+    Severity:
+      description: CVSS rating of the highest base score.
+      type: string
+      enum: [critical, high, medium, low, none]
+    FixState:
+      type: string
+      enum: [fixed, not_fixed, will_not_fix, under_investigation, unknown]
+    VulnAdvisory:
+      type: object
+      required: [source, id]
+      properties:
+        source:
+          type: string
+          example: osv
+        id:
+          type: string
+          example: DEBIAN-CVE-2024-6387
+        severity:
+          description: The distribution's rating, when it has one.
+          type: string
+    ComponentMatchState:
+      type: object
+      required: [status, matchedAt, revision]
+      properties:
+        status:
+          type: string
+          enum: [checked, unsupported, invalid]
+        reason:
+          type: string
+        osKey:
+          description: The release OS packages were matched against.
+          type: string
+          example: ubuntu:24.04
+        revision:
+          type: integer
+          format: int64
+        matchedAt:
+          type: string
+          format: date-time
+    ComponentVulnerability:
+      type: object
+      required: [vulnId, method, fixState, aliases, platforms, advisories, kev]
+      properties:
+        vulnId:
+          type: string
+          example: CVE-2024-6387
+        aliases:
+          type: array
+          items:
+            type: string
+        summary:
+          type: string
+        severity:
+          $ref: "#/components/schemas/Severity"
+        score:
+          description: Highest CVSS base score.
+          type: number
+          format: double
+        kev:
+          description: Listed in the CISA Known Exploited Vulnerabilities catalog.
+          type: boolean
+        kevAdded:
+          type: string
+          format: date
+        epss:
+          type: number
+          format: double
+        epssPercentile:
+          type: number
+          format: double
+        published:
+          type: string
+          format: date-time
+        method:
+          description: "`package`: an advisory of the package's ecosystem. `cpe`: a CPE configuration (NVD, VulnCheck or the CNA)."
+          type: string
+          enum: [package, cpe]
+        ecosystem:
+          type: string
+        fixState:
+          $ref: "#/components/schemas/FixState"
+        fixedVersion:
+          type: string
+        cpeMatch:
+          type: string
+          enum: [exact, range]
+        rangeSource:
+          type: string
+          enum: [nvd, vulncheck, cna]
+        platforms:
+          description: The match holds only together with one of these CPEs, which were not checked.
+          type: array
+          items:
+            type: string
+        advisories:
+          type: array
+          items:
+            $ref: "#/components/schemas/VulnAdvisory"
+    ComponentVulnerabilities:
+      type: object
+      required: [items]
+      properties:
+        match:
+          $ref: "#/components/schemas/ComponentMatchState"
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ComponentVulnerability"

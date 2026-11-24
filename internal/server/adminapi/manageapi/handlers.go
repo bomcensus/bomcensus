@@ -38,6 +38,14 @@ type ScanRunner interface {
 	RequestRun(ctx context.Context, targetID string) error
 }
 
+// Matcher runs component matching (vulnsvc.Matcher).
+type Matcher interface {
+	// Trigger queues a run after delay.
+	Trigger(ctx context.Context, delay time.Duration) error
+	// Rematch matches every component against the server again.
+	Rematch(ctx context.Context, serverID string) error
+}
+
 // ClusterCredentialUse tells how many Kubernetes clusters use each
 // credential. Clusters belong to the inventory side of the store, so this is
 // kept behind an interface; StoreClusters is the default implementation.
@@ -88,6 +96,9 @@ type Config struct {
 	// Feed is optional; the feed operations that contact a server answer
 	// 503 without it.
 	Feed *feedsvc.Service
+	// Matcher is optional; without it changes of the active server do not
+	// start matching and rematch answers 503.
+	Matcher Matcher
 	// Clusters is optional; StoreClusters{Store} by default.
 	Clusters ClusterCredentialUse
 	// PrincipalID returns the ID of the authenticated principal of the
@@ -106,6 +117,7 @@ type Handlers struct {
 	secrets  *secret.Box
 	runner   ScanRunner
 	feed     *feedsvc.Service
+	matcher  Matcher
 	clusters ClusterCredentialUse
 	who      func(ctx context.Context) string
 	log      *slog.Logger
@@ -131,7 +143,7 @@ func New(cfg Config) (*Handlers, error) {
 	}
 	return &Handlers{
 		st: cfg.Store, pki: cfg.PKI, updates: cfg.Updates, secrets: cfg.Secrets, runner: cfg.ScanRunner,
-		feed: cfg.Feed, clusters: cfg.Clusters, who: cfg.PrincipalID, log: cfg.Logger, now: cfg.Now,
+		feed: cfg.Feed, matcher: cfg.Matcher, clusters: cfg.Clusters, who: cfg.PrincipalID, log: cfg.Logger, now: cfg.Now,
 	}, nil
 }
 

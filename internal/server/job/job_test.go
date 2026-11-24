@@ -106,6 +106,14 @@ func exercise(t *testing.T, q Queue, periodicEvery time.Duration) {
 		got <- 100 + j.Attempt
 		return nil
 	}))
+	var sleepy atomic.Int32
+	must(q.Register("sleepy", func(ctx context.Context, j Job) error {
+		if sleepy.Add(1) == 1 {
+			return Snooze(100 * time.Millisecond)
+		}
+		got <- 200
+		return nil
+	}))
 	must(q.Register("bad", func(ctx context.Context, j Job) error {
 		permanent.Add(1)
 		return Permanent(errors.New("never"))
@@ -181,6 +189,11 @@ func exercise(t *testing.T, q Queue, periodicEvery time.Duration) {
 	_, err = q.Enqueue(ctx, "flaky", nil)
 	must(err)
 	wait(102)
+
+	// A snoozed job runs again without a retry error, even with one attempt.
+	_, err = q.Enqueue(ctx, "sleepy", nil, MaxAttempts(1))
+	must(err)
+	wait(200)
 
 	_, err = q.Enqueue(ctx, "bad", nil)
 	must(err)
