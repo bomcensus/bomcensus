@@ -109,6 +109,7 @@ func TestRunTimeLimit(t *testing.T) {
 		Policy:   report.DefaultPolicy(),
 	}
 	req.Policy.MaxRuntimeSeconds = 1
+	req.Policy.WalkPaths = []string{"/"}
 	start := time.Now()
 	rep, err := Run(context.Background(), req, Options{Grace: 2 * time.Second})
 	if err != nil {

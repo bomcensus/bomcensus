@@ -171,7 +171,9 @@ func loadState2(t *testing.T, dir string) (*state.Enrollment, *state.Identity, *
 		t.Fatal(err)
 	}
 	for _, de := range des {
-		if de.IsDir() || de.Name() == "lock" {
+		// Temporary files belong to a write in progress; on Windows the
+		// running agent holds them open and they cannot be read.
+		if de.IsDir() || de.Name() == "lock" || strings.HasPrefix(de.Name(), ".") {
 			continue
 		}
 		b, err := os.ReadFile(filepath.Join(dir, de.Name()))
