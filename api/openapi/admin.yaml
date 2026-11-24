@@ -4734,6 +4734,13 @@ components:
           $ref: "#/components/schemas/DetectMethod"
         exposure:
           $ref: "#/components/schemas/Exposure"
+        reachability:
+          description: "From the Go executables there: present when one links a vulnerable function of one of the CVEs, absent when none links any for all of them. Absent when not known."
+          allOf:
+            - $ref: "#/components/schemas/Reachability"
+        symbolAbsent:
+          description: CVEs there whose vulnerable functions are linked into none of the executables.
+          type: integer
         processes:
           type: array
           items:
@@ -4743,6 +4750,10 @@ components:
         firstSeen:
           type: string
           format: date-time
+    Reachability:
+      description: "Whether the vulnerable Go functions are linked into the executables. `symbol_absent` lowers the exposure to installed."
+      type: string
+      enum: [symbol_present, symbol_absent]
     VulnComponentDetail:
       type: object
       required: [component, cves, locations]
@@ -4935,6 +4946,13 @@ components:
           format: double
         exposure:
           $ref: "#/components/schemas/Exposure"
+        reachability:
+          $ref: "#/components/schemas/Reachability"
+        symbols:
+          description: Vulnerable functions of the vulnerability (package path and name), checked against the Go executables.
+          type: array
+          items:
+            type: string
         fixState:
           $ref: "#/components/schemas/FixState"
         fixedVersion:

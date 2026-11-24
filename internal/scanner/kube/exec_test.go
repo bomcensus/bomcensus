@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"reflect"
 	"runtime"
 	"strings"
 	"sync"
@@ -349,5 +350,18 @@ func TestOutcomeResult(t *testing.T) {
 		if string(r.Status) != status || r.Coverage != cov || *r.Reason != "x" || *r.ReportId != "r1" || r.Pod != "p" {
 			t.Errorf("%s: %+v", cov, r)
 		}
+	}
+}
+
+func TestTargetAPIRoundTrip(t *testing.T) {
+	in := ExecTarget{Namespace: "ns", Pod: "p", Container: "c", Sections: []string{report.SectionProcesses},
+		GoSymbols: &report.GoSymbolQuery{Files: []report.GoSymbolFile{{Path: "/app", SHA256: strings.Repeat("a", 64),
+			Names: []string{"net/http.Serve"}}}}}
+	out := TargetFromAPI(in.API())
+	if !reflect.DeepEqual(out.GoSymbols, in.GoSymbols) || out.Container != "c" || len(out.Sections) != 1 {
+		t.Fatalf("round trip: %+v", out)
+	}
+	if TargetFromAPI(ExecTarget{Pod: "p"}.API()).GoSymbols != nil {
+		t.Fatal("query out of nothing")
 	}
 }

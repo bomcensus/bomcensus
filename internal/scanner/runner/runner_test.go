@@ -112,13 +112,14 @@ func TestRunSSHSuccess(t *testing.T) {
 	}}
 	job := SSHJob{JobID: "j1", TargetID: "t1", Address: "10.0.0.9", Port: 2222, User: "scan",
 		Credential: SSHCredential{Password: "pw"}, Sudo: true, Sections: []string{"packages"},
-		Policy: report.DefaultPolicy()}
+		Policy: report.DefaultPolicy(), GoSymbols: &report.GoSymbolQuery{Files: []report.GoSymbolFile{{Path: "/bin/x"}}}}
 	res, err := RunSSH(context.Background(), job, d)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got.Address != "10.0.0.9" || got.Port != 2222 || got.User != "scan" || got.Auth.Password != "pw" ||
-		!got.Sudo || got.HostKey != nil || len(got.Request.Sections) != 1 || !got.Request.Policy.ExecVersion {
+		!got.Sudo || got.HostKey != nil || len(got.Request.Sections) != 1 || !got.Request.Policy.ExecVersion ||
+		got.Request.GoSymbols != job.GoSymbols {
 		t.Fatalf("target not built from job: %+v", got)
 	}
 	if res.Status != agentapi.ScanJobStatusOk || res.HostKey == nil || !bytes.Equal(*res.HostKey, key.Marshal()) ||

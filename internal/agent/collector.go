@@ -18,6 +18,7 @@ import (
 	"github.com/bomcensus/bomcensus/internal/agent/state"
 	"github.com/bomcensus/bomcensus/internal/gen/agentapi"
 	"github.com/bomcensus/bomcensus/internal/report"
+	"github.com/bomcensus/bomcensus/internal/report/reportapi"
 )
 
 // Prober produces a report for a request (probeexec.Invoker).
@@ -46,7 +47,10 @@ type collector struct {
 	manual    map[string]bool
 	manualAll bool
 	full      bool
-	wake      chan struct{}
+	// symbols is the Go symbol query waiting to be answered, the latest
+	// one received.
+	symbols *report.GoSymbolQuery
+	wake    chan struct{}
 }
 
 func newCollector(rt *core.Runtime, probe Prober, log *slog.Logger) (*collector, error) {
@@ -70,6 +74,7 @@ func newCollector(rt *core.Runtime, probe Prober, log *slog.Logger) (*collector,
 	rt.OnStatus(c.status)
 	rt.OnUploaded(c.uploaded)
 	rt.Handle("collect", c.handleCollect)
+	rt.Handle("go_symbols", c.handleGoSymbols)
 	rt.AddTask(core.Task{
 		Name:      "collection",
 		Interval:  func() time.Duration { return time.Hour },
@@ -110,6 +115,19 @@ func (c *collector) handleCollect(_ context.Context, d agentapi.Directive) error
 	if cd.Full != nil && *cd.Full {
 		c.full = true
 	}
+	c.mu.Unlock()
+	c.signal()
+	return nil
+}
+
+func (c *collector) handleGoSymbols(_ context.Context, d agentapi.Directive) error {
+	gd, err := d.AsGoSymbolsDirective()
+	if err != nil {
+		return err
+	}
+	q := reportapi.GoSymbolQuery(gd.Query)
+	c.mu.Lock()
+	c.symbols = &q
 	c.mu.Unlock()
 	c.signal()
 	return nil
@@ -188,6 +206,14 @@ func (c *collector) due(now time.Time) ([]string, bool, time.Duration) {
 
 func (c *collector) loop(ctx context.Context) error {
 	for ctx.Err() == nil {
+		c.mu.Lock()
+		q := c.symbols
+		c.symbols = nil
+		c.mu.Unlock()
+		if q != nil {
+			c.answerSymbols(ctx, q)
+			continue
+		}
 		sections, full, wait := c.due(c.now())
 		if len(sections) > 0 {
 			c.collect(ctx, sections, full)
@@ -281,6 +307,35 @@ func (c *collector) collect(ctx context.Context, sections []string, full bool) {
 	}
 }
 
+// answerSymbols runs the probe for a Go symbol query alone and submits
+// the report, which carries only the go_symbols section.
+func (c *collector) answerSymbols(ctx context.Context, q *report.GoSymbolQuery) {
+	c.mu.Lock()
+	policy := report.DefaultPolicy()
+	if c.cfg != nil {
+		policy = core.PolicyFromConfig(c.cfg.Policy)
+	}
+	c.mu.Unlock()
+	req := &report.Request{Sections: []string{report.SectionGoSymbols}, Policy: policy, GoSymbols: q}
+	c.log.Info("answering go symbol query", "files", len(q.Files))
+	rep, err := c.probe.Collect(ctx, req)
+	if err != nil {
+		if ctx.Err() == nil {
+			c.log.Error("go symbol query failed", "error", err)
+		}
+		return
+	}
+	prepare(rep)
+	var buf bytes.Buffer
+	if err := report.Encode(&buf, rep); err != nil {
+		c.log.Error("encode report", "error", err)
+		return
+	}
+	if err := c.rt.SubmitReport(ctx, buf.Bytes(), core.ReportMeta{}); err != nil && ctx.Err() == nil {
+		c.log.Warn("report upload failed, kept in the spool", "error", err)
+	}
+}
+
 // snapshot copies the section state; the caller holds mu.
 func (c *collector) snapshot() *state.Sections {
 	return &state.Sections{Digests: maps.Clone(c.sections.Digests), LastRun: maps.Clone(c.sections.LastRun)}
@@ -342,6 +397,8 @@ func (c *collector) status(_ context.Context, req *agentapi.PollRequest) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	req.SectionDigests = maps.Clone(c.sections.Digests)
+	features := []string{report.FeatureGoSymbols}
+	req.Features = &features
 	if c.privilege != nil {
 		p := agentapi.Privilege{Level: agentapi.PrivilegeLevel(c.privilege.Level), Uid: c.privilege.UID}
 		if len(c.privilege.Capabilities) > 0 {

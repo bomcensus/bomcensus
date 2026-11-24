@@ -17,6 +17,7 @@ import (
 
 	"github.com/bomcensus/bomcensus/internal/agent/core"
 	"github.com/bomcensus/bomcensus/internal/gen/agentapi"
+	"github.com/bomcensus/bomcensus/internal/report/reportapi"
 	"github.com/bomcensus/bomcensus/internal/scanner/hpkebox"
 	"github.com/bomcensus/bomcensus/internal/scanner/kube"
 	"github.com/bomcensus/bomcensus/internal/scanner/runner"
@@ -120,7 +121,7 @@ func (s *scanner) handleScanSSH(ctx context.Context, d agentapi.Directive) error
 	}
 	job := runner.SSHJob{
 		JobID: sd.JobId, TargetID: sd.ScanTargetId, Address: sd.Address, Port: sd.Port, User: sd.Username,
-		Sudo: sd.Sudo, Policy: runner.PolicyFromAPI(sd.Policy),
+		Sudo: sd.Sudo, Policy: runner.PolicyFromAPI(sd.Policy), GoSymbols: reportapi.GoSymbolQueryPtr(sd.GoSymbols),
 	}
 	if sd.HostKey != nil {
 		job.HostKey = *sd.HostKey

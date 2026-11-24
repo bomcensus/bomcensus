@@ -13,6 +13,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -308,6 +309,29 @@ func TestCollectUploadAndDirectives(t *testing.T) {
 	if p := lastPoll(h); p.ObservedServerCert == nil || p.ObservedServerCert.Sha256 != hexFingerprint(h.srv.Leaf) {
 		t.Fatalf("observed certificate = %+v", p.ObservedServerCert)
 	}
+	if p := lastPoll(h); p.Features == nil || !slices.Contains(*p.Features, report.FeatureGoSymbols) {
+		t.Fatalf("features = %v", p.Features)
+	}
+
+	// A Go symbol query is answered alone, without collecting sections.
+	sha := strings.Repeat("ab", 32)
+	h.srv.Queue(map[string]any{"type": "go_symbols", "id": "d-symbols", "query": map[string]any{
+		"files": []map[string]any{{"path": "/usr/bin/app", "sha256": sha, "names": []string{"net/http.Serve"}}}}})
+	h.wait("symbol report", func() bool { return len(h.srv.Reports()) >= 4 })
+	fourth := h.srv.Reports()[3]
+	if len(sectionsOf(fourth)) != 0 || fourth.GoSymbols == nil || len(fourth.GoSymbols.Files) != 1 ||
+		fourth.GoSymbols.Files[0].Results["net/http.Serve"] != report.GoSymbolAbsent {
+		t.Fatalf("symbol report: %+v %+v", sectionsOf(fourth), fourth.GoSymbols)
+	}
+	reqs, err = os.ReadFile(h.reqFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines = strings.Split(strings.TrimSpace(string(reqs)), "\n")
+	if last := lines[len(lines)-1]; !strings.Contains(last, `"sections":["go_symbols"]`) || !strings.Contains(last, sha) {
+		t.Fatalf("symbol request: %s", last)
+	}
+	h.wait("symbol directive acknowledged", func() bool { return h.srv.Acked("d-symbols") })
 }
 
 func TestSpoolAndOrderedRetry(t *testing.T) {

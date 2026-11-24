@@ -19,6 +19,7 @@ import type {
   FixState,
   K8sPodPhase,
   PrivilegeLevel,
+  Reachability,
   SectionCoverageLevel,
   SectionName,
   Severity,
@@ -244,6 +245,12 @@ export const exposureLabel: Record<Exposure, string> = {
   running: '실행',
   installed: '설치',
   unknown: '미확인',
+}
+
+// Whether the vulnerable Go functions are linked into the executables.
+export const reachabilityLabel: Record<Reachability, string> = {
+  symbol_present: '취약 함수 포함',
+  symbol_absent: '취약 함수 없음',
 }
 
 export const findingLayerLabel: Record<FindingLayer, string> = {

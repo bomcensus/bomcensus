@@ -36,7 +36,13 @@ defineProps<{ items: VulnLocation[]; where: (l: VulnLocation) => string; process
             <div class="mono text-xs text-ink-3">{{ l.componentName }} {{ l.componentVersion }}</div>
           </td>
           <td class="hidden px-3 py-2 text-xs text-ink-2 md:table-cell">{{ l.method ? detectMethodLabel[l.method] : '—' }}</td>
-          <td class="px-3 py-2"><ExposureMeter :exposure="l.exposure" /></td>
+          <td class="px-3 py-2">
+            <ExposureMeter :exposure="l.exposure" />
+            <ReachabilityBadge :reachability="l.reachability" />
+            <div v-if="l.symbolAbsent && l.cves > 1 && l.reachability !== 'symbol_absent'" class="text-xs text-ink-3">
+              {{ l.cves }}개 중 {{ l.symbolAbsent }}개 취약 함수 없음
+            </div>
+          </td>
           <td class="mono py-2 pl-3 pr-3.5 text-xs text-ink-2">{{ processText(l) || '—' }}</td>
         </tr>
       </tbody>

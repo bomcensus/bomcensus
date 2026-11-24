@@ -13,6 +13,7 @@ import (
 	gossh "golang.org/x/crypto/ssh"
 
 	"github.com/bomcensus/bomcensus/internal/gen/agentapi"
+	"github.com/bomcensus/bomcensus/internal/report/reportapi"
 	"github.com/bomcensus/bomcensus/internal/scanner/runner"
 	"github.com/bomcensus/bomcensus/internal/server/ingest"
 	"github.com/bomcensus/bomcensus/internal/server/store"
@@ -120,6 +121,7 @@ func (s *Service) runEmbeddedSSH(ctx context.Context, t store.ScanTarget, jobID 
 	job := runner.SSHJob{
 		JobID: jobID, TargetID: t.ID, Address: t.Address, Port: t.Port, User: cred.Username,
 		Credential: secret, Sudo: t.Sudo, HostKey: t.HostKey, Policy: s.policy(ctx),
+		GoSymbols: s.goSymbols(ctx, t.AssetID, ""),
 	}
 	if _, err := s.run.RunSSH(ctx, job, s.deps(sink)); err != nil {
 		s.log.Warn("result of an embedded scan was not stored", "job_id", jobID, "error", err)
@@ -176,6 +178,9 @@ func (s *Service) dispatchSSH(ctx context.Context, sc store.Agent, t store.ScanT
 	d := agentapi.ScanSshDirective{
 		Type: agentapi.ScanSsh, JobId: jobID, ScanTargetId: t.ID, Address: t.Address, Port: port,
 		Username: cred.Username, Sudo: t.Sudo, Credential: sealed, Policy: runner.PolicyToAPI(s.policy(ctx)),
+	}
+	if sc.HasFeature(store.FeatureGoSymbols) {
+		d.GoSymbols = reportapi.APIGoSymbolQueryPtr(s.goSymbols(ctx, t.AssetID, ""))
 	}
 	var key gossh.PublicKey
 	if len(t.HostKey) > 0 {

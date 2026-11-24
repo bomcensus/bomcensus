@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -137,6 +138,7 @@ func (h *Handlers) Poll(ctx context.Context, req gen.PollRequestObject) (gen.Pol
 		TrustBundleVersion: body.TrustBundleSerial,
 		UpdateState:        store.UpdateState(body.Update.State),
 		UpdateMessage:      updateMessage(body.Update.Message),
+		Features:           knownFeatures(body.Features),
 		SeenAt:             now,
 	}
 	if info.remote.IsValid() {
@@ -180,6 +182,20 @@ func (h *Handlers) Poll(ctx context.Context, req gen.PollRequestObject) (gen.Pol
 		LastCounter: int64(counter),
 		ServerTime:  h.now().UTC().Truncate(time.Second),
 	}), nil
+}
+
+// knownFeatures keeps the features the server knows of.
+func knownFeatures(in *[]string) []string {
+	if in == nil {
+		return nil
+	}
+	var out []string
+	for _, f := range *in {
+		if f == store.FeatureGoSymbols && !slices.Contains(out, f) {
+			out = append(out, f)
+		}
+	}
+	return out
 }
 
 // maxUpdateMessage bounds the stored update message (bytes).

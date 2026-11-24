@@ -28,12 +28,17 @@ function judge(v: AssetVuln) {
   Object.assign(picker, { open: true, vulnId: v.vulnId, purl: v.componentPurl ?? '' })
 }
 
+// Within one exposure a linked vulnerable function comes first, none last.
+function reachRank(r: AssetVuln) {
+  return r.reachability === 'symbol_present' ? 2 : r.reachability === 'symbol_absent' ? 0 : 1
+}
+
 const columns: TableColumn<AssetVuln>[] = [
   { key: 'vulnId', label: '취약점', sortValue: (r) => r.vulnId },
   { key: 'severity', label: '심각도', sortValue: (r) => -(r.score ?? -1) },
   { key: 'component', label: '컴포넌트', sortValue: (r) => `${r.componentName} ${r.componentVersion}` },
   { key: 'where', label: '위치', sortValue: (r) => r.container ?? '', hideBelow: 'md' },
-  { key: 'exposure', label: '영향도', sortValue: (r) => -exposureLevel[r.exposure] },
+  { key: 'exposure', label: '영향도', sortValue: (r) => -(exposureLevel[r.exposure] * 3 + reachRank(r)) },
   { key: 'fix', label: '수정', hideBelow: 'sm' },
   { key: 'triage', label: '판정' },
   { key: 'firstSeen', label: '발견', align: 'right', sortValue: (r) => r.firstSeen, hideBelow: 'md' },
@@ -74,6 +79,7 @@ const columns: TableColumn<AssetVuln>[] = [
       </template>
       <template #cell-exposure="{ row }">
         <ExposureMeter :exposure="row.exposure" />
+        <ReachabilityBadge :reachability="row.reachability" :symbols="row.symbols" />
         <div v-if="row.processes.length" class="mono text-xs text-ink-3">
           {{ row.processes[0]!.exe.split('/').pop() }}<template v-if="row.processes[0]!.ports.length"> · {{ row.processes[0]!.ports.join(', ') }}</template>
         </div>

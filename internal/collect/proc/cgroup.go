@@ -6,7 +6,11 @@
 
 package proc
 
-import "strings"
+import (
+	"path/filepath"
+	"strconv"
+	"strings"
+)
 
 // Prefixes container runtimes put in front of the container id in a cgroup
 // path segment, in systemd ("docker-<id>.scope") and cgroupfs
@@ -74,4 +78,33 @@ func isContainerID(s string) bool {
 		}
 	}
 	return true
+}
+
+// ContainerPIDs returns, for each of ids that has a process visible in
+// procDir, the lowest such PID. Its /proc/<pid>/root is the container root.
+func ContainerPIDs(procDir string, ids []string) map[string]int {
+	want := map[string]bool{}
+	for _, id := range ids {
+		want[id] = true
+	}
+	out := map[string]int{}
+	pids, err := listPIDs(procDir)
+	if err != nil {
+		return out
+	}
+	for _, pid := range pids {
+		if len(out) == len(want) {
+			break
+		}
+		data, err := readLimited(filepath.Join(procDir, strconv.Itoa(pid), "cgroup"), maxSmallFile)
+		if err != nil {
+			continue
+		}
+		if id := containerIDFromCgroup(string(data)); want[id] {
+			if _, ok := out[id]; !ok {
+				out[id] = pid
+			}
+		}
+	}
+	return out
 }

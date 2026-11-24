@@ -161,6 +161,10 @@ func (d *DB) findingInputs(ctx context.Context, assetID string) (store.FindingIn
 		return in, mgErr("finding inputs", err)
 	}
 
+	if err := d.gsFindingInputs(ctx, assetID, &in, compIDs); err != nil {
+		return in, err
+	}
+
 	// Processes with their non-loopback listening sockets.
 	ports := map[string][]string{}
 	rows, err = d.q.Query(ctx, `
@@ -283,6 +287,7 @@ func (d *DB) ApplyFindings(ctx context.Context, assetID string, rows []store.Fin
 		ComponentID string                    `json:"component_id"`
 		VulnID      string                    `json:"vuln_id"`
 		Exposure    string                    `json:"exposure"`
+		Reach       *string                   `json:"reachability"`
 		Processes   []store.FindingProcessRef `json:"processes"`
 	}
 	out := make([]row, 0, len(rows))
@@ -295,8 +300,12 @@ func (d *DB) ApplyFindings(ctx context.Context, assetID string, rows []store.Fin
 		if procs == nil {
 			procs = []store.FindingProcessRef{}
 		}
+		var reach *string
+		if r.Reachability != "" {
+			reach = &r.Reachability
+		}
 		out = append(out, row{ID: id, Container: r.Container, Layer: r.Layer, ImageDigest: r.ImageDigest,
-			ComponentID: r.ComponentID, VulnID: r.VulnID, Exposure: r.Exposure, Processes: procs})
+			ComponentID: r.ComponentID, VulnID: r.VulnID, Exposure: r.Exposure, Reach: reach, Processes: procs})
 	}
 	js, err := json.Marshal(out)
 	if err != nil {
@@ -306,19 +315,21 @@ func (d *DB) ApplyFindings(ctx context.Context, assetID string, rows []store.Fin
 	var ch store.FindingsChange
 	err = d.mgInTx(ctx, func(tx *DB) error {
 		const recs = `jsonb_to_recordset($2::text::jsonb) AS x(id uuid, container text, layer text, image_digest text,
-			component_id uuid, vuln_id text, exposure text, processes jsonb)`
+			component_id uuid, vuln_id text, exposure text, reachability text, processes jsonb)`
 		if err := tx.q.QueryRow(ctx, `
 			WITH up AS (
 				INSERT INTO findings AS f (id, asset_id, container, layer, image_digest, component_id, vuln_id,
-					exposure, processes, first_seen, updated_at)
+					exposure, reachability, processes, first_seen, updated_at)
 				SELECT x.id, $1, x.container, x.layer, x.image_digest, x.component_id, x.vuln_id,
-					x.exposure, x.processes, $3, $3
+					x.exposure, x.reachability, x.processes, $3, $3
 				FROM `+recs+`
 				ON CONFLICT (asset_id, container, component_id, vuln_id) WHERE resolved_at IS NULL
 				DO UPDATE SET layer = excluded.layer, image_digest = excluded.image_digest,
-					exposure = excluded.exposure, processes = excluded.processes, updated_at = excluded.updated_at
-				WHERE (f.layer, f.image_digest, f.exposure, f.processes)
-					IS DISTINCT FROM (excluded.layer, excluded.image_digest, excluded.exposure, excluded.processes)
+					exposure = excluded.exposure, reachability = excluded.reachability,
+					processes = excluded.processes, updated_at = excluded.updated_at
+				WHERE (f.layer, f.image_digest, f.exposure, f.reachability, f.processes)
+					IS DISTINCT FROM (excluded.layer, excluded.image_digest, excluded.exposure, excluded.reachability,
+						excluded.processes)
 				RETURNING (xmax = 0) AS inserted
 			)
 			SELECT count(*) FILTER (WHERE inserted) FROM up`, assetID, string(js), now).Scan(&ch.Opened); err != nil {

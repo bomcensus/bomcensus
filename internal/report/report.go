@@ -9,6 +9,8 @@ package report
 
 import (
 	"encoding/json"
+	"fmt"
+	"strings"
 	"time"
 )
 
@@ -23,6 +25,10 @@ const (
 	SectionArtifacts  = "artifacts"
 	SectionProcesses  = "processes"
 	SectionContainers = "containers"
+	// SectionGoSymbols is not collected: it answers Request.GoSymbols and
+	// is not part of AllSections. A request naming only it collects
+	// nothing else.
+	SectionGoSymbols = "go_symbols"
 )
 
 // AllSections lists the sections in collection order.
@@ -65,6 +71,7 @@ type Report struct {
 	Artifacts  *ArtifactsSection  `json:"artifacts,omitempty"`
 	Processes  *ProcessesSection  `json:"processes,omitempty"`
 	Containers *ContainersSection `json:"containers,omitempty"`
+	GoSymbols  *GoSymbolsSection  `json:"go_symbols,omitempty"`
 
 	// Cache is opaque probe state (file hash cache). The caller stores it and
 	// passes it back in the next Request. Never uploaded to the server.
@@ -240,8 +247,11 @@ type Artifact struct {
 	GroupID    string `json:"group_id,omitempty"`
 	ArtifactID string `json:"artifact_id,omitempty"`
 
-	// GoVersion is the toolchain version of a Go binary.
+	// GoVersion is the toolchain version of a Go binary, GOOS and GOARCH
+	// its target from the build settings.
 	GoVersion string `json:"go_version,omitempty"`
+	GOOS      string `json:"goos,omitempty"`
+	GOARCH    string `json:"goarch,omitempty"`
 	// Module is the module path for ArtifactGoModule.
 	Module string `json:"module,omitempty"`
 
@@ -409,6 +419,9 @@ type Request struct {
 	Policy       Policy            `json:"policy"`
 	// Cache is Report.Cache from the previous run.
 	Cache json.RawMessage `json:"cache,omitempty"`
+	// GoSymbols asks whether functions are linked into Go binaries. It is
+	// answered in Report.GoSymbols whatever Sections says.
+	GoSymbols *GoSymbolQuery `json:"go_symbols,omitempty"`
 }
 
 // Policy comes from the server and bounds what the probe does.
@@ -431,4 +444,98 @@ type Policy struct {
 // DefaultPolicy is used when the server has not sent one yet.
 func DefaultPolicy() Policy {
 	return Policy{ExecVersion: true, CollectCmdline: true, ScanContainers: true}
+}
+
+// ── go symbols ──────────────────────────────────────────────────────────
+
+// Limits of a GoSymbolQuery. A probe rejects a request that exceeds any of
+// them as a whole.
+const (
+	MaxGoSymbolFiles        = 64
+	MaxGoSymbolNamesPerFile = 512
+	MaxGoSymbolNames        = 4096
+	MaxGoSymbolNameLen      = 512
+)
+
+// FeatureGoSymbols is the feature an agent or scanner reports when it
+// passes GoSymbolQuery to the probe and uploads the answers.
+const FeatureGoSymbols = "go_symbols"
+
+// Answers for one function name.
+const (
+	GoSymbolPresent    = "present"
+	GoSymbolAbsent     = "absent"
+	GoSymbolNotChecked = "not_checked"
+)
+
+// GoSymbolQuery names Go binaries the requester saw in an earlier report
+// and the functions to look up in each.
+type GoSymbolQuery struct {
+	Files []GoSymbolFile `json:"files"`
+}
+
+// GoSymbolFile is one binary. Names are package path qualified function
+// names as the Go vulnerability database writes them ("net/http.Serve",
+// "net/http.Server.Serve" or "net/http.(*Server).Serve").
+type GoSymbolFile struct {
+	// Container is the runtime id of a running container; Path is then
+	// inside its root. Empty for the subject's own file system.
+	Container string `json:"container,omitempty"`
+	Path      string `json:"path"`
+	// SHA256 must match the file, else every name is not checked.
+	SHA256 string   `json:"sha256"`
+	Names  []string `json:"names"`
+}
+
+// Validate checks the limits and the form of the query.
+func (q *GoSymbolQuery) Validate() error {
+	if len(q.Files) > MaxGoSymbolFiles {
+		return fmt.Errorf("go symbols: %d files, at most %d", len(q.Files), MaxGoSymbolFiles)
+	}
+	total := 0
+	for _, f := range q.Files {
+		if !strings.HasPrefix(f.Path, "/") && !isWindowsAbs(f.Path) {
+			return fmt.Errorf("go symbols: path %q is not absolute", f.Path)
+		}
+		if len(f.SHA256) != 64 {
+			return fmt.Errorf("go symbols: %s: bad sha256", f.Path)
+		}
+		if len(f.Names) > MaxGoSymbolNamesPerFile {
+			return fmt.Errorf("go symbols: %s: %d names, at most %d", f.Path, len(f.Names), MaxGoSymbolNamesPerFile)
+		}
+		total += len(f.Names)
+		for _, n := range f.Names {
+			if n == "" || len(n) > MaxGoSymbolNameLen {
+				return fmt.Errorf("go symbols: %s: name of %d bytes", f.Path, len(n))
+			}
+		}
+	}
+	if total > MaxGoSymbolNames {
+		return fmt.Errorf("go symbols: %d names, at most %d", total, MaxGoSymbolNames)
+	}
+	return nil
+}
+
+// isWindowsAbs reports whether p is an absolute Windows path: with a drive
+// letter or a UNC path.
+func isWindowsAbs(p string) bool {
+	return len(p) >= 3 && p[1] == ':' && (p[2] == '\\' || p[2] == '/') || strings.HasPrefix(p, `\\`)
+}
+
+// GoSymbolsSection answers a GoSymbolQuery, one entry per requested file in
+// request order. It has no digest and is never unchanged.
+type GoSymbolsSection struct {
+	SectionMeta
+	Files []GoSymbolAnswer `json:"files,omitempty"`
+}
+
+type GoSymbolAnswer struct {
+	Container string `json:"container,omitempty"`
+	Path      string `json:"path"`
+	SHA256    string `json:"sha256"`
+	// Results maps every requested name to GoSymbolPresent, GoSymbolAbsent
+	// or GoSymbolNotChecked.
+	Results map[string]string `json:"results"`
+	// Reason explains why names were not checked.
+	Reason string `json:"reason,omitempty"`
 }

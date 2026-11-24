@@ -26,10 +26,12 @@ import (
 	"github.com/bomcensus/bomcensus/internal/agent"
 	"github.com/bomcensus/bomcensus/internal/agent/core"
 	"github.com/bomcensus/bomcensus/internal/agent/state"
+	"github.com/bomcensus/bomcensus/internal/gen/agentapi"
 	"github.com/bomcensus/bomcensus/internal/link"
 	"github.com/bomcensus/bomcensus/internal/pki"
 	"github.com/bomcensus/bomcensus/internal/platform/paths"
 	"github.com/bomcensus/bomcensus/internal/platform/winsvc"
+	"github.com/bomcensus/bomcensus/internal/report"
 	"github.com/bomcensus/bomcensus/internal/scanner/hpkebox"
 	"github.com/bomcensus/bomcensus/internal/scanner/runner"
 	"github.com/bomcensus/bomcensus/internal/version"
@@ -279,6 +281,10 @@ func cmdRun(ctx context.Context, args []string, stderr io.Writer) error {
 		log:  log,
 	}
 	sc.register(rt)
+	rt.OnStatus(func(_ context.Context, req *agentapi.PollRequest) {
+		features := []string{report.FeatureGoSymbols}
+		req.Features = &features
+	})
 	ctx, cancelRun := context.WithCancel(ctx)
 	defer cancelRun()
 	stopped := make(chan struct{})

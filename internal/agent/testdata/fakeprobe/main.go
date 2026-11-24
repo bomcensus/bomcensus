@@ -5,7 +5,8 @@
 // Command fakeprobe stands in for bomcensus-probe in tests. It reads a
 // report.Request from stdin and writes a report with deterministic content
 // for the requested sections, marking sections whose digest the caller
-// already knows as unchanged.
+// already knows as unchanged, and answers a Go symbol query with absent for
+// every name.
 //
 // Environment: FAKEPROBE_VARIANT_FILE names a file whose content becomes
 // part of the package list; FAKEPROBE_REQUESTS names a file every request
@@ -147,6 +148,18 @@ func run() error {
 			}
 			rep.Containers = &report.ContainersSection{SectionMeta: m, Containers: cs}
 		}
+	}
+	if q := req.GoSymbols; q != nil {
+		// Every name is absent.
+		sec := &report.GoSymbolsSection{SectionMeta: report.SectionMeta{Coverage: report.CoverageFull, CollectedAt: now}}
+		for _, f := range q.Files {
+			a := report.GoSymbolAnswer{Container: f.Container, Path: f.Path, SHA256: f.SHA256, Results: map[string]string{}}
+			for _, n := range f.Names {
+				a.Results[n] = report.GoSymbolAbsent
+			}
+			sec.Files = append(sec.Files, a)
+		}
+		rep.GoSymbols = sec
 	}
 	c, _ := json.Marshal(cache)
 	rep.Cache = c

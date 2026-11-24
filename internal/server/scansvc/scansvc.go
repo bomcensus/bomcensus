@@ -112,6 +112,8 @@ type Store interface {
 	GetAsset(ctx context.Context, id string) (store.AssetDetail, error)
 	ListWorkloadPods(ctx context.Context, workloadID string, f store.PodFilter, p store.Page) ([]store.K8sPod, int, error)
 	EnqueueDirective(ctx context.Context, d store.Directive) (store.Directive, bool, error)
+	GoSymbolQueryFor(ctx context.Context, assetID, container string) (store.GoSymbolQuery, error)
+	ClusterGoSymbolQueries(ctx context.Context, clusterID string) ([]store.WorkloadGoSymbolQuery, error)
 }
 
 // Ingester applies what scanners produce (*ingest.Service).

@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/bomcensus/bomcensus/internal/server/store"
@@ -81,6 +82,7 @@ type vuVulnRow struct {
 	RangeSource  string               `json:"range_source"`
 	Platforms    []string             `json:"platforms"`
 	Advisories   []store.VulnAdvisory `json:"advisories"`
+	Symbols      []store.GoImport     `json:"symbols"`
 }
 
 type vuMatchRow struct {
@@ -126,7 +128,7 @@ func (d *DB) SaveMatches(ctx context.Context, b store.MatchBatch) error {
 			}
 			vulns = append(vulns, vuVulnRow{ComponentID: c.ComponentID, VulnID: v.VulnID, Method: v.Method, Ecosystem: v.Ecosystem,
 				FixState: v.FixState, FixedVersion: v.FixedVersion, CPEMatch: v.CPEMatch, RangeSource: v.RangeSource,
-				Platforms: vuStrings(v.Platforms), Advisories: adv})
+				Platforms: vuStrings(v.Platforms), Advisories: adv, Symbols: vuSymbols(v.Symbols)})
 		}
 	}
 	metaJSON, err := json.Marshal(metas)
@@ -172,11 +174,12 @@ func (d *DB) SaveMatches(ctx context.Context, b store.MatchBatch) error {
 		if len(vulns) > 0 {
 			if _, err := tx.q.Exec(ctx, `
 				INSERT INTO component_vulns (component_id, vuln_id, method, ecosystem, fix_state, fixed_version,
-					cpe_match, range_source, platforms, advisories)
+					cpe_match, range_source, platforms, advisories, symbols)
 				SELECT x.component_id, x.vuln_id, x.method, x.ecosystem, x.fix_state, x.fixed_version,
-					x.cpe_match, x.range_source, x.platforms, x.advisories
+					x.cpe_match, x.range_source, x.platforms, x.advisories, x.symbols
 				FROM jsonb_to_recordset($1::text::jsonb) AS x(component_id uuid, vuln_id text, method text, ecosystem text,
-					fix_state text, fixed_version text, cpe_match text, range_source text, platforms text[], advisories jsonb)
+					fix_state text, fixed_version text, cpe_match text, range_source text, platforms text[], advisories jsonb,
+					symbols jsonb)
 				ON CONFLICT DO NOTHING`,
 				string(vulnJSON)); err != nil {
 				return mgErr("save component vulnerabilities", err)
@@ -197,28 +200,58 @@ func (d *DB) SaveMatches(ctx context.Context, b store.MatchBatch) error {
 	})
 }
 
-// vuChangedComponents returns the components of a batch whose set of
-// vulnerabilities differs from the stored one.
+// vuChangedComponents returns the components of a batch whose
+// vulnerabilities, or their vulnerable functions, differ from the stored
+// ones.
 func (d *DB) vuChangedComponents(ctx context.Context, comps []store.ComponentMatch) ([]string, error) {
 	ids := make([]string, 0, len(comps))
 	for _, c := range comps {
 		ids = append(ids, c.ComponentID)
 	}
-	old := map[string][]string{}
+	// sig is what a component's findings depend on: its vulnerabilities and
+	// their functions, in one canonical form.
+	sig := func(vulns map[string][]store.GoImport) string {
+		keys := make([]string, 0, len(vulns))
+		for k := range vulns {
+			keys = append(keys, k)
+		}
+		slices.Sort(keys)
+		var sb strings.Builder
+		for _, k := range keys {
+			js, _ := json.Marshal(vuSymbols(vulns[k]))
+			sb.WriteString(k)
+			sb.WriteByte(0)
+			sb.Write(js)
+			sb.WriteByte('\n')
+		}
+		return sb.String()
+	}
+	old := map[string]map[string][]store.GoImport{}
 	rows, err := d.q.Query(ctx, `
-		SELECT component_id::text, array_agg(DISTINCT vuln_id ORDER BY vuln_id)
-		FROM component_vulns WHERE component_id = ANY($1::uuid[]) GROUP BY component_id`, ids)
+		SELECT component_id::text, vuln_id, symbols::text
+		FROM component_vulns WHERE component_id = ANY($1::uuid[])`, ids)
 	if err != nil {
 		return nil, mgErr("compare component vulnerabilities", err)
 	}
 	for rows.Next() {
-		var id string
-		var vulns []string
-		if err := rows.Scan(&id, &vulns); err != nil {
+		var id, vuln, syms string
+		if err := rows.Scan(&id, &vuln, &syms); err != nil {
 			rows.Close()
 			return nil, mgErr("compare component vulnerabilities", err)
 		}
-		old[id] = vulns
+		var imps []store.GoImport
+		if err := json.Unmarshal([]byte(syms), &imps); err != nil {
+			rows.Close()
+			return nil, fmt.Errorf("postgres: compare component vulnerabilities: symbols: %w", err)
+		}
+		if old[id] == nil {
+			old[id] = map[string][]store.GoImport{}
+		}
+		// The same vulnerability by two methods: package matches carry
+		// the functions.
+		if len(imps) > 0 || old[id][vuln] == nil {
+			old[id][vuln] = imps
+		}
 	}
 	rows.Close()
 	if err := rows.Err(); err != nil {
@@ -226,17 +259,33 @@ func (d *DB) vuChangedComponents(ctx context.Context, comps []store.ComponentMat
 	}
 	var changed []string
 	for _, c := range comps {
-		var now []string
+		now := map[string][]store.GoImport{}
 		for _, v := range c.Vulns {
-			now = append(now, v.VulnID)
+			if len(v.Symbols) > 0 || now[v.VulnID] == nil {
+				now[v.VulnID] = v.Symbols
+			}
 		}
-		slices.Sort(now)
-		now = slices.Compact(now)
-		if !slices.Equal(now, old[c.ComponentID]) {
+		if sig(now) != sig(old[c.ComponentID]) {
 			changed = append(changed, c.ComponentID)
 		}
 	}
 	return changed, nil
+}
+
+// vuSymbols returns imports in a canonical form: sorted, never nil.
+func vuSymbols(in []store.GoImport) []store.GoImport {
+	out := make([]store.GoImport, 0, len(in))
+	for _, g := range in {
+		g.Symbols = slices.Sorted(slices.Values(g.Symbols))
+		g.GOOS = slices.Sorted(slices.Values(g.GOOS))
+		g.GOARCH = slices.Sorted(slices.Values(g.GOARCH))
+		if g.Symbols == nil {
+			g.Symbols = []string{}
+		}
+		out = append(out, g)
+	}
+	slices.SortFunc(out, func(a, b store.GoImport) int { return strings.Compare(a.Path, b.Path) })
+	return out
 }
 
 // ResetMatches implements store.Vulns.

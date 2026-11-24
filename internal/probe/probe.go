@@ -10,7 +10,10 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -32,7 +35,7 @@ func Run(ctx context.Context, req report.Request, opts Options) (*report.Report,
 	if log == nil {
 		log = slog.New(slog.DiscardHandler)
 	}
-	want, err := wantedSections(req.Sections, log)
+	want, err := wantedSections(req, log)
 	if err != nil {
 		return nil, err
 	}
@@ -119,6 +122,9 @@ func Run(ctx context.Context, req report.Request, opts Options) (*report.Report,
 	}
 	if want[report.SectionContainers] {
 		rep.Containers = r.containers(scanContent, running, open)
+	}
+	if req.GoSymbols != nil {
+		rep.GoSymbols = r.goSymbols(req.GoSymbols)
 	}
 
 	applyKnownDigests(rep, req.KnownDigests)
@@ -251,4 +257,52 @@ func dropOwnBinary(sec *report.ArtifactsSection, log *slog.Logger) {
 	} else {
 		log.Warn("artifact digest", "err", err)
 	}
+}
+
+// goSymbols answers the Go symbol query. Paths without a container are
+// under the inspected root; container paths are under the root of a
+// process of that container, opened so that links cannot leave it.
+func (r *runner) goSymbols(q *report.GoSymbolQuery) *report.GoSymbolsSection {
+	if r.expired() {
+		return &report.GoSymbolsSection{SectionMeta: r.skipped(false)}
+	}
+	var ids []string
+	for _, f := range q.Files {
+		if f.Container != "" {
+			ids = append(ids, f.Container)
+		}
+	}
+	var pids map[string]int
+	var roots []*os.Root
+	defer func() {
+		for _, rt := range roots {
+			rt.Close()
+		}
+	}()
+	openerFor := func(container string) (fileOpener, string) {
+		if container == "" {
+			return func(p string) (*os.File, error) { return os.Open(r.env.Path(p)) }, ""
+		}
+		if !r.env.Privileged {
+			return nil, "container content needs privileges"
+		}
+		if pids == nil {
+			pids = proc.ContainerPIDs(r.env.Proc, ids)
+		}
+		pid, ok := pids[container]
+		if !ok {
+			return nil, "container not running"
+		}
+		rt, err := os.OpenRoot(filepath.Join(r.env.Proc, strconv.Itoa(pid), "root"))
+		if err != nil {
+			return nil, fmt.Sprintf("cannot open container root: %v", err)
+		}
+		roots = append(roots, rt)
+		return func(p string) (*os.File, error) { return rt.Open(strings.TrimPrefix(p, "/")) }, ""
+	}
+	var sec *report.GoSymbolsSection
+	if !r.bounded(func() { sec = answerGoSymbols(r.ctx, q, openerFor) }) || sec == nil {
+		return &report.GoSymbolsSection{SectionMeta: r.skipped(true)}
+	}
+	return sec
 }

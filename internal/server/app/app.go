@@ -184,6 +184,7 @@ func Run(ctx context.Context, cfg config.Config, log *slog.Logger, opts Options)
 		matcher.Register(queue, vulnsvc.DefaultInterval),
 		refresher.Register(queue, vulnsvc.DefaultRefreshInterval),
 		vulnsvc.NewExpirer(db, log.With("component", "triage")).Register(queue, vulnsvc.DefaultExpireInterval),
+		vulnsvc.NewSymbolChecker(db, disp, log.With("component", "gosymbols")).Register(queue, vulnsvc.DefaultSymbolCheckInterval),
 	); err != nil {
 		return err
 	}

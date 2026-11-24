@@ -77,7 +77,18 @@ type FindingInputs struct {
 	// HashComponents maps executable and library hashes of the processes
 	// to the source components with a file of that hash.
 	HashComponents map[string][]string
+	// Symbols are the vulnerable Go functions by component and
+	// vulnerability (SymbolKey), for vulnerabilities that list them.
+	Symbols map[string][]GoImport
+	// GoBinaries are the Go executables of the asset and of the images of
+	// its current containers.
+	GoBinaries []FindingGoBinary
+	// SymbolResults are the asset's answers by executable hash and name.
+	SymbolResults map[string]map[string]GoSymbolResult
 }
+
+// SymbolKey is the key of FindingInputs.Symbols.
+func SymbolKey(componentID, vulnID string) string { return componentID + "\x00" + vulnID }
 
 // FindingProcessRef is a process kept on a finding.
 type FindingProcessRef struct {
@@ -95,7 +106,9 @@ type FindingRow struct {
 	ComponentID string
 	VulnID      string
 	Exposure    string
-	Processes   []FindingProcessRef
+	// Reachability is ReachSymbolPresent, ReachSymbolAbsent or "".
+	Reachability string
+	Processes    []FindingProcessRef
 }
 
 // FindingsChange counts what ApplyFindings changed.

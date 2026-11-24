@@ -180,13 +180,17 @@ func (s *Service) apply(ctx context.Context, sender Sender, reportID string, r *
 		if err != nil {
 			return err
 		}
-		var assetID string
+		var assetID, container string
 		if subj.k8s != nil {
 			assetID, err = s.applyK8sContainer(ctx, tx, subj, r)
+			container = subj.k8s.Container
 		} else {
 			assetID, err = s.applyHost(ctx, tx, sender, subj, r)
 		}
 		if err != nil {
+			return err
+		}
+		if err := s.applyGoSymbols(ctx, tx, assetID, container, r); err != nil {
 			return err
 		}
 		if assetID != "" {

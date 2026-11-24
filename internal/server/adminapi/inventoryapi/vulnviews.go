@@ -29,6 +29,41 @@ var exposureLevel = map[string]int{
 	store.ExposureListening: 4, store.ExposureRunning: 3, store.ExposureInstalled: 2, store.ExposureUnknown: 1,
 }
 
+// placeRank orders places most exposed first and, within one exposure,
+// a linked vulnerable function before an unknown one before none.
+func placeRank(exposure string, reach *gen.Reachability) int {
+	r := 1
+	if reach != nil {
+		switch *reach {
+		case gen.SymbolPresent:
+			r = 2
+		case gen.SymbolAbsent:
+			r = 0
+		}
+	}
+	return exposureLevel[exposure]*3 + r
+}
+
+func reachabilityDTO(r string) *gen.Reachability {
+	if r == "" {
+		return nil
+	}
+	v := gen.Reachability(r)
+	return &v
+}
+
+// symbolNames lists the vulnerable functions of a match.
+func symbolNames(imps []store.GoImport) *[]string {
+	var out []string
+	for _, g := range imps {
+		out = append(out, g.Names()...)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return &out
+}
+
 func maxExposure(c store.ExposureCounts) string {
 	switch {
 	case c.Listening > 0:
@@ -365,6 +400,8 @@ func locationsOf(fs []store.OpenFinding) []gen.VulnLocation {
 	type key struct{ asset, container, comp string }
 	index := map[key]int{}
 	var out []gen.VulnLocation
+	type reach struct{ present, absent, n int }
+	reaches := map[int]*reach{}
 	for _, f := range fs {
 		k := key{f.AssetID, f.Container, f.Component.ID}
 		i, ok := index[k]
@@ -390,9 +427,33 @@ func locationsOf(fs []store.OpenFinding) []gen.VulnLocation {
 		if f.FirstSeen.Before(out[i].FirstSeen) {
 			out[i].FirstSeen = f.FirstSeen
 		}
+		r := reaches[i]
+		if r == nil {
+			r = &reach{}
+			reaches[i] = r
+		}
+		r.n++
+		switch f.Reachability {
+		case store.ReachSymbolPresent:
+			r.present++
+		case store.ReachSymbolAbsent:
+			r.absent++
+		}
+	}
+	for i, r := range reaches {
+		switch {
+		case r.present > 0:
+			out[i].Reachability = reachabilityDTO(store.ReachSymbolPresent)
+		case r.absent == r.n:
+			out[i].Reachability = reachabilityDTO(store.ReachSymbolAbsent)
+		}
+		if r.absent > 0 {
+			n := r.absent
+			out[i].SymbolAbsent = &n
+		}
 	}
 	slices.SortStableFunc(out, func(a, b gen.VulnLocation) int {
-		if c := cmp.Compare(exposureLevel[string(b.Exposure)], exposureLevel[string(a.Exposure)]); c != 0 {
+		if c := cmp.Compare(placeRank(string(b.Exposure), b.Reachability), placeRank(string(a.Exposure), a.Reachability)); c != 0 {
 			return c
 		}
 		return cmp.Compare(a.AssetName, b.AssetName)
@@ -640,11 +701,12 @@ func (h *Handlers) ListAssetVulnerabilities(ctx context.Context, req gen.ListAss
 			VulnId: f.VulnID, Summary: optStr(f.Meta.Summary), Severity: severityPtr(f.Meta.Severity), Score: f.Meta.MaxScore,
 			Kev: f.Meta.KEV != nil, Epss: f.Meta.EPSS, Exposure: gen.Exposure(f.Exposure), FixState: gen.FixState(f.Match.FixState),
 			FixedVersion: optStr(f.Match.FixedVersion), Processes: processesDTO(f.Processes), FirstSeen: f.FirstSeen,
-			Triage: findingTriageDTO(f, h.cfg.Now()),
+			Triage:       findingTriageDTO(f, h.cfg.Now()),
+			Reachability: reachabilityDTO(f.Reachability), Symbols: symbolNames(f.Match.Symbols),
 		})
 	}
 	slices.SortStableFunc(out.Items, func(a, b gen.AssetVuln) int {
-		return cmpRank(exposureLevel[string(a.Exposure)], exposureLevel[string(b.Exposure)], a.Kev, b.Kev,
+		return cmpRank(placeRank(string(a.Exposure), a.Reachability), placeRank(string(b.Exposure), b.Reachability), a.Kev, b.Kev,
 			a.Epss, b.Epss, a.Score, b.Score, a.ComponentName+" "+a.VulnId, b.ComponentName+" "+b.VulnId)
 	})
 	return out, nil

@@ -121,6 +121,7 @@ export type {
   SeverityCounts,
   FindingLayer,
   FindingProcess,
+  Reachability,
   VulnComponent,
   VulnCve,
   VulnLocation,

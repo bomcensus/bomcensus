@@ -126,7 +126,8 @@ var exposureRank = map[string]int{
 }
 
 // Compute returns the findings of an asset: one per container, component
-// and vulnerability, with the exposure of the component.
+// and vulnerability, with the exposure of the component and, for Go
+// components, whether the vulnerable functions are linked (gosymbols.go).
 func Compute(in store.FindingInputs) []store.FindingRow {
 	if in.Gone {
 		return nil
@@ -139,6 +140,13 @@ func Compute(in store.FindingInputs) []store.FindingRow {
 		for _, v := range s.VulnIDs {
 			row := store.FindingRow{Container: s.Container, Layer: s.Layer, ImageDigest: s.ImageDigest,
 				ComponentID: s.Component.ID, VulnID: v, Exposure: exposure, Processes: procs}
+			// A vulnerable function linked into none of the executables
+			// lowers the exposure to that of an installed component.
+			row.Reachability = reachabilityOf(in, s, v)
+			if row.Reachability == store.ReachSymbolAbsent &&
+				(row.Exposure == store.ExposureListening || row.Exposure == store.ExposureRunning) {
+				row.Exposure = store.ExposureInstalled
+			}
 			k := key{s.Container, s.Component.ID, v}
 			// The same component in two layers of a container is one
 			// finding: the more exposed, then the runtime layer.

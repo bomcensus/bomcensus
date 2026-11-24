@@ -25,6 +25,7 @@ import (
 
 	"github.com/bomcensus/bomcensus/internal/gen/agentapi"
 	"github.com/bomcensus/bomcensus/internal/report"
+	"github.com/bomcensus/bomcensus/internal/report/reportapi"
 	"github.com/bomcensus/bomcensus/internal/sign"
 )
 
@@ -68,6 +69,8 @@ type ExecTarget struct {
 	// KnownDigests are the section digests the caller already has for this
 	// container (report.Request.KnownDigests).
 	KnownDigests map[string]string
+	// GoSymbols is passed to the probe with the collection.
+	GoSymbols *report.GoSymbolQuery
 }
 
 // TargetFromAPI converts a k8s_exec directive target.
@@ -82,6 +85,7 @@ func TargetFromAPI(t agentapi.K8sExecTarget) ExecTarget {
 	for _, s := range t.Sections {
 		out.Sections = append(out.Sections, string(s))
 	}
+	out.GoSymbols = reportapi.GoSymbolQueryPtr(t.GoSymbols)
 	return out
 }
 
@@ -95,6 +99,7 @@ func (t ExecTarget) API() agentapi.K8sExecTarget {
 	for _, s := range t.Sections {
 		out.Sections = append(out.Sections, agentapi.SectionName(s))
 	}
+	out.GoSymbols = reportapi.APIGoSymbolQueryPtr(t.GoSymbols)
 	return out
 }
 
@@ -255,7 +260,7 @@ func CollectContainer(ctx context.Context, c *Client, t ExecTarget, d Deps) (*re
 	if len(sections) == 0 {
 		sections = FullSections
 	}
-	req := report.Request{Sections: sections, KnownDigests: t.KnownDigests, Policy: d.Policy}
+	req := report.Request{Sections: sections, KnownDigests: t.KnownDigests, Policy: d.Policy, GoSymbols: t.GoSymbols}
 	req.Policy.MaxRuntimeSeconds = int(d.MaxRuntime / time.Second)
 	req.Policy.MemoryLimitMB = d.MemoryLimitMB
 	req.Policy.ScanContainers = false

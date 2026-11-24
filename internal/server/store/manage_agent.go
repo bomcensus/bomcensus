@@ -91,6 +91,9 @@ type Agent struct {
 	// example why a version was rolled back; empty when none.
 	UpdateMessage string
 	AssetID       string // empty until ingest links an asset
+	// Features are the optional features reported in the last poll
+	// (FeatureGoSymbols).
+	Features []string
 
 	EnrolledAt time.Time
 	ApprovedAt *time.Time
@@ -150,7 +153,24 @@ type AgentPollStatus struct {
 	TrustBundleVersion int64
 	UpdateState        UpdateState
 	UpdateMessage      string
+	Features           []string
 	SeenAt             time.Time
+}
+
+// Optional agent and scanner features.
+const (
+	// FeatureGoSymbols: answers Go symbol queries (report.FeatureGoSymbols).
+	FeatureGoSymbols = "go_symbols"
+)
+
+// HasFeature reports whether the agent reported feature f.
+func (a Agent) HasFeature(f string) bool {
+	for _, x := range a.Features {
+		if x == f {
+			return true
+		}
+	}
+	return false
 }
 
 // AgentCounts are the dashboard numbers over agents and scanners together.

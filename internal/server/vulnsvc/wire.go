@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bomcensus/bomcensus/internal/report"
 	"github.com/bomcensus/bomcensus/internal/server/store"
 )
 
@@ -77,6 +78,8 @@ type match struct {
 	RangeSource  string               `json:"range_source"`
 	Platforms    []string             `json:"platforms"`
 	Advisories   []store.VulnAdvisory `json:"advisories"`
+	// Symbols are the vulnerable functions of Go matches.
+	Symbols []store.GoImport `json:"symbols"`
 }
 
 type vulnerability struct {
@@ -206,7 +209,7 @@ func convert(res *matchResult, comps []store.Component, epoch store.MatchEpoch, 
 				used[mt.VulnID] = true
 				cm.Vulns = append(cm.Vulns, store.ComponentVuln{VulnID: mt.VulnID, Method: mt.Method, Ecosystem: mt.Ecosystem,
 					FixState: mt.FixState, FixedVersion: mt.FixedVersion, CPEMatch: mt.CPEMatch, RangeSource: mt.RangeSource,
-					Platforms: mt.Platforms, Advisories: mt.Advisories})
+					Platforms: mt.Platforms, Advisories: mt.Advisories, Symbols: goImports(mt.Symbols)})
 			}
 			b.Components = append(b.Components, cm)
 		}
@@ -258,4 +261,27 @@ func Rating(score float64) string {
 		return "low"
 	}
 	return "none"
+}
+
+// goImports keeps the imports that name a package and functions, with names
+// of bounded length, so that a query built from them stays valid.
+func goImports(in []store.GoImport) []store.GoImport {
+	var out []store.GoImport
+	for _, g := range in {
+		if g.Path == "" || len(g.Symbols) == 0 {
+			continue
+		}
+		var syms []string
+		for _, s := range g.Symbols {
+			if s != "" && len(g.Path)+1+len(s) <= report.MaxGoSymbolNameLen {
+				syms = append(syms, s)
+			}
+		}
+		if len(syms) == 0 {
+			continue
+		}
+		g.Symbols = syms
+		out = append(out, g)
+	}
+	return out
 }

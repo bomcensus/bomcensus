@@ -130,3 +130,16 @@ func firstNonEmpty(s ...string) string {
 	}
 	return ""
 }
+
+// GoBinaries returns the Go executables among arts: files with Go build
+// info and a hash, not entries of archives.
+func GoBinaries(arts []report.Artifact) []store.GoBinary {
+	var out []store.GoBinary
+	for _, a := range arts {
+		if a.Kind != report.ArtifactGoBinary || a.SHA256 == "" || len(a.Nested) > 0 {
+			continue
+		}
+		out = append(out, store.GoBinary{Path: a.Path, SHA256: strings.ToLower(a.SHA256), GOOS: a.GOOS, GOARCH: a.GOARCH})
+	}
+	return out
+}

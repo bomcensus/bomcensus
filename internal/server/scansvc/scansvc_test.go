@@ -536,6 +536,34 @@ func TestEmbeddedSyncPlansExec(t *testing.T) {
 	if len(pod.Containers) != 1 || pod.Containers[0].Coverage != store.CoverageUnsupported {
 		t.Fatalf("coverage of a failed container not recorded: %+v", pod.Containers)
 	}
+
+	// A waiting Go symbol query of a workload container rides on one of
+	// its replicas.
+	const name = "web"
+	var assetID string
+	must(t, f.db.Pool().QueryRow(f.ctx, `SELECT asset_id::text FROM k8s_workloads
+		WHERE cluster_id = $1 AND name = $2`, cl.ID, name).Scan(&assetID))
+	q, _ := json.Marshal(report.GoSymbolQuery{Files: []report.GoSymbolFile{{Path: "/app", SHA256: strings.Repeat("a", 64),
+		Names: []string{"net/http.Serve"}}}})
+	ctName := ""
+	for _, tg := range f.run.execs[0].Targets {
+		if tg.WorkloadName == name {
+			ctName = tg.Container
+		}
+	}
+	must(t, f.db.PutGoSymbolQuery(f.ctx, store.GoSymbolQuery{AssetID: assetID, Container: ctName, Query: q}))
+	with := 0
+	for _, tg := range f.svc.withGoSymbols(f.ctx, cl.ID, f.run.execs[0].Targets) {
+		if tg.GoSymbols != nil {
+			with++
+			if tg.WorkloadName != name || tg.Container != ctName || tg.GoSymbols.Files[0].Path != "/app" {
+				t.Errorf("query on %+v", tg)
+			}
+		}
+	}
+	if with != 1 {
+		t.Fatalf("query on %d targets, want 1", with)
+	}
 	// Synced just now: not due.
 	must(t, f.svc.ScheduleK8s(f.ctx))
 	time.Sleep(50 * time.Millisecond)

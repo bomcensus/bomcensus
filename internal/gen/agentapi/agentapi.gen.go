@@ -121,6 +121,21 @@ func (e EnrollStatus) Valid() bool {
 	}
 }
 
+// Defines values for GoSymbolsDirectiveType.
+const (
+	GoSymbols GoSymbolsDirectiveType = "go_symbols"
+)
+
+// Valid indicates whether the value is a known member of the GoSymbolsDirectiveType enum.
+func (e GoSymbolsDirectiveType) Valid() bool {
+	switch e {
+	case GoSymbols:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for K8sConnection.
 const (
 	InCluster  K8sConnection = "in_cluster"
@@ -530,6 +545,32 @@ type ExecTargetResult struct {
 	Status    ScanJobStatus `json:"status"`
 }
 
+// GoSymbolFile defines model for GoSymbolFile.
+type GoSymbolFile struct {
+	// Container Runtime id of a running container the path is in. Absent for the subject's own file system.
+	Container *string  `json:"container,omitempty"`
+	Names     []string `json:"names"`
+	Path      string   `json:"path"`
+	Sha256    string   `json:"sha256"`
+}
+
+// GoSymbolQuery Mirrors `report.GoSymbolQuery`: Go executables from an earlier report and the functions to look up in each. Limits in `report`.
+type GoSymbolQuery struct {
+	Files []GoSymbolFile `json:"files"`
+}
+
+// GoSymbolsDirective Agent: answer the query with a report that carries only the `go_symbols` section. Sent only to agents that report the `go_symbols` feature.
+type GoSymbolsDirective struct {
+	Id string `json:"id"`
+
+	// Query Mirrors `report.GoSymbolQuery`: Go executables from an earlier report and the functions to look up in each. Limits in `report`.
+	Query GoSymbolQuery          `json:"query"`
+	Type  GoSymbolsDirectiveType `json:"type"`
+}
+
+// GoSymbolsDirectiveType defines model for GoSymbolsDirective.Type.
+type GoSymbolsDirectiveType string
+
 // HostFacts defines model for HostFacts.
 type HostFacts struct {
 	Arch      string  `json:"arch"`
@@ -565,10 +606,13 @@ type K8sExecDirectiveType string
 
 // K8sExecTarget defines model for K8sExecTarget.
 type K8sExecTarget struct {
-	Container   string  `json:"container"`
-	ImageDigest *string `json:"image_digest,omitempty"`
-	ImageRef    *string `json:"image_ref,omitempty"`
-	Namespace   string  `json:"namespace"`
+	Container string `json:"container"`
+
+	// GoSymbols Passed to the probe in this container with the collection. Present only for scanners that report the `go_symbols` feature.
+	GoSymbols   *GoSymbolQuery `json:"go_symbols,omitempty"`
+	ImageDigest *string        `json:"image_digest,omitempty"`
+	ImageRef    *string        `json:"image_ref,omitempty"`
+	Namespace   string         `json:"namespace"`
 
 	// Node Node the pod runs on, from the inventory. Bounds concurrent exec sessions per node.
 	Node *string `json:"node,omitempty"`
@@ -716,6 +760,9 @@ type PollRequest struct {
 	CertNotAfter    *time.Time  `json:"cert_not_after,omitempty"`
 	ConnectMode     ConnectMode `json:"connect_mode"`
 
+	// Features Optional features this agent or scanner supports. `go_symbols`: answers `go_symbols` directives and the `go_symbols` fields of scan directives.
+	Features *[]string `json:"features,omitempty"`
+
 	// ObservedServerCert The server certificate the agent saw in the TLS handshake.
 	ObservedServerCert *ObservedCert `json:"observed_server_cert,omitempty"`
 	Os                 TargetOs      `json:"os"`
@@ -828,6 +875,9 @@ type ScanSshDirective struct {
 
 	// Credential Opaque HPKE ciphertext sealed to the scanner's encryption public key. Suite and encapsulation are defined in `docs/PROTOCOL.md`.
 	Credential SealedSecret `json:"credential"`
+
+	// GoSymbols Passed to the probe with the collection. Present only for scanners that report the `go_symbols` feature.
+	GoSymbols *GoSymbolQuery `json:"go_symbols,omitempty"`
 
 	// HostKey Pinned host key in SSH wire format, present together with `host_key_fingerprint`. The scanner enforces it before it sends credentials; a fingerprint without the key is refused. See `docs/PROTOCOL.md`.
 	HostKey *[]byte `json:"host_key,omitempty"`
@@ -1214,6 +1264,40 @@ func (t *Directive) MergeSyncTrustBundleDirective(v SyncTrustBundleDirective) er
 	return err
 }
 
+// AsGoSymbolsDirective returns the union data inside the Directive as a GoSymbolsDirective
+func (t Directive) AsGoSymbolsDirective() (GoSymbolsDirective, error) {
+	var body GoSymbolsDirective
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromGoSymbolsDirective overwrites any union data inside the Directive as the provided GoSymbolsDirective
+func (t *Directive) FromGoSymbolsDirective(v GoSymbolsDirective) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	b, err = runtime.JSONMerge(b, []byte(`{"type":"go_symbols"}`))
+	t.union = b
+	return err
+}
+
+// MergeGoSymbolsDirective performs a merge with any union data inside the Directive, using the provided GoSymbolsDirective
+func (t *Directive) MergeGoSymbolsDirective(v GoSymbolsDirective) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	b, err = runtime.JSONMerge(b, []byte(`{"type":"go_symbols"}`))
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
 func (t Directive) Discriminator() (string, error) {
 	var discriminator struct {
 		Discriminator string `json:"type"`
@@ -1230,6 +1314,8 @@ func (t Directive) ValueByDiscriminator() (interface{}, error) {
 	switch discriminator {
 	case "collect":
 		return t.AsCollectDirective()
+	case "go_symbols":
+		return t.AsGoSymbolsDirective()
 	case "k8s_exec":
 		return t.AsK8sExecDirective()
 	case "k8s_sync":

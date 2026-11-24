@@ -167,7 +167,8 @@ func (s *Service) runEmbeddedExec(ctx context.Context, c store.K8sCluster, kc []
 	}
 	release := s.keepLease(ctx, lease, jobID)
 	defer release()
-	job := runner.K8sExecJob{JobID: jobID, ClusterID: c.ID, Kubeconfig: kc, Targets: targets, Policy: s.policy(ctx), Limits: s.limits}
+	job := runner.K8sExecJob{JobID: jobID, ClusterID: c.ID, Kubeconfig: kc, Targets: s.withGoSymbols(ctx, c.ID, targets),
+		Policy: s.policy(ctx), Limits: s.limits}
 	if _, err := s.run.RunK8sExec(ctx, job, s.deps(&embeddedSink{s: s})); err != nil {
 		s.log.Warn("result of an embedded exec collection was not stored", "job_id", jobID, "error", err)
 	}
@@ -227,6 +228,9 @@ func (s *Service) dispatchExec(ctx context.Context, sc store.Agent, c store.K8sC
 	d := agentapi.K8sExecDirective{
 		Type: agentapi.K8sExec, JobId: jobID, ClusterId: c.ID, Connection: agentapi.K8sConnection(c.Connection),
 		Policy: runner.PolicyToAPI(s.policy(ctx)), Targets: make([]agentapi.K8sExecTarget, 0, len(targets)),
+	}
+	if sc.HasFeature(store.FeatureGoSymbols) {
+		targets = s.withGoSymbols(ctx, c.ID, targets)
 	}
 	for _, t := range targets {
 		at := t.API()

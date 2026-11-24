@@ -927,6 +927,13 @@ components:
           type: array
           items:
             type: string
+        features:
+          description: "Optional features this agent or scanner supports. `go_symbols`: answers `go_symbols` directives and the `go_symbols` fields of scan directives."
+          type: array
+          maxItems: 16
+          items:
+            type: string
+            maxLength: 64
     SectionIntervals:
       description: Collection interval per section in seconds. 0 disables the section.
       type: object
@@ -990,6 +997,7 @@ components:
         - $ref: "#/components/schemas/K8sExecDirective"
         - $ref: "#/components/schemas/RenewCertDirective"
         - $ref: "#/components/schemas/SyncTrustBundleDirective"
+        - $ref: "#/components/schemas/GoSymbolsDirective"
       discriminator:
         propertyName: type
         mapping:
@@ -999,6 +1007,47 @@ components:
           k8s_exec: "#/components/schemas/K8sExecDirective"
           renew_cert: "#/components/schemas/RenewCertDirective"
           sync_trust_bundle: "#/components/schemas/SyncTrustBundleDirective"
+          go_symbols: "#/components/schemas/GoSymbolsDirective"
+    GoSymbolQuery:
+      description: "Mirrors `report.GoSymbolQuery`: Go executables from an earlier report and the functions to look up in each. Limits in `report`."
+      type: object
+      required: [files]
+      properties:
+        files:
+          type: array
+          maxItems: 64
+          items:
+            $ref: "#/components/schemas/GoSymbolFile"
+    GoSymbolFile:
+      type: object
+      required: [path, sha256, names]
+      properties:
+        container:
+          description: Runtime id of a running container the path is in. Absent for the subject's own file system.
+          type: string
+        path:
+          type: string
+        sha256:
+          type: string
+          pattern: "^[0-9a-f]{64}$"
+        names:
+          type: array
+          maxItems: 512
+          items:
+            type: string
+            maxLength: 512
+    GoSymbolsDirective:
+      description: "Agent: answer the query with a report that carries only the `go_symbols` section. Sent only to agents that report the `go_symbols` feature."
+      type: object
+      required: [type, id, query]
+      properties:
+        type:
+          type: string
+          enum: [go_symbols]
+        id:
+          type: string
+        query:
+          $ref: "#/components/schemas/GoSymbolQuery"
     CollectDirective:
       description: Collect the given sections of the own host now.
       type: object
@@ -1055,6 +1104,10 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/SectionName"
+        go_symbols:
+          description: Passed to the probe with the collection. Present only for scanners that report the `go_symbols` feature.
+          allOf:
+            - $ref: "#/components/schemas/GoSymbolQuery"
     K8sFilter:
       description: Same semantics as the cluster filter in the admin API.
       type: object
@@ -1131,6 +1184,10 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/SectionName"
+        go_symbols:
+          description: Passed to the probe in this container with the collection. Present only for scanners that report the `go_symbols` feature.
+          allOf:
+            - $ref: "#/components/schemas/GoSymbolQuery"
     K8sExecDirective:
       description: "Scanner: collect containers through `pods/exec`. One report per container with subject `k8s_container`. `kubeconfig` (sealed kubeconfig YAML) is present when `connection=kubeconfig`."
       type: object

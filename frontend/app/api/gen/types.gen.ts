@@ -1482,10 +1482,23 @@ export type VulnLocation = {
     locations: Array<string>;
     method?: DetectMethod;
     exposure: Exposure;
+    /**
+     * From the Go executables there: present when one links a vulnerable function of one of the CVEs, absent when none links any for all of them. Absent when not known.
+     */
+    reachability?: Reachability;
+    /**
+     * CVEs there whose vulnerable functions are linked into none of the executables.
+     */
+    symbolAbsent?: number;
     processes: Array<FindingProcess>;
     cves: number;
     firstSeen: string;
 };
+
+/**
+ * Whether the vulnerable Go functions are linked into the executables. `symbol_absent` lowers the exposure to installed.
+ */
+export type Reachability = 'symbol_present' | 'symbol_absent';
 
 export type VulnComponentDetail = {
     component: VulnComponent;
@@ -1578,6 +1591,11 @@ export type AssetVuln = {
     kev: boolean;
     epss?: number;
     exposure: Exposure;
+    reachability?: Reachability;
+    /**
+     * Vulnerable functions of the vulnerability (package path and name), checked against the Go executables.
+     */
+    symbols?: Array<string>;
     fixState: FixState;
     fixedVersion?: string;
     processes: Array<FindingProcess>;

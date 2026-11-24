@@ -676,6 +676,24 @@ func (e PrivilegeLevel) Valid() bool {
 	}
 }
 
+// Defines values for Reachability.
+const (
+	SymbolAbsent  Reachability = "symbol_absent"
+	SymbolPresent Reachability = "symbol_present"
+)
+
+// Valid indicates whether the value is a known member of the Reachability enum.
+func (e Reachability) Valid() bool {
+	switch e {
+	case SymbolAbsent:
+		return true
+	case SymbolPresent:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for RegisterKeyApproval.
 const (
 	RegisterKeyApprovalAuto   RegisterKeyApproval = "auto"
@@ -2261,13 +2279,19 @@ type AssetVuln struct {
 	// Layer `host` for the asset itself, `runtime` for files added in the running container, `image` for the image content.
 	Layer     FindingLayer     `json:"layer"`
 	Processes []FindingProcess `json:"processes"`
-	Score     *float64         `json:"score,omitempty"`
+
+	// Reachability Whether the vulnerable Go functions are linked into the executables. `symbol_absent` lowers the exposure to installed.
+	Reachability *Reachability `json:"reachability,omitempty"`
+	Score        *float64      `json:"score,omitempty"`
 
 	// Severity CVSS rating of the highest base score.
-	Severity *Severity   `json:"severity,omitempty"`
-	Summary  *string     `json:"summary,omitempty"`
-	Triage   *TriageRule `json:"triage,omitempty"`
-	VulnId   string      `json:"vulnId"`
+	Severity *Severity `json:"severity,omitempty"`
+	Summary  *string   `json:"summary,omitempty"`
+
+	// Symbols Vulnerable functions of the vulnerability (package path and name), checked against the Go executables.
+	Symbols *[]string   `json:"symbols,omitempty"`
+	Triage  *TriageRule `json:"triage,omitempty"`
+	VulnId  string      `json:"vulnId"`
 }
 
 // AssetVulnList defines model for AssetVulnList.
@@ -3153,6 +3177,9 @@ type ProcessList struct {
 	Total int           `json:"total"`
 }
 
+// Reachability Whether the vulnerable Go functions are linked into the executables. `symbol_absent` lowers the exposure to installed.
+type Reachability string
+
 // RegisterKey defines model for RegisterKey.
 type RegisterKey struct {
 	AllowRelaxedTls bool `json:"allowRelaxedTls"`
@@ -3801,6 +3828,12 @@ type VulnLocation struct {
 	Locations []string         `json:"locations"`
 	Method    *DetectMethod    `json:"method,omitempty"`
 	Processes []FindingProcess `json:"processes"`
+
+	// Reachability From the Go executables there: present when one links a vulnerable function of one of the CVEs, absent when none links any for all of them. Absent when not known.
+	Reachability *Reachability `json:"reachability,omitempty"`
+
+	// SymbolAbsent CVEs there whose vulnerable functions are linked into none of the executables.
+	SymbolAbsent *int `json:"symbolAbsent,omitempty"`
 }
 
 // VulnProcess defines model for VulnProcess.

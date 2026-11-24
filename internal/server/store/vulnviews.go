@@ -127,8 +127,10 @@ type OpenFinding struct {
 	Component   Component
 	VulnID      string
 	Exposure    string
-	Processes   []FindingProcessRef
-	FirstSeen   time.Time
+	// Reachability is ReachSymbolPresent, ReachSymbolAbsent or "".
+	Reachability string
+	Processes    []FindingProcessRef
+	FirstSeen    time.Time
 	// Locations and Method of the component at this place.
 	Locations []string
 	Method    string

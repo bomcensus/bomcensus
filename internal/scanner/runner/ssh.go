@@ -49,6 +49,8 @@ type SSHJob struct {
 	Sections []string
 	// Timeout bounds the collection; zero means ssh.DefaultTimeout.
 	Timeout time.Duration
+	// GoSymbols is passed to the probe with the collection.
+	GoSymbols *report.GoSymbolQuery
 }
 
 // RunSSH collects one host over SSH and submits its report and result. The
@@ -93,7 +95,7 @@ func runSSH(ctx context.Context, job SSHJob, d Deps, res *Result, log *slog.Logg
 		},
 		Sudo:    job.Sudo,
 		HostKey: pinned,
-		Request: report.Request{Sections: slices.Clone(job.Sections), Policy: job.Policy},
+		Request: report.Request{Sections: slices.Clone(job.Sections), Policy: job.Policy, GoSymbols: job.GoSymbols},
 		Timeout: job.Timeout,
 	}
 	out, err := d.sshCollect(ctx, t, ssh.Deps{Probe: d.probe(), Logger: d.Logger})

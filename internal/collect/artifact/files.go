@@ -267,6 +267,8 @@ func (c *collector) addGo(logical string, gi *goInfo, s256 string, size int64) {
 		Name:      name,
 		Version:   gi.Main.Version,
 		GoVersion: gi.GoVersion,
+		GOOS:      gi.Settings["GOOS"],
+		GOARCH:    gi.Settings["GOARCH"],
 		Module:    gi.Main.Path,
 		Method:    report.MethodBuildInfo,
 		SHA256:    s256,

@@ -95,6 +95,15 @@ func (s *Service) applyK8sContainer(ctx context.Context, tx store.Store, subj su
 			sectionCoverage(arts.Coverage) != store.CoverageFull {
 			cov = store.CoveragePartial
 		}
+		if arts != nil {
+			scope := store.GoBinaryScope{Digest: digest}
+			if digest == "" {
+				scope = store.GoBinaryScope{AssetID: assetID, Container: name, Layer: store.LayerImage}
+			}
+			if err := tx.ReplaceGoBinaries(ctx, scope, normalize.GoBinaries(imageArts), store.ReplaceOptions{At: at}); err != nil {
+				return "", fmt.Errorf("ingest: replace go binaries: %w", err)
+			}
+		}
 		if digest != "" {
 			if _, err := tx.PutImageContent(ctx, store.ImageContent{Digest: digest, Coverage: cov, CollectedAt: at,
 				Packages: content.Packages, Artifacts: content.Artifacts}); err != nil {
@@ -127,6 +136,10 @@ func (s *Service) applyK8sContainer(ctx context.Context, tx store.Store, subj su
 				return "", fmt.Errorf("ingest: replace runtime artifacts: %w", err)
 			}
 			ids.add(obs, res)
+			if err := tx.ReplaceGoBinaries(ctx, store.GoBinaryScope{AssetID: assetID, Container: name, Layer: store.LayerRuntime},
+				normalize.GoBinaries(runtimeArts), store.ReplaceOptions{At: at}); err != nil {
+				return "", fmt.Errorf("ingest: replace go binaries: %w", err)
+			}
 			hashes = append(hashes, normalize.FileHashes(runtimeArts, nil)...)
 		}
 	}

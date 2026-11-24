@@ -195,11 +195,11 @@ func (d *DB) OpenFindings(ctx context.Context, f store.OpenFindingFilter) ([]sto
 		SELECT `+vuMetaCols+`,
 			f.id::text, f.asset_id::text, a.name, a.kind, f.container, f.layer, f.image_digest,
 			c.id::text, c.type, c.name, c.version, c.purl,
-			f.vuln_id, f.exposure, f.processes::text, f.first_seen,
+			f.vuln_id, f.exposure, coalesce(f.reachability, ''), f.processes::text, f.first_seen,
 			coalesce(loc.locs, '{}'), coalesce(loc.method, ''),
 			coalesce(cv.method, ''), coalesce(cv.ecosystem, ''), coalesce(cv.fix_state, 'unknown'),
 			coalesce(cv.fixed_version, ''), coalesce(cv.cpe_match, ''), coalesce(cv.range_source, ''),
-			coalesce(cv.platforms, '{}'), coalesce(cv.advisories::text, '[]'),
+			coalesce(cv.platforms, '{}'), coalesce(cv.advisories::text, '[]'), coalesce(cv.symbols::text, '[]'),
 			t.rule_id IS NOT NULL, coalesce(t.expires_at IS NULL OR t.expires_at > `+atArg+`, false),
 			`+trCols+`
 		FROM findings f
@@ -234,15 +234,15 @@ func (d *DB) OpenFindings(ctx context.Context, f store.OpenFindingFilter) ([]sto
 	var out []store.OpenFinding
 	for rows.Next() {
 		var o store.OpenFinding
-		var procs, adv string
+		var procs, adv, syms string
 		var hasRule, active bool
 		var rule trNullRule
 		if err := vuScanMeta(rows, &o.Meta, &o.ID, &o.AssetID, &o.AssetName, &o.AssetKind, &o.Container, &o.Layer, &o.ImageDigest,
 			&o.Component.ID, &o.Component.Type, &o.Component.Name, &o.Component.Version, &o.Component.PURL,
-			&o.VulnID, &o.Exposure, &procs, &o.FirstSeen,
+			&o.VulnID, &o.Exposure, &o.Reachability, &procs, &o.FirstSeen,
 			&o.Locations, &o.Method,
 			&o.Match.Method, &o.Match.Ecosystem, &o.Match.FixState, &o.Match.FixedVersion, &o.Match.CPEMatch,
-			&o.Match.RangeSource, &o.Match.Platforms, &adv, &hasRule, &active,
+			&o.Match.RangeSource, &o.Match.Platforms, &adv, &syms, &hasRule, &active,
 			&rule.ID, &rule.VulnID, &rule.ScopeKind, &rule.ScopeValue, &rule.PURLLike, &rule.Status, &rule.Justification,
 			&rule.Note, &rule.ExpiresAt, &rule.ExpiredAt, &rule.CreatedBy, &rule.CreatedAt, &rule.RevokedAt,
 			&rule.RevokedBy); err != nil {
@@ -256,6 +256,9 @@ func (d *DB) OpenFindings(ctx context.Context, f store.OpenFindingFilter) ([]sto
 		}
 		if err := json.Unmarshal([]byte(adv), &o.Match.Advisories); err != nil {
 			return nil, fmt.Errorf("postgres: open findings: advisories: %w", err)
+		}
+		if err := json.Unmarshal([]byte(syms), &o.Match.Symbols); err != nil {
+			return nil, fmt.Errorf("postgres: open findings: symbols: %w", err)
 		}
 		o.Match.VulnID = o.VulnID
 		o.FirstSeen = o.FirstSeen.UTC()

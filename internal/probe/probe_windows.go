@@ -7,6 +7,7 @@ package probe
 import (
 	"context"
 	"log/slog"
+	"os"
 	"strings"
 	"time"
 
@@ -29,7 +30,7 @@ func Run(ctx context.Context, req report.Request, opts Options) (*report.Report,
 	if log == nil {
 		log = slog.New(slog.DiscardHandler)
 	}
-	want, err := wantedSections(req.Sections, log)
+	want, err := wantedSections(req, log)
 	if err != nil {
 		return nil, err
 	}
@@ -76,6 +77,14 @@ func Run(ctx context.Context, req report.Request, opts Options) (*report.Report,
 	}
 	if want[report.SectionContainers] {
 		rep.Containers = &report.ContainersSection{SectionMeta: none()}
+	}
+	if req.GoSymbols != nil {
+		rep.GoSymbols = answerGoSymbols(runCtx, req.GoSymbols, func(container string) (fileOpener, string) {
+			if container != "" {
+				return nil, "containers are not read on Windows"
+			}
+			return os.Open, ""
+		})
 	}
 	applyKnownDigests(rep, req.KnownDigests)
 	// Nothing is hashed yet; the cache comes back empty, as on Linux when

@@ -88,24 +88,34 @@ func (s sectionSet) list() []string {
 	return out
 }
 
-// wantedSections resolves the requested section names. Unknown names are
-// ignored so that an older probe still answers a newer caller.
-func wantedSections(names []string, log *slog.Logger) (sectionSet, error) {
+// wantedSections resolves the requested section names and checks the
+// Go symbol query. Unknown names are ignored so that an older probe still
+// answers a newer caller. The set is empty when only go_symbols was named.
+func wantedSections(req report.Request, log *slog.Logger) (sectionSet, error) {
+	if req.GoSymbols != nil {
+		if err := req.GoSymbols.Validate(); err != nil {
+			return nil, fmt.Errorf("probe: %w", err)
+		}
+	}
 	set := sectionSet{}
-	if len(names) == 0 {
+	if len(req.Sections) == 0 {
 		for _, n := range report.AllSections {
 			set[n] = true
 		}
 		return set, nil
 	}
-	for _, n := range names {
-		if slices.Contains(report.AllSections, n) {
+	symbols := false
+	for _, n := range req.Sections {
+		switch {
+		case slices.Contains(report.AllSections, n):
 			set[n] = true
-		} else {
+		case n == report.SectionGoSymbols:
+			symbols = true
+		default:
 			log.Warn("unknown section ignored", "section", n)
 		}
 	}
-	if len(set) == 0 {
+	if len(set) == 0 && !(symbols && req.GoSymbols != nil) {
 		return nil, errors.New("probe: no known section requested")
 	}
 	return set, nil

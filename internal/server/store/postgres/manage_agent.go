@@ -22,7 +22,7 @@ const mgAgentColumns = `a.id::text, a.kind, a.hostname, a.description, a.identit
 	coalesce(a.register_key_id, ''), a.state, a.version, a.os, a.arch, a.connect_mode, a.listen_address,
 	a.tls_mode, a.observed_issuer, a.privilege, a.exec_helper, a.address, a.trust_bundle_version,
 	a.update_state, a.update_message, coalesce(a.asset_id::text, ''), a.enrolled_at, a.approved_at, a.revoked_at, a.last_seen,
-	(SELECT max(c.not_after) FROM agent_certs c WHERE c.agent_id = a.id AND c.revoked_at IS NULL)`
+	(SELECT max(c.not_after) FROM agent_certs c WHERE c.agent_id = a.id AND c.revoked_at IS NULL), a.features`
 
 // mgScanAgent scans mgAgentColumns followed by extra.
 func mgScanAgent(r mgRow, extra ...any) (store.Agent, error) {
@@ -31,7 +31,7 @@ func mgScanAgent(r mgRow, extra ...any) (store.Agent, error) {
 		&a.RegisterKeyID, &a.State, &a.Version, &a.OS, &a.Arch, &a.ConnectMode, &a.ListenAddress,
 		&a.TLSMode, &a.ObservedIssuer, &a.Privilege, &a.ExecHelper, &a.Address, &a.TrustBundleVersion,
 		&a.UpdateState, &a.UpdateMessage, &a.AssetID, &a.EnrolledAt, &a.ApprovedAt, &a.RevokedAt, &a.LastSeen,
-		&a.CertNotAfter}
+		&a.CertNotAfter, &a.Features}
 	if err := r.Scan(append(dest, extra...)...); err != nil {
 		return store.Agent{}, err
 	}
@@ -236,11 +236,11 @@ func (d *DB) UpdateAgentPoll(ctx context.Context, id string, s store.AgentPollSt
 		UPDATE agents SET hostname = $2, version = $3, os = $4, arch = $5, connect_mode = $6,
 			listen_address = $7, tls_mode = $8, observed_issuer = $9, privilege = $10, exec_helper = $11,
 			address = $12, trust_bundle_version = $13, update_state = $14, last_seen = $15,
-			update_message = $16
+			update_message = $16, features = $17
 		WHERE id = $1`,
 		id, s.Hostname, s.Version, s.OS, s.Arch, s.ConnectMode, s.ListenAddress, s.TLSMode, s.ObservedIssuer,
 		s.Privilege, s.ExecHelper, s.Address, s.TrustBundleVersion, s.UpdateState, mgOrNow(s.SeenAt),
-		s.UpdateMessage)
+		s.UpdateMessage, vuStrings(s.Features))
 	return mgExactlyOne("update agent poll", tag, err)
 }
 

@@ -235,11 +235,16 @@ func (s *Service) applyHostSoftware(ctx context.Context, tx store.Store, assetID
 		return nil, nil
 	}
 	scope := store.ComponentScope{AssetID: assetID, Source: store.SourceArtifacts}
-	res, err := tx.ReplaceAssetComponents(ctx, scope, artObs, store.ReplaceOptions{At: artP.at, KeepMissing: artP.keepMissing})
+	artOpts := store.ReplaceOptions{At: artP.at, KeepMissing: artP.keepMissing}
+	res, err := tx.ReplaceAssetComponents(ctx, scope, artObs, artOpts)
 	if err != nil {
 		return nil, fmt.Errorf("ingest: replace artifacts: %w", err)
 	}
 	ids.add(artObs, res)
+	if err := tx.ReplaceGoBinaries(ctx, store.GoBinaryScope{AssetID: assetID},
+		normalize.GoBinaries(r.Artifacts.Artifacts), artOpts); err != nil {
+		return nil, fmt.Errorf("ingest: replace go binaries: %w", err)
+	}
 	return normalize.FileHashes(r.Artifacts.Artifacts, pkgObs), nil
 }
 
@@ -307,6 +312,10 @@ func (s *Service) applyHostContainers(ctx context.Context, tx store.Store, asset
 			Packages: content.Packages, Artifacts: content.Artifacts}); err != nil {
 			return nil, fmt.Errorf("ingest: put image content: %w", err)
 		}
+		if err := tx.ReplaceGoBinaries(ctx, store.GoBinaryScope{Digest: digest}, normalize.GoBinaries(sc.Artifacts),
+			store.ReplaceOptions{At: p.at}); err != nil {
+			return nil, fmt.Errorf("ingest: replace go binaries: %w", err)
+		}
 		hashes = append(hashes, content.Hashes...)
 	}
 
@@ -327,6 +336,10 @@ func (s *Service) applyHostContainers(ctx context.Context, tx store.Store, asset
 			return nil, fmt.Errorf("ingest: replace runtime artifacts of %s: %w", name, err)
 		}
 		ids.add(arts, res)
+		if err := tx.ReplaceGoBinaries(ctx, store.GoBinaryScope{AssetID: assetID, Container: name, Layer: store.LayerRuntime},
+			normalize.GoBinaries(c.RuntimeArtifacts), store.ReplaceOptions{At: p.at, KeepMissing: keep}); err != nil {
+			return nil, fmt.Errorf("ingest: replace go binaries of %s: %w", name, err)
+		}
 		hashes = append(hashes, normalize.FileHashes(c.RuntimeArtifacts, nil)...)
 	}
 	return hashes, nil

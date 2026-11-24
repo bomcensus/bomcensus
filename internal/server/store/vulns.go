@@ -83,6 +83,8 @@ type ComponentVuln struct {
 	RangeSource  string
 	Platforms    []string
 	Advisories   []VulnAdvisory
+	// Symbols are the vulnerable Go functions, empty when not known.
+	Symbols []GoImport
 }
 
 // ComponentMatch is the outcome of matching one component.

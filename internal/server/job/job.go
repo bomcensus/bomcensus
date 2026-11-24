@@ -40,6 +40,9 @@ const (
 	// KindTriageExpire records the triage rules whose deferral ended (no
 	// arguments).
 	KindTriageExpire = "triage_expire"
+	// KindGoSymbolCheck asks collectors whether vulnerable Go functions
+	// are linked into executables (no arguments).
+	KindGoSymbolCheck = "go_symbol_check"
 )
 
 // IngestReportArgs names a raw report stored by the upload handler.
