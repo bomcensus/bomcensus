@@ -118,6 +118,13 @@ func startServer(t *testing.T, cfg config.Config) *testServer {
 	return s
 }
 
+// offlineFeed fails every request to a feed server.
+type offlineFeed struct{}
+
+func (offlineFeed) RoundTrip(*http.Request) (*http.Response, error) {
+	return nil, errors.New("feed servers are not reachable in tests")
+}
+
 // start is startServer for any goroutine: it reports instead of failing.
 func start(t *testing.T, cfg config.Config) (*testServer, error) {
 	return startWith(t, cfg, Options{})
@@ -132,6 +139,10 @@ func startWith(t *testing.T, cfg config.Config, opts Options) (*testServer, erro
 	go func() {
 		opts.Ready = func(a Addrs) { ready <- a }
 		opts.ShutdownTimeout = 5 * time.Second
+		if opts.FeedTransport == nil {
+			// Tests never contact the real feed server.
+			opts.FeedTransport = offlineFeed{}
+		}
 		s.done <- Run(ctx, cfg, logger, opts)
 	}()
 	t.Cleanup(func() {

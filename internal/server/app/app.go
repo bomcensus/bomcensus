@@ -64,6 +64,9 @@ type Options struct {
 	// CleanupInterval is the period of the cleanup job. Default
 	// DefaultCleanupInterval.
 	CleanupInterval time.Duration
+	// FeedTransport sends the requests to feed servers; nil uses the
+	// network.
+	FeedTransport http.RoundTripper
 }
 
 // Addrs are the bound listener addresses.
@@ -150,10 +153,13 @@ func Run(ctx context.Context, cfg config.Config, log *slog.Logger, opts Options)
 		return err
 	}
 	ing := ingest.New(db, log.With("component", "ingest"), nil)
-	feed, err := feedsvc.New(feedsvc.Config{Store: db, Box: box, Version: version.Version, Logger: log.With("component", "feed")})
+	feed, err := feedsvc.New(feedsvc.Config{Store: db, Box: box, Version: version.Version, Base: opts.FeedTransport,
+		Logger: log.With("component", "feed")})
 	if err != nil {
 		return err
 	}
+	// Deferred before the queue starts, so it runs after the jobs stopped.
+	defer feed.Close()
 
 	queue := job.NewRiver(db.Pool(), log.With("component", "queue"), job.RiverConfig{})
 	jobLog := log.With("component", "job")

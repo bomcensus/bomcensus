@@ -383,6 +383,14 @@ func (s *Service) TrustKey(ctx context.Context, id, key string) (store.FeedServe
 	return srv, nil
 }
 
+// Close drops the idle connections to feed servers. Call it once the
+// Service is no longer used (after Run and the jobs that use it ended).
+func (s *Service) Close() {
+	if c, ok := s.base.(interface{ CloseIdleConnections() }); ok {
+		c.CloseIdleConnections()
+	}
+}
+
 // Kick makes Run re-read the active server now.
 func (s *Service) Kick() {
 	select {
