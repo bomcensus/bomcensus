@@ -382,8 +382,10 @@ func (d *DB) VulnImages(ctx context.Context, o store.VulnViewOptions) ([]store.V
 			coalesce((SELECT array_agg(DISTINCT t.tag ORDER BY t.tag) FROM image_tags t WHERE t.digest = per.digest AND t.gone_at IS NULL), '{}'),
 			per.components, per.vulns, per.kev, per.score, per.epss,
 			per.critical, per.high, per.medium, per.low, per.unknown,
-			(SELECT count(*) FROM asset_containers ct WHERE ct.image_digest = per.digest AND ct.gone_at IS NULL),
-			(SELECT count(DISTINCT ct.asset_id) FROM asset_containers ct WHERE ct.image_digest = per.digest AND ct.gone_at IS NULL)
+			(SELECT count(*) FROM asset_containers ct JOIN assets ca ON ca.id = ct.asset_id
+				WHERE ct.image_digest = per.digest AND ct.gone_at IS NULL AND ca.gone_at IS NULL),
+			(SELECT count(DISTINCT ct.asset_id) FROM asset_containers ct JOIN assets ca ON ca.id = ct.asset_id
+				WHERE ct.image_digest = per.digest AND ct.gone_at IS NULL AND ca.gone_at IS NULL)
 		FROM per`, vuArgs(o)...)
 	if err != nil {
 		return nil, mgErr("vulnerable images", err)

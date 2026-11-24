@@ -369,6 +369,22 @@ func TestHostReportLifecycle(t *testing.T) {
 			t.Fatalf("scanner self: %v", err)
 		}
 	})
+
+	t.Run("a revoked agent's asset is gone and stays gone", func(t *testing.T) {
+		must(t, f.db.RevokeAgent(ctx, f.agent.ID, t0.Add(6*time.Hour)))
+		asset, err := f.db.GetAsset(ctx, assetID)
+		must(t, err)
+		if asset.GoneAt == nil {
+			t.Fatal("asset of the revoked agent is not gone")
+		}
+		// A report it sent before the revocation is not applied.
+		if err := f.ingest(t, f.agent, hostReport(t0.Add(5*time.Hour))); !errors.Is(err, ErrForbidden) {
+			t.Fatalf("report of a revoked agent: %v", err)
+		}
+		if asset, _ := f.db.GetAsset(ctx, assetID); asset.GoneAt == nil {
+			t.Fatal("asset came back")
+		}
+	})
 }
 
 // snapshot captures what ingest writes for an asset.

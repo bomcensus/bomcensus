@@ -16,9 +16,10 @@ import (
 
 var _ store.Vulns = (*DB)(nil)
 
-// vuLive is true for a component c that an asset has installed or an image
+// vuLive is true for a component c that a current asset has installed or an image
 // contains.
-const vuLive = `(EXISTS (SELECT 1 FROM asset_components ac WHERE ac.component_id = c.id AND ac.removed_at IS NULL)
+const vuLive = `(EXISTS (SELECT 1 FROM asset_components ac JOIN assets la ON la.id = ac.asset_id
+		WHERE ac.component_id = c.id AND ac.removed_at IS NULL AND la.gone_at IS NULL)
 	OR EXISTS (SELECT 1 FROM image_components ic WHERE ic.component_id = c.id))`
 
 // vuMatchedIn joins m, the match of c against the epoch in $1..$3.

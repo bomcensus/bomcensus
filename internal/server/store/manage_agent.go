@@ -176,13 +176,19 @@ type Agents interface {
 	// the identity key is already enrolled.
 	CreateAgent(ctx context.Context, a Agent) (Agent, error)
 	GetAgent(ctx context.Context, id string) (Agent, error)
+	// LockAgent is GetAgent that holds a share lock on the agent until the
+	// transaction ends, so that a concurrent revocation waits for it (or it
+	// sees the revocation).
+	LockAgent(ctx context.Context, id string) (Agent, error)
 	GetAgentByIdentityKey(ctx context.Context, key []byte) (Agent, error)
 	ListAgents(ctx context.Context, f AgentFilter, p Page) ([]Agent, int, error)
 	// ApproveAgent moves a pending agent to approved. Approving an approved
 	// agent is a no-op; a revoked one gives ErrInvalidState.
 	ApproveAgent(ctx context.Context, id string, at time.Time) error
-	// RevokeAgent marks the agent revoked and revokes all its certificates
-	// in the same statement. Revoking twice keeps the first time.
+	// RevokeAgent marks the agent revoked, revokes all its certificates and
+	// marks the asset it reported gone, in the same statement. The gone
+	// asset leaves the inventory views, its findings resolve, and it is
+	// purged after the retention. Revoking twice keeps the first time.
 	RevokeAgent(ctx context.Context, id string, at time.Time) error
 	// UpdateAgentPoll stores the status reported in a poll and sets
 	// LastSeen to s.SeenAt.

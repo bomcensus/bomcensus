@@ -98,6 +98,15 @@ func (d *DB) GetAgent(ctx context.Context, id string) (store.Agent, error) {
 	return a, nil
 }
 
+// LockAgent implements store.Agents.
+func (d *DB) LockAgent(ctx context.Context, id string) (store.Agent, error) {
+	a, err := mgScanAgent(d.q.QueryRow(ctx, `SELECT `+mgAgentColumns+` FROM agents a WHERE a.id = $1 FOR SHARE OF a`, id))
+	if err != nil {
+		return store.Agent{}, mgErr("lock agent", err)
+	}
+	return a, nil
+}
+
 // GetAgentByIdentityKey implements store.Agents.
 func (d *DB) GetAgentByIdentityKey(ctx context.Context, key []byte) (store.Agent, error) {
 	a, err := mgScanAgent(d.q.QueryRow(ctx,
@@ -207,6 +216,9 @@ func (d *DB) RevokeAgent(ctx context.Context, id string, at time.Time) error {
 		), c AS (
 			UPDATE agent_certs SET revoked_at = $2
 			WHERE agent_id IN (SELECT id FROM a) AND revoked_at IS NULL
+		), g AS (
+			UPDATE assets SET gone_at = $2
+			WHERE agent_id IN (SELECT id FROM a) AND gone_at IS NULL
 		)
 		SELECT count(*) FROM a`, id, at.UTC()).Scan(&n)
 	if err != nil {

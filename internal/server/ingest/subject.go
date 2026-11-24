@@ -81,7 +81,9 @@ func senderAgent(ctx context.Context, st store.Store, sender Sender) (*store.Age
 		}
 		return nil, nil
 	}
-	a, err := st.GetAgent(ctx, sender.AgentID)
+	// The lock keeps a revocation from passing this report: the revocation
+	// marks the agent's asset gone, which this report must not undo.
+	a, err := st.LockAgent(ctx, sender.AgentID)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			return nil, newErr(ErrForbidden, "unknown sender %s", sender.AgentID)
