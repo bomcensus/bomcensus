@@ -510,3 +510,46 @@ func TestPollSendsDetectPaths(t *testing.T) {
 		t.Fatalf("policy %+v", p)
 	}
 }
+
+func TestPollSendsIntegrity(t *testing.T) {
+	e := newEnv(t, envOpts{})
+	c := enrolledAgent(t, e)
+	ctx := context.Background()
+	poll := func(features ...string) *gen.IntegrityConfig {
+		t.Helper()
+		req := gen.PollRequest{
+			Version: "0.2.0", Os: gen.Linux, Arch: gen.Amd64, ConnectMode: gen.Connect, TlsMode: gen.Pinned,
+			Privilege:      gen.Privilege{Level: gen.PrivilegeLevel("privileged"), Uid: 0},
+			SectionDigests: map[string]string{}, TrustBundleSerial: 1,
+			Update:   gen.UpdateStatus{State: gen.UpdateStateUpToDate},
+			Features: &features,
+		}
+		b, _ := json.Marshal(req)
+		resp, body, err := c.do(t, http.MethodPost, "/agent/v1/poll", b)
+		if err != nil || resp.StatusCode != http.StatusOK {
+			t.Fatalf("poll: %v %v %s", resp, err, body)
+		}
+		var res gen.PollResult
+		if err := json.Unmarshal(body, &res); err != nil {
+			t.Fatal(err)
+		}
+		return res.Config.Integrity
+	}
+	if cfg := poll(); cfg != nil {
+		t.Errorf("integrity sent to an agent without the feature: %+v", cfg)
+	}
+	// The first poll with the feature already gets the configuration.
+	cfg := poll("integrity")
+	if cfg == nil || !cfg.Enabled || cfg.WindowStart != "02:00" || cfg.MaxReadMbps != 20 {
+		t.Fatalf("default %+v", cfg)
+	}
+	if a, err := e.db.GetAgent(ctx, c.id); err != nil || !a.HasFeature(store.FeatureIntegrity) {
+		t.Errorf("feature not stored: %+v %v", a.Features, err)
+	}
+	if err := e.db.SetAgentIntegrity(ctx, c.id, store.IntegrityOff); err != nil {
+		t.Fatal(err)
+	}
+	if cfg := poll("integrity"); cfg == nil || cfg.Enabled {
+		t.Errorf("off: %+v", cfg)
+	}
+}

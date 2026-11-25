@@ -61,6 +61,8 @@ func (s *Service) applyResult(ctx context.Context, sender ingest.Sender, jobID s
 		err = s.applySyncResult(ctx, sender, subject, res)
 	case kindExec:
 		err = s.applyExecResult(ctx, sender, subject, res)
+	case kindIntegrity:
+		err = s.applyIntegrityResult(ctx, sender, subject, res)
 	}
 	if err != nil {
 		return err

@@ -977,6 +977,65 @@ components:
           description: Serial of the current trust bundle.
           type: integer
           format: int64
+        integrity:
+          description: Package file integrity passes of the agent's own host. Sent only to agents that report the `integrity` feature.
+          allOf:
+            - $ref: "#/components/schemas/IntegrityConfig"
+    IntegrityConfig:
+      description: >-
+        When and how the agent checks the files of installed OS packages
+        against their package database. Passes run in the daily window, in the
+        host's local time; a window may cross midnight.
+      type: object
+      required: [enabled, window_start, window_end, interval_days, max_read_mbps, full_rehash_days]
+      properties:
+        enabled:
+          type: boolean
+        window_start:
+          description: "Local time `HH:MM`."
+          type: string
+          pattern: "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+        window_end:
+          description: "Local time `HH:MM`; equal to `window_start` means the whole day."
+          type: string
+          pattern: "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+        interval_days:
+          description: Days between the starts of two passes.
+          type: integer
+          minimum: 1
+          maximum: 30
+        max_read_mbps:
+          type: integer
+          minimum: 1
+          maximum: 1000
+        full_rehash_days:
+          description: Days after which a pass hashes every file again instead of trusting the cache.
+          type: integer
+          minimum: 1
+          maximum: 365
+        exclude_paths:
+          description: Absolute path prefixes or globs (`**` matches any number of directories) that are not checked.
+          type: array
+          items:
+            type: string
+    IntegrityQuery:
+      description: "Mirrors `report.IntegrityQuery` without the cache: one chunk of a pass. Limits in `report`."
+      type: object
+      required: [pass_id]
+      properties:
+        pass_id:
+          type: string
+        cursor:
+          type: string
+        full_rehash:
+          type: boolean
+        max_read_mbps:
+          type: integer
+          minimum: 0
+        exclude_paths:
+          type: array
+          items:
+            type: string
     PollResult:
       type: object
       required: [config, directives, last_counter, server_time]
@@ -1116,6 +1175,14 @@ components:
           description: Passed to the probe with the collection. Present only for scanners that report the `go_symbols` feature.
           allOf:
             - $ref: "#/components/schemas/GoSymbolQuery"
+        integrity:
+          description: >-
+            An integrity chunk instead of a collection: `sections` and
+            `go_symbols` are absent. Present only for scanners that report the
+            `integrity` feature. The probe's runtime limit comes from
+            `policy.max_runtime_seconds`.
+          allOf:
+            - $ref: "#/components/schemas/IntegrityQuery"
     K8sFilter:
       description: Same semantics as the cluster filter in the admin API.
       type: object

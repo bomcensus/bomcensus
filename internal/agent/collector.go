@@ -415,6 +415,9 @@ func (c *collector) status(_ context.Context, req *agentapi.PollRequest) {
 	defer c.mu.Unlock()
 	req.SectionDigests = maps.Clone(c.sections.Digests)
 	features := []string{report.FeatureGoSymbols}
+	if integritySupported {
+		features = append(features, report.FeatureIntegrity)
+	}
 	req.Features = &features
 	if c.privilege != nil {
 		p := agentapi.Privilege{Level: agentapi.PrivilegeLevel(c.privilege.Level), Uid: c.privilege.UID}

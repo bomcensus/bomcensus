@@ -94,6 +94,9 @@ type ScanTarget struct {
 	// their paths, both ordered by path. Read-only; see DetectDirs.
 	DetectDirIDs []string
 	DetectPaths  []string
+	// Integrity is the target's integrity mode (IntegrityInherit, ...).
+	// Create and update store it; empty means IntegrityInherit.
+	Integrity string
 }
 
 // ScanTargetFilter narrows ListScanTargets. Zero fields do not filter.
@@ -111,7 +114,8 @@ type ScanTargets interface {
 	// ListScanTargets returns targets ordered by name and the total count.
 	ListScanTargets(ctx context.Context, f ScanTargetFilter, p Page) ([]ScanTarget, int, error)
 	// UpdateScanTarget replaces name, address, port, credential, scanner,
-	// sudo and interval. Host key, asset and last run are kept.
+	// sudo, interval and integrity mode. Host key, asset and last run are
+	// kept.
 	UpdateScanTarget(ctx context.Context, t ScanTarget) error
 	DeleteScanTarget(ctx context.Context, id string) error
 	// SetScanTargetHostKey pins key when none is pinned. Setting the same

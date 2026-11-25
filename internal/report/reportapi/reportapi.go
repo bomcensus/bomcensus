@@ -55,3 +55,53 @@ func APIGoSymbolQueryPtr(q *report.GoSymbolQuery) *agentapi.GoSymbolQuery {
 	out := APIGoSymbolQuery(*q)
 	return &out
 }
+
+// IntegrityQuery converts the API form of an integrity chunk.
+func IntegrityQuery(q agentapi.IntegrityQuery) report.IntegrityQuery {
+	out := report.IntegrityQuery{PassID: q.PassId}
+	if q.Cursor != nil {
+		out.Cursor = *q.Cursor
+	}
+	if q.FullRehash != nil {
+		out.FullRehash = *q.FullRehash
+	}
+	if q.MaxReadMbps != nil {
+		out.MaxReadMBps = *q.MaxReadMbps
+	}
+	if q.ExcludePaths != nil {
+		out.ExcludePaths = append([]string(nil), *q.ExcludePaths...)
+	}
+	return out
+}
+
+// IntegrityQueryPtr is IntegrityQuery for an optional query.
+func IntegrityQueryPtr(q *agentapi.IntegrityQuery) *report.IntegrityQuery {
+	if q == nil {
+		return nil
+	}
+	out := IntegrityQuery(*q)
+	return &out
+}
+
+// APIIntegrityQuery converts an integrity chunk to its API form; the cache
+// is not part of it.
+func APIIntegrityQuery(q report.IntegrityQuery) agentapi.IntegrityQuery {
+	out := agentapi.IntegrityQuery{PassId: q.PassID}
+	if q.Cursor != "" {
+		c := q.Cursor
+		out.Cursor = &c
+	}
+	if q.FullRehash {
+		t := true
+		out.FullRehash = &t
+	}
+	if q.MaxReadMBps > 0 {
+		r := q.MaxReadMBps
+		out.MaxReadMbps = &r
+	}
+	if len(q.ExcludePaths) > 0 {
+		e := append([]string(nil), q.ExcludePaths...)
+		out.ExcludePaths = &e
+	}
+	return out
+}

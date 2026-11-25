@@ -12,6 +12,7 @@ import {
   Boxes,
   Container,
   Download,
+  FileCheck,
   KeyRound,
   LayoutDashboard,
   LogOut,
@@ -50,6 +51,7 @@ const nav: { title?: string; items: NavItem[] }[] = [
     items: [
       { to: '/vulnerabilities', label: '취약점', icon: ShieldAlert },
       { to: '/processes', label: '프로세스', icon: Activity },
+      { to: '/integrity', label: '파일 무결성', icon: FileCheck },
     ],
   },
   {

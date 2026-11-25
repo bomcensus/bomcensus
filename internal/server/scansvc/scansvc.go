@@ -60,6 +60,9 @@ const (
 	kindSSH  = "ssh"
 	kindSync = "sync"
 	kindExec = "exec"
+	// kindIntegrity is a package file integrity chunk over SSH. Its lease
+	// is apart from kindSSH, so that collections of the target go on.
+	kindIntegrity = "integrity"
 )
 
 // Settings.
@@ -115,6 +118,9 @@ type Store interface {
 	EnqueueDirective(ctx context.Context, d store.Directive) (store.Directive, bool, error)
 	GoSymbolQueryFor(ctx context.Context, assetID, container string) (store.GoSymbolQuery, error)
 	ClusterGoSymbolQueries(ctx context.Context, clusterID string) ([]store.WorkloadGoSymbolQuery, error)
+	PutSetting(ctx context.Context, key string, value json.RawMessage) error
+	ListScanTargets(ctx context.Context, f store.ScanTargetFilter, p store.Page) ([]store.ScanTarget, int, error)
+	LastIntegrityPass(ctx context.Context, assetID string) (store.IntegrityPass, error)
 }
 
 // Ingester applies what scanners produce (*ingest.Service).
@@ -208,6 +214,11 @@ type Service struct {
 
 	// mu serializes taking a lease and enqueuing its directive.
 	mu sync.Mutex
+
+	// integrityMu guards integrityTried: when a chunk of each target was
+	// last started, to back off when chunks end without a result.
+	integrityMu    sync.Mutex
+	integrityTried map[string]time.Time
 }
 
 // New returns a service. With cfg.Queue it registers the scheduler jobs.
@@ -256,7 +267,9 @@ func (noNotify) Notify(string) {}
 // Register adds the scheduler handlers and their periodic schedules to q.
 // New calls it when Config.Queue is set.
 func (s *Service) Register(q job.Queue) error {
-	if err := q.Register(job.KindScanSSHDue, func(ctx context.Context, _ job.Job) error { return s.ScheduleSSH(ctx) }); err != nil {
+	if err := q.Register(job.KindScanSSHDue, func(ctx context.Context, _ job.Job) error {
+		return errors.Join(s.ScheduleSSH(ctx), s.ScheduleSSHIntegrity(ctx))
+	}); err != nil {
 		return fmt.Errorf("scansvc: register %s: %w", job.KindScanSSHDue, err)
 	}
 	if err := q.Register(job.KindK8sSyncDue, func(ctx context.Context, _ job.Job) error { return s.ScheduleK8s(ctx) }); err != nil {
@@ -302,7 +315,7 @@ func parseJobID(id string) (kind, subject string, ok bool) {
 		return "", "", false
 	}
 	switch kind {
-	case kindSSH, kindSync, kindExec:
+	case kindSSH, kindSync, kindExec, kindIntegrity:
 		return kind, rest[:i], true
 	}
 	return "", "", false

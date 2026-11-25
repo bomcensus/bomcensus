@@ -122,6 +122,7 @@ func (s *scanner) handleScanSSH(ctx context.Context, d agentapi.Directive) error
 	job := runner.SSHJob{
 		JobID: sd.JobId, TargetID: sd.ScanTargetId, Address: sd.Address, Port: sd.Port, User: sd.Username,
 		Sudo: sd.Sudo, Policy: runner.PolicyFromAPI(sd.Policy), GoSymbols: reportapi.GoSymbolQueryPtr(sd.GoSymbols),
+		Integrity: reportapi.IntegrityQueryPtr(sd.Integrity),
 	}
 	if sd.HostKey != nil {
 		job.HostKey = *sd.HostKey
@@ -143,7 +144,12 @@ func (s *scanner) handleScanSSH(ctx context.Context, d agentapi.Directive) error
 			job.Sections = append(job.Sections, string(sec))
 		}
 	}
-	s.start(ctx, "ssh:"+sd.ScanTargetId, sd.JobId, func(ctx context.Context) {
+	key := "ssh:" + sd.ScanTargetId
+	if job.Integrity != nil {
+		// An integrity chunk runs beside the target's collections.
+		key = "integrity:" + sd.ScanTargetId
+	}
+	s.start(ctx, key, sd.JobId, func(ctx context.Context) {
 		defer clear(job.Credential.PrivateKey)
 		defer clear(job.Credential.Passphrase)
 		if _, err := s.run.RunSSH(ctx, job, s.deps); err != nil {

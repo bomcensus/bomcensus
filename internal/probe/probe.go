@@ -20,6 +20,7 @@ import (
 	"github.com/bomcensus/bomcensus/internal/collect"
 	"github.com/bomcensus/bomcensus/internal/collect/artifact"
 	"github.com/bomcensus/bomcensus/internal/collect/hostinfo"
+	"github.com/bomcensus/bomcensus/internal/collect/integrity"
 	"github.com/bomcensus/bomcensus/internal/collect/pkgdb"
 	"github.com/bomcensus/bomcensus/internal/collect/proc"
 	"github.com/bomcensus/bomcensus/internal/report"
@@ -126,12 +127,19 @@ func Run(ctx context.Context, req report.Request, opts Options) (*report.Report,
 	if req.GoSymbols != nil {
 		rep.GoSymbols = r.goSymbols(req.GoSymbols)
 	}
+	if want[report.SectionIntegrity] {
+		rep.Integrity = r.integrity(req.Integrity, start)
+	}
 
 	applyKnownDigests(rep, req.KnownDigests)
-	if raw, err := env.Cache.Marshal(); err == nil {
-		rep.Cache = raw
-	} else {
-		log.Warn("hash cache not returned", "err", err)
+	// An integrity chunk keeps its own cache in its section; returning the
+	// (unused) collection cache would overwrite the caller's.
+	if !want.integrityOnly() {
+		if raw, err := env.Cache.Marshal(); err == nil {
+			rep.Cache = raw
+		} else {
+			log.Warn("hash cache not returned", "err", err)
+		}
 	}
 	log.Info("collection finished", "duration", time.Since(start).Round(time.Millisecond).String())
 	return rep, nil
@@ -257,6 +265,20 @@ func dropOwnBinary(sec *report.ArtifactsSection, log *slog.Logger) {
 	} else {
 		log.Warn("artifact digest", "err", err)
 	}
+}
+
+// integrity runs one chunk of an integrity pass. It stops on its own a
+// little before the runtime limit, so that the chunk's results and cursor
+// are returned instead of being abandoned.
+func (r *runner) integrity(q *report.IntegrityQuery, start time.Time) *report.IntegritySection {
+	margin := min(max(r.limit/20, 5*time.Second), time.Minute)
+	deadline := start.Add(r.limit - margin)
+	var sec *report.IntegritySection
+	if !r.bounded(func() { sec = integrity.Check(r.ctx, r.env, *q, deadline, integrity.Options{}) }) || sec == nil {
+		meta := r.skipped(true)
+		return &report.IntegritySection{SectionMeta: meta, PassID: q.PassID, Cursor: q.Cursor}
+	}
+	return sec
 }
 
 // goSymbols answers the Go symbol query. Paths without a container are

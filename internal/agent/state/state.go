@@ -44,8 +44,13 @@ const (
 	configName     = "server-config.json"
 	sectionsName   = "sections.json"
 	cacheName      = "probe-cache.json"
-	revokedName    = "revoked.json"
-	spoolName      = "spool"
+	integrityName  = "integrity.json"
+	// integrityCacheName holds the integrity check's own hash cache, apart
+	// from the collection cache so that the two runs never overwrite each
+	// other's.
+	integrityCacheName = "integrity-cache.json"
+	revokedName        = "revoked.json"
+	spoolName          = "spool"
 )
 
 // ErrLocked is returned by Open when another process holds the directory.

@@ -45,9 +45,10 @@ StandardInput=socket
 StandardOutput=socket
 StandardError=journal
 ExecStart=/opt/bomcensus/current/bomcensus-probe collect
-# A full first run on a large host takes minutes; later runs use the hash
-# cache. The run is killed after RuntimeMaxSec.
-RuntimeMaxSec=20min
+# The probe stops each run itself at the limit of its request: 15 minutes
+# for a collection, up to 5 hours for a package file integrity chunk in the
+# night window. RuntimeMaxSec is only the backstop above both.
+RuntimeMaxSec=6h
 TimeoutStopSec=10s
 
 # Privileges: exactly two capabilities, no way to gain more.

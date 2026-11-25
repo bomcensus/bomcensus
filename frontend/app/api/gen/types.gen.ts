@@ -4,6 +4,198 @@ export type ClientOptions = {
     baseUrl: `${string}://${string}/api/v1` | (string & {});
 };
 
+export type IntegrityStatus = 'modified' | 'missing';
+
+/**
+ * `inherit` follows the default of the collector's kind in the integrity policy.
+ */
+export type IntegrityMode = 'inherit' | 'on' | 'off';
+
+export type IntegrityPolicy = {
+    /**
+     * Default for agents whose mode is `inherit`.
+     */
+    agents: boolean;
+    /**
+     * Default for scan targets whose mode is `inherit`.
+     */
+    ssh: boolean;
+    /**
+     * Local time of the inspected host, `HH:MM`.
+     */
+    windowStart: string;
+    /**
+     * `HH:MM`; before `windowStart` crosses midnight, equal means all day.
+     */
+    windowEnd: string;
+    intervalDays: number;
+    maxReadMbps: number;
+    /**
+     * Days after which a pass reads every file again instead of trusting unchanged metadata.
+     */
+    fullRehashDays: number;
+    /**
+     * Absolute path prefixes or globs (`**` matches any number of directories).
+     */
+    excludePaths: Array<string>;
+};
+
+export type IntegritySummary = {
+    /**
+     * Changed files shown, by path and content.
+     */
+    groups: number;
+    /**
+     * Assets with a changed file shown.
+     */
+    assets: number;
+    /**
+     * Active allow rules.
+     */
+    rules: number;
+    /**
+     * Current assets with any pass.
+     */
+    tracked: number;
+    /**
+     * Assets whose last pass finished within the last two intervals.
+     */
+    completed: number;
+};
+
+export type IntegrityGroup = {
+    path: string;
+    status: IntegrityStatus;
+    /**
+     * Absent for a missing file.
+     */
+    actualSha256?: string;
+    pkgType: string;
+    package: string;
+    /**
+     * Version on one of the assets; others may run another.
+     */
+    version: string;
+    /**
+     * Algorithm of the package database (md5, sha1, sha256, ...).
+     */
+    algo: string;
+    expected: string;
+    /**
+     * Actual digest in `algo`; absent for a missing file.
+     */
+    actual?: string;
+    assets: number;
+    /**
+     * Assets on which an allow rule hides it (with `includeAllowed`).
+     */
+    allowedAssets: number;
+    firstSeen: string;
+    lastSeen: string;
+};
+
+export type IntegrityGroupList = {
+    items: Array<IntegrityGroup>;
+    total: number;
+};
+
+export type IntegrityFinding = {
+    id: string;
+    assetId: string;
+    assetName: string;
+    /**
+     * How the asset is collected (`agent`, `ssh`).
+     */
+    collector: string;
+    path: string;
+    status: IntegrityStatus;
+    pkgType: string;
+    package: string;
+    version: string;
+    arch?: string;
+    algo: string;
+    expected: string;
+    actual?: string;
+    actualSha256?: string;
+    size?: number;
+    mtime?: string;
+    ctime?: string;
+    firstSeen: string;
+    lastSeen: string;
+    /**
+     * Id of the active rule that hides the finding.
+     */
+    allowedBy?: string;
+};
+
+export type IntegrityFindingList = {
+    items: Array<IntegrityFinding>;
+    total: number;
+};
+
+export type IntegrityPass = {
+    startedAt: string;
+    lastChunkAt: string;
+    completedAt?: string;
+    checked: number;
+    excluded: number;
+    unreadable: number;
+    coverage: 'full' | 'partial' | 'none';
+    reason?: string;
+};
+
+export type AssetIntegrity = {
+    /**
+     * Passes run for the asset's agent or scan target. False when it has neither.
+     */
+    enabled: boolean;
+    mode?: IntegrityMode;
+    lastPass?: IntegrityPass;
+    lastCompletedPass?: IntegrityPass;
+    findings: Array<IntegrityFinding>;
+};
+
+export type IntegrityAllowRuleScope = 'asset' | 'fleet';
+
+export type IntegrityAllowRule = {
+    id: string;
+    scope: IntegrityAllowRuleScope;
+    assetId?: string;
+    assetName?: string;
+    path: string;
+    status: IntegrityStatus;
+    actualSha256?: string;
+    note: string;
+    createdBy: string;
+    createdAt: string;
+    revokedBy?: string;
+    revokedAt?: string;
+    /**
+     * Open findings the rule hides now.
+     */
+    hidden: number;
+};
+
+export type IntegrityAllowRuleList = {
+    items: Array<IntegrityAllowRule>;
+    total: number;
+};
+
+export type IntegrityAllowRuleCreate = {
+    scope: IntegrityAllowRuleScope;
+    /**
+     * Scope `asset` only.
+     */
+    assetIds?: Array<string>;
+    path: string;
+    status: IntegrityStatus;
+    /**
+     * Required for `modified`, absent for `missing`.
+     */
+    actualSha256?: string;
+    note: string;
+};
+
 export type Error = {
     /**
      * Stable snake_case error identifier.
@@ -778,6 +970,14 @@ export type Agent = {
      * Detect directories walked on the agent's host, ordered by path. Always empty for scanners.
      */
     detectDirIds: Array<string>;
+    /**
+     * File integrity mode. Absent for scanners.
+     */
+    integrity?: IntegrityMode;
+    /**
+     * Whether passes run, from the mode and the policy default. Absent for scanners.
+     */
+    integrityEnabled?: boolean;
 };
 
 export type AgentUpdate = {
@@ -786,6 +986,10 @@ export type AgentUpdate = {
      * Replaces the detect directories of an agent. Rejected with `400` for scanners.
      */
     detectDirIds?: Array<string>;
+    /**
+     * File integrity mode of an agent. Rejected with `400` for scanners.
+     */
+    integrity?: IntegrityMode;
 };
 
 export type AgentList = {
@@ -968,6 +1172,11 @@ export type ScanTarget = {
      * Detect directories walked on the target, ordered by path.
      */
     detectDirIds: Array<string>;
+    integrity: IntegrityMode;
+    /**
+     * Whether passes run, from the mode and the policy default.
+     */
+    integrityEnabled: boolean;
 };
 
 /**
@@ -994,6 +1203,7 @@ export type ScanTargetCreate = {
      */
     intervalMinutes?: number;
     detectDirIds?: Array<string>;
+    integrity?: IntegrityMode;
 };
 
 export type ScanTargetUpdate = {
@@ -1008,6 +1218,7 @@ export type ScanTargetUpdate = {
      * Replaces the detect directories of the target.
      */
     detectDirIds?: Array<string>;
+    integrity?: IntegrityMode;
 };
 
 export type ScanTargetList = {
@@ -5262,3 +5473,318 @@ export type ExportVexResponses = {
 };
 
 export type ExportVexResponse = ExportVexResponses[keyof ExportVexResponses];
+
+export type GetIntegritySummaryData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/integrity/summary';
+};
+
+export type GetIntegritySummaryErrors = {
+    /**
+     * No valid session, or wrong credentials on login.
+     */
+    401: Error;
+    /**
+     * Unexpected error.
+     */
+    default: Error;
+};
+
+export type GetIntegritySummaryError = GetIntegritySummaryErrors[keyof GetIntegritySummaryErrors];
+
+export type GetIntegritySummaryResponses = {
+    /**
+     * Summary
+     */
+    200: IntegritySummary;
+};
+
+export type GetIntegritySummaryResponse = GetIntegritySummaryResponses[keyof GetIntegritySummaryResponses];
+
+export type ListIntegrityFilesData = {
+    body?: never;
+    path?: never;
+    query?: {
+        status?: IntegrityStatus;
+        assetId?: string;
+        /**
+         * Free-text search, case-insensitive substring match.
+         */
+        q?: string;
+        includeAllowed?: boolean;
+        limit?: number;
+        offset?: number;
+    };
+    url: '/integrity/files';
+};
+
+export type ListIntegrityFilesErrors = {
+    /**
+     * No valid session, or wrong credentials on login.
+     */
+    401: Error;
+    /**
+     * Unexpected error.
+     */
+    default: Error;
+};
+
+export type ListIntegrityFilesError = ListIntegrityFilesErrors[keyof ListIntegrityFilesErrors];
+
+export type ListIntegrityFilesResponses = {
+    /**
+     * Groups
+     */
+    200: IntegrityGroupList;
+};
+
+export type ListIntegrityFilesResponse = ListIntegrityFilesResponses[keyof ListIntegrityFilesResponses];
+
+export type ListIntegrityFileNodesData = {
+    body?: never;
+    path?: never;
+    query: {
+        path: string;
+        status: IntegrityStatus;
+        /**
+         * Actual SHA-256; absent or empty for a missing file.
+         */
+        sha256?: string;
+        includeAllowed?: boolean;
+        limit?: number;
+        offset?: number;
+    };
+    url: '/integrity/files/nodes';
+};
+
+export type ListIntegrityFileNodesErrors = {
+    /**
+     * The request is malformed or a value is invalid.
+     */
+    400: Error;
+    /**
+     * No valid session, or wrong credentials on login.
+     */
+    401: Error;
+    /**
+     * Unexpected error.
+     */
+    default: Error;
+};
+
+export type ListIntegrityFileNodesError = ListIntegrityFileNodesErrors[keyof ListIntegrityFileNodesErrors];
+
+export type ListIntegrityFileNodesResponses = {
+    /**
+     * Findings
+     */
+    200: IntegrityFindingList;
+};
+
+export type ListIntegrityFileNodesResponse = ListIntegrityFileNodesResponses[keyof ListIntegrityFileNodesResponses];
+
+export type GetAssetIntegrityData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: {
+        includeAllowed?: boolean;
+    };
+    url: '/assets/{id}/integrity';
+};
+
+export type GetAssetIntegrityErrors = {
+    /**
+     * No valid session, or wrong credentials on login.
+     */
+    401: Error;
+    /**
+     * The resource does not exist.
+     */
+    404: Error;
+    /**
+     * Unexpected error.
+     */
+    default: Error;
+};
+
+export type GetAssetIntegrityError = GetAssetIntegrityErrors[keyof GetAssetIntegrityErrors];
+
+export type GetAssetIntegrityResponses = {
+    /**
+     * Passes and findings
+     */
+    200: AssetIntegrity;
+};
+
+export type GetAssetIntegrityResponse = GetAssetIntegrityResponses[keyof GetAssetIntegrityResponses];
+
+export type ListIntegrityAllowRulesData = {
+    body?: never;
+    path?: never;
+    query?: {
+        includeRevoked?: boolean;
+        limit?: number;
+        offset?: number;
+    };
+    url: '/integrity/allow-rules';
+};
+
+export type ListIntegrityAllowRulesErrors = {
+    /**
+     * No valid session, or wrong credentials on login.
+     */
+    401: Error;
+    /**
+     * Unexpected error.
+     */
+    default: Error;
+};
+
+export type ListIntegrityAllowRulesError = ListIntegrityAllowRulesErrors[keyof ListIntegrityAllowRulesErrors];
+
+export type ListIntegrityAllowRulesResponses = {
+    /**
+     * Rules
+     */
+    200: IntegrityAllowRuleList;
+};
+
+export type ListIntegrityAllowRulesResponse = ListIntegrityAllowRulesResponses[keyof ListIntegrityAllowRulesResponses];
+
+export type CreateIntegrityAllowRulesData = {
+    body: IntegrityAllowRuleCreate;
+    path?: never;
+    query?: never;
+    url: '/integrity/allow-rules';
+};
+
+export type CreateIntegrityAllowRulesErrors = {
+    /**
+     * The request is malformed or a value is invalid.
+     */
+    400: Error;
+    /**
+     * No valid session, or wrong credentials on login.
+     */
+    401: Error;
+    /**
+     * The resource does not exist.
+     */
+    404: Error;
+    /**
+     * Unexpected error.
+     */
+    default: Error;
+};
+
+export type CreateIntegrityAllowRulesError = CreateIntegrityAllowRulesErrors[keyof CreateIntegrityAllowRulesErrors];
+
+export type CreateIntegrityAllowRulesResponses = {
+    /**
+     * Rules created
+     */
+    201: IntegrityAllowRuleList;
+};
+
+export type CreateIntegrityAllowRulesResponse = CreateIntegrityAllowRulesResponses[keyof CreateIntegrityAllowRulesResponses];
+
+export type RevokeIntegrityAllowRuleData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/integrity/allow-rules/{id}';
+};
+
+export type RevokeIntegrityAllowRuleErrors = {
+    /**
+     * No valid session, or wrong credentials on login.
+     */
+    401: Error;
+    /**
+     * The resource does not exist.
+     */
+    404: Error;
+    /**
+     * Unexpected error.
+     */
+    default: Error;
+};
+
+export type RevokeIntegrityAllowRuleError = RevokeIntegrityAllowRuleErrors[keyof RevokeIntegrityAllowRuleErrors];
+
+export type RevokeIntegrityAllowRuleResponses = {
+    /**
+     * Revoked
+     */
+    204: void;
+};
+
+export type RevokeIntegrityAllowRuleResponse = RevokeIntegrityAllowRuleResponses[keyof RevokeIntegrityAllowRuleResponses];
+
+export type GetIntegrityPolicyData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/settings/integrity';
+};
+
+export type GetIntegrityPolicyErrors = {
+    /**
+     * No valid session, or wrong credentials on login.
+     */
+    401: Error;
+    /**
+     * Unexpected error.
+     */
+    default: Error;
+};
+
+export type GetIntegrityPolicyError = GetIntegrityPolicyErrors[keyof GetIntegrityPolicyErrors];
+
+export type GetIntegrityPolicyResponses = {
+    /**
+     * Policy
+     */
+    200: IntegrityPolicy;
+};
+
+export type GetIntegrityPolicyResponse = GetIntegrityPolicyResponses[keyof GetIntegrityPolicyResponses];
+
+export type PutIntegrityPolicyData = {
+    body: IntegrityPolicy;
+    path?: never;
+    query?: never;
+    url: '/settings/integrity';
+};
+
+export type PutIntegrityPolicyErrors = {
+    /**
+     * The request is malformed or a value is invalid.
+     */
+    400: Error;
+    /**
+     * No valid session, or wrong credentials on login.
+     */
+    401: Error;
+    /**
+     * Unexpected error.
+     */
+    default: Error;
+};
+
+export type PutIntegrityPolicyError = PutIntegrityPolicyErrors[keyof PutIntegrityPolicyErrors];
+
+export type PutIntegrityPolicyResponses = {
+    /**
+     * Stored policy
+     */
+    200: IntegrityPolicy;
+};
+
+export type PutIntegrityPolicyResponse = PutIntegrityPolicyResponses[keyof PutIntegrityPolicyResponses];

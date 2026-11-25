@@ -146,6 +146,18 @@ export type {
   VulnImageCve,
   VulnImageComponent,
   VulnImageDetail,
+  // file integrity
+  IntegrityStatus,
+  IntegrityMode,
+  IntegrityPolicy,
+  IntegritySummary,
+  IntegrityGroup,
+  IntegrityFinding,
+  IntegrityPass,
+  AssetIntegrity,
+  IntegrityAllowRule,
+  IntegrityAllowRuleScope,
+  IntegrityAllowRuleCreate,
 } from '~/api/gen/types.gen'
 
 // Request bodies with write-only fields (secrets) use the writable variant.

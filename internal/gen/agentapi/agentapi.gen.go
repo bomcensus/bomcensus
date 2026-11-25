@@ -423,6 +423,9 @@ func (e UpdateState) Valid() bool {
 
 // AgentConfig defines model for AgentConfig.
 type AgentConfig struct {
+	// Integrity Package file integrity passes of the agent's own host. Sent only to agents that report the `integrity` feature.
+	Integrity *IntegrityConfig `json:"integrity,omitempty"`
+
 	// Policy Mirrors `report.Policy`.
 	Policy Policy `json:"policy"`
 
@@ -580,6 +583,36 @@ type HostFacts struct {
 
 	// Os Mirrors `report.OS`.
 	Os OsRelease `json:"os"`
+}
+
+// IntegrityConfig When and how the agent checks the files of installed OS packages against their package database. Passes run in the daily window, in the host's local time; a window may cross midnight.
+type IntegrityConfig struct {
+	Enabled bool `json:"enabled"`
+
+	// ExcludePaths Absolute path prefixes or globs (`**` matches any number of directories) that are not checked.
+	ExcludePaths *[]string `json:"exclude_paths,omitempty"`
+
+	// FullRehashDays Days after which a pass hashes every file again instead of trusting the cache.
+	FullRehashDays int `json:"full_rehash_days"`
+
+	// IntervalDays Days between the starts of two passes.
+	IntervalDays int `json:"interval_days"`
+	MaxReadMbps  int `json:"max_read_mbps"`
+
+	// WindowEnd Local time `HH:MM`; equal to `window_start` means the whole day.
+	WindowEnd string `json:"window_end"`
+
+	// WindowStart Local time `HH:MM`.
+	WindowStart string `json:"window_start"`
+}
+
+// IntegrityQuery Mirrors `report.IntegrityQuery` without the cache: one chunk of a pass. Limits in `report`.
+type IntegrityQuery struct {
+	Cursor       *string   `json:"cursor,omitempty"`
+	ExcludePaths *[]string `json:"exclude_paths,omitempty"`
+	FullRehash   *bool     `json:"full_rehash,omitempty"`
+	MaxReadMbps  *int      `json:"max_read_mbps,omitempty"`
+	PassId       string    `json:"pass_id"`
 }
 
 // K8sConnection defines model for K8sConnection.
@@ -888,7 +921,10 @@ type ScanSshDirective struct {
 	// HostKeyFingerprint Pinned host key (`SHA256:<base64>`). Absent: accept the first key and report it in the job result.
 	HostKeyFingerprint *string `json:"host_key_fingerprint,omitempty"`
 	Id                 string  `json:"id"`
-	JobId              string  `json:"job_id"`
+
+	// Integrity An integrity chunk instead of a collection: `sections` and `go_symbols` are absent. Present only for scanners that report the `integrity` feature. The probe's runtime limit comes from `policy.max_runtime_seconds`.
+	Integrity *IntegrityQuery `json:"integrity,omitempty"`
+	JobId     string          `json:"job_id"`
 
 	// Policy Mirrors `report.Policy`.
 	Policy       Policy `json:"policy"`

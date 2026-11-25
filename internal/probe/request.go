@@ -80,7 +80,7 @@ type sectionSet map[string]bool
 
 func (s sectionSet) list() []string {
 	var out []string
-	for _, name := range report.AllSections {
+	for _, name := range append(slices.Clone(report.AllSections), report.SectionIntegrity) {
 		if s[name] {
 			out = append(out, name)
 		}
@@ -94,6 +94,11 @@ func (s sectionSet) list() []string {
 func wantedSections(req report.Request, log *slog.Logger) (sectionSet, error) {
 	if req.GoSymbols != nil {
 		if err := req.GoSymbols.Validate(); err != nil {
+			return nil, fmt.Errorf("probe: %w", err)
+		}
+	}
+	if req.Integrity != nil {
+		if err := req.Integrity.Validate(); err != nil {
 			return nil, fmt.Errorf("probe: %w", err)
 		}
 	}
@@ -111,6 +116,15 @@ func wantedSections(req report.Request, log *slog.Logger) (sectionSet, error) {
 			set[n] = true
 		case n == report.SectionGoSymbols:
 			symbols = true
+		case n == report.SectionIntegrity:
+			if req.Integrity == nil {
+				log.Warn("integrity section without a query ignored")
+				continue
+			}
+			if req.Policy.MaxRuntimeSeconds > report.MaxIntegrityRuntimeSeconds {
+				return nil, fmt.Errorf("probe: integrity runs are limited to %d seconds", report.MaxIntegrityRuntimeSeconds)
+			}
+			set[n] = true
 		default:
 			log.Warn("unknown section ignored", "section", n)
 		}
@@ -146,4 +160,9 @@ func applyKnownDigests(rep *report.Report, known map[string]string) {
 func unchanged(m report.SectionMeta) report.SectionMeta {
 	m.Unchanged = true
 	return m
+}
+
+// integrityOnly reports whether the integrity section is the only one.
+func (s sectionSet) integrityOnly() bool {
+	return s[report.SectionIntegrity] && len(s) == 1
 }

@@ -193,6 +193,11 @@ func (s *Service) apply(ctx context.Context, sender Sender, reportID string, r *
 		if err := s.applyGoSymbols(ctx, tx, assetID, container, r); err != nil {
 			return err
 		}
+		if subj.k8s == nil {
+			if err := s.applyIntegrity(ctx, tx, assetID, r); err != nil {
+				return err
+			}
+		}
 		if assetID != "" {
 			if err := tx.SetReportAsset(ctx, reportID, assetID); err != nil {
 				return fmt.Errorf("ingest: link report: %w", err)

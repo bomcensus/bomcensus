@@ -29,6 +29,9 @@ const (
 	// is not part of AllSections. A request naming only it collects
 	// nothing else.
 	SectionGoSymbols = "go_symbols"
+	// SectionIntegrity is not part of AllSections either: it is collected
+	// only when named together with Request.Integrity, and alone.
+	SectionIntegrity = "integrity"
 )
 
 // AllSections lists the sections in collection order.
@@ -72,6 +75,7 @@ type Report struct {
 	Processes  *ProcessesSection  `json:"processes,omitempty"`
 	Containers *ContainersSection `json:"containers,omitempty"`
 	GoSymbols  *GoSymbolsSection  `json:"go_symbols,omitempty"`
+	Integrity  *IntegritySection  `json:"integrity,omitempty"`
 
 	// Cache is opaque probe state (file hash cache). The caller stores it and
 	// passes it back in the next Request. Never uploaded to the server.
@@ -425,6 +429,9 @@ type Request struct {
 	// GoSymbols asks whether functions are linked into Go binaries. It is
 	// answered in Report.GoSymbols whatever Sections says.
 	GoSymbols *GoSymbolQuery `json:"go_symbols,omitempty"`
+	// Integrity starts or continues a package file integrity pass. It is
+	// answered in Report.Integrity when Sections names SectionIntegrity.
+	Integrity *IntegrityQuery `json:"integrity,omitempty"`
 }
 
 // Policy comes from the server and bounds what the probe does.
@@ -546,4 +553,122 @@ type GoSymbolAnswer struct {
 	Results map[string]string `json:"results"`
 	// Reason explains why names were not checked.
 	Reason string `json:"reason,omitempty"`
+}
+
+// ── integrity ───────────────────────────────────────────────────────────
+
+// FeatureIntegrity is the feature an agent or scanner reports when it runs
+// integrity passes.
+const FeatureIntegrity = "integrity"
+
+// Statuses of an integrity finding.
+const (
+	IntegrityModified = "modified"
+	IntegrityMissing  = "missing"
+)
+
+// Limits of an integrity request.
+const (
+	MaxIntegrityRuntimeSeconds = 5 * 3600
+	MaxIntegrityExcludes       = 256
+	MaxIntegrityExcludeLen     = 1024
+	MaxIntegrityCursorLen      = 4096
+	MaxIntegrityPassIDLen      = 64
+	MaxIntegrityReadMBps       = 1000
+	// MaxIntegrityFindings bounds the findings of one chunk. A chunk that
+	// reaches it ends early; the rest of the pass continues in the next.
+	MaxIntegrityFindings = 5000
+)
+
+// IntegrityQuery asks the probe to compare package files with the digests
+// their package database records. A pass over all packages may take several
+// chunks; each chunk returns a cursor that the next one continues from.
+type IntegrityQuery struct {
+	// PassID names the pass; the probe returns it unchanged.
+	PassID string `json:"pass_id"`
+	// Cursor is IntegritySection.Cursor of the previous chunk, empty for the
+	// first chunk of a pass.
+	Cursor string `json:"cursor,omitempty"`
+	// FullRehash hashes every file even when the cache knows it.
+	FullRehash bool `json:"full_rehash,omitempty"`
+	// MaxReadMBps bounds the read rate. Zero means the default.
+	MaxReadMBps int `json:"max_read_mbps,omitempty"`
+	// ExcludePaths are path prefixes or globs ("**" matches any number of
+	// directories) that are not checked.
+	ExcludePaths []string `json:"exclude_paths,omitempty"`
+	// Cache is IntegritySection.Cache of the previous chunk.
+	Cache json.RawMessage `json:"cache,omitempty"`
+}
+
+// Validate checks the limits of the query.
+func (q *IntegrityQuery) Validate() error {
+	if q.PassID == "" || len(q.PassID) > MaxIntegrityPassIDLen {
+		return fmt.Errorf("integrity: pass id must be 1 to %d bytes", MaxIntegrityPassIDLen)
+	}
+	if len(q.Cursor) > MaxIntegrityCursorLen {
+		return fmt.Errorf("integrity: cursor longer than %d bytes", MaxIntegrityCursorLen)
+	}
+	if q.MaxReadMBps < 0 || q.MaxReadMBps > MaxIntegrityReadMBps {
+		return fmt.Errorf("integrity: read rate must be 0 to %d MB/s", MaxIntegrityReadMBps)
+	}
+	if len(q.ExcludePaths) > MaxIntegrityExcludes {
+		return fmt.Errorf("integrity: more than %d exclude paths", MaxIntegrityExcludes)
+	}
+	for _, p := range q.ExcludePaths {
+		if !strings.HasPrefix(p, "/") || len(p) > MaxIntegrityExcludeLen {
+			return fmt.Errorf("integrity: exclude path %q must be absolute and at most %d bytes", p, MaxIntegrityExcludeLen)
+		}
+	}
+	return nil
+}
+
+// IntegritySection is the result of one chunk of an integrity pass.
+type IntegritySection struct {
+	SectionMeta
+	PassID string `json:"pass_id"`
+	// PassDone is set by the chunk that checked the last package.
+	PassDone bool `json:"pass_done"`
+	// Cursor is where the next chunk starts.
+	Cursor string `json:"cursor,omitempty"`
+	// UTCOffsetSeconds is the inspected host's offset from UTC now, so that
+	// a scanner can place the next window in the host's local time.
+	UTCOffsetSeconds int `json:"utc_offset_s"`
+	// Packages, Checked, Excluded and Unreadable count this chunk. Excluded
+	// files are conffiles and other files the database marks as
+	// changeable, policy exclusions and files too large to hash.
+	Packages   int                `json:"packages"`
+	Checked    int64              `json:"checked"`
+	Excluded   int64              `json:"excluded"`
+	Unreadable int64              `json:"unreadable"`
+	Findings   []IntegrityFinding `json:"findings,omitempty"`
+	// Cache is opaque probe state for the next chunk. Never uploaded.
+	Cache json.RawMessage `json:"cache,omitempty"`
+}
+
+// IntegrityFinding is a package file whose content differs from the
+// database digest, or that is missing.
+type IntegrityFinding struct {
+	PkgType string `json:"pkg_type"`
+	Package string `json:"package"`
+	Version string `json:"version"`
+	Arch    string `json:"arch,omitempty"`
+	Path    string `json:"path"`
+	Status  string `json:"status"`
+	// Algo is the database's algorithm; Expected and Actual are hex in it.
+	Algo     string `json:"algo"`
+	Expected string `json:"expected"`
+	Actual   string `json:"actual,omitempty"`
+	// ActualSHA256 is set when Algo is not sha256.
+	ActualSHA256 string    `json:"actual_sha256,omitempty"`
+	Size         int64     `json:"size,omitempty"`
+	Mtime        time.Time `json:"mtime,omitzero"`
+	Ctime        time.Time `json:"ctime,omitzero"`
+}
+
+// SHA256 returns the actual SHA-256 of a modified file, empty when missing.
+func (f *IntegrityFinding) SHA256() string {
+	if f.Algo == "sha256" {
+		return f.Actual
+	}
+	return f.ActualSHA256
 }

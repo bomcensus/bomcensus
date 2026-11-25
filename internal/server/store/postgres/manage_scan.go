@@ -127,7 +127,7 @@ const mgScanTargetColumns = `id::text, name, address, port, credential_id::text,
 	array(SELECT x.dir_id::text FROM scan_target_detect_dirs x JOIN detect_dirs dd ON dd.id = x.dir_id
 		WHERE x.target_id = scan_targets.id ORDER BY dd.path),
 	array(SELECT dd.path FROM scan_target_detect_dirs x JOIN detect_dirs dd ON dd.id = x.dir_id
-		WHERE x.target_id = scan_targets.id ORDER BY dd.path)`
+		WHERE x.target_id = scan_targets.id ORDER BY dd.path), integrity`
 
 func mgScanScanTarget(r mgRow, extra ...any) (store.ScanTarget, error) {
 	var t store.ScanTarget
@@ -137,7 +137,7 @@ func mgScanScanTarget(r mgRow, extra ...any) (store.ScanTarget, error) {
 	var durMS int64
 	dest := []any{&t.ID, &t.Name, &t.Address, &t.Port, &t.CredentialID, &t.ScannerID, &t.Sudo, &t.HostKey,
 		&t.IntervalMinutes, &t.AssetID, &runAt, &result, &message, &durMS, &t.CreatedAt,
-		&t.DetectDirIDs, &t.DetectPaths}
+		&t.DetectDirIDs, &t.DetectPaths, &t.Integrity}
 	if err := r.Scan(append(dest, extra...)...); err != nil {
 		return store.ScanTarget{}, err
 	}
@@ -164,11 +164,11 @@ func (d *DB) CreateScanTarget(ctx context.Context, t store.ScanTarget) (store.Sc
 	}
 	out, err := mgScanScanTarget(d.q.QueryRow(ctx, `
 		INSERT INTO scan_targets (id, name, address, port, credential_id, scanner_id, sudo, host_key,
-			interval_minutes, asset_id, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+			interval_minutes, asset_id, created_at, integrity)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 		RETURNING `+mgScanTargetColumns,
 		t.ID, t.Name, t.Address, t.Port, t.CredentialID, mgText(t.ScannerID), t.Sudo, mgBytes(t.HostKey),
-		t.IntervalMinutes, mgText(t.AssetID), mgOrNow(t.CreatedAt)))
+		t.IntervalMinutes, mgText(t.AssetID), mgOrNow(t.CreatedAt), mgIntegrityMode(t.Integrity)))
 	if err != nil {
 		return store.ScanTarget{}, mgErr("create scan target", err)
 	}
@@ -220,9 +220,10 @@ func (d *DB) ListScanTargets(ctx context.Context, f store.ScanTargetFilter, p st
 func (d *DB) UpdateScanTarget(ctx context.Context, t store.ScanTarget) error {
 	tag, err := d.q.Exec(ctx, `
 		UPDATE scan_targets SET name = $2, address = $3, port = $4, credential_id = $5, scanner_id = $6,
-			sudo = $7, interval_minutes = $8
+			sudo = $7, interval_minutes = $8, integrity = $9
 		WHERE id = $1`,
-		t.ID, t.Name, t.Address, t.Port, t.CredentialID, mgText(t.ScannerID), t.Sudo, t.IntervalMinutes)
+		t.ID, t.Name, t.Address, t.Port, t.CredentialID, mgText(t.ScannerID), t.Sudo, t.IntervalMinutes,
+		mgIntegrityMode(t.Integrity))
 	return mgExactlyOne("update scan target", tag, err)
 }
 

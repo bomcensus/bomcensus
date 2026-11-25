@@ -51,6 +51,10 @@ type SSHJob struct {
 	Timeout time.Duration
 	// GoSymbols is passed to the probe with the collection.
 	GoSymbols *report.GoSymbolQuery
+	// Integrity turns the job into one integrity chunk: only the
+	// integrity section is collected, and the job's result does not count
+	// as a scan of the target.
+	Integrity *report.IntegrityQuery
 }
 
 // RunSSH collects one host over SSH and submits its report and result. The
@@ -97,6 +101,11 @@ func runSSH(ctx context.Context, job SSHJob, d Deps, res *Result, log *slog.Logg
 		HostKey: pinned,
 		Request: report.Request{Sections: slices.Clone(job.Sections), Policy: job.Policy, GoSymbols: job.GoSymbols},
 		Timeout: job.Timeout,
+	}
+	if job.Integrity != nil {
+		q := *job.Integrity
+		q.Cache = nil
+		t.Request = report.Request{Sections: []string{report.SectionIntegrity}, Policy: job.Policy, Integrity: &q}
 	}
 	out, err := d.sshCollect(ctx, t, ssh.Deps{Probe: d.probe(), Logger: d.Logger})
 	if err != nil {
@@ -212,6 +221,9 @@ func partialSections(r *report.Report) []string {
 	}
 	if r.Containers != nil {
 		add(report.SectionContainers, &r.Containers.SectionMeta)
+	}
+	if r.Integrity != nil {
+		add(report.SectionIntegrity, &r.Integrity.SectionMeta)
 	}
 	return out
 }

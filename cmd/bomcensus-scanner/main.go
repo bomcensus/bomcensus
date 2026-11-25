@@ -282,7 +282,7 @@ func cmdRun(ctx context.Context, args []string, stderr io.Writer) error {
 	}
 	sc.register(rt)
 	rt.OnStatus(func(_ context.Context, req *agentapi.PollRequest) {
-		features := []string{report.FeatureGoSymbols}
+		features := []string{report.FeatureGoSymbols, report.FeatureIntegrity}
 		req.Features = &features
 	})
 	ctx, cancelRun := context.WithCancel(ctx)

@@ -6,7 +6,7 @@
 
 <script setup lang="ts">
 import { Plus, Play } from '@lucide/vue'
-import type { Credential, CredentialKind, ScanResult, ScanTarget } from '~/types'
+import type { Credential, CredentialKind, IntegrityMode, ScanResult, ScanTarget } from '~/types'
 import type { TableColumn } from '~/types/table'
 import type { Tone } from '~/utils/labels'
 import {
@@ -97,6 +97,7 @@ const targetColumns: TableColumn<ScanTarget>[] = [
   { key: 'hostKey', label: 'host key', hideBelow: 'md' },
   { key: 'schedule', label: '일정', sortValue: (t) => t.intervalMinutes, hideBelow: 'md' },
   { key: 'detectDirs', label: '감지 대상 디렉터리', sortValue: (t) => t.detectDirIds.length, hideBelow: 'lg' },
+  { key: 'integrity', label: '파일 무결성', sortValue: (t) => (t.integrityEnabled ? 1 : 0), hideBelow: 'lg' },
   { key: 'lastRun', label: '최근 결과', sortValue: (t) => t.lastRun?.at ?? '' },
   { key: 'actions', label: '', align: 'right' },
 ]
@@ -149,6 +150,7 @@ const emptyTarget = () => ({
   intervalMinutes: 0,
   resetHostKey: false,
   detectDirIds: [] as string[],
+  integrity: 'inherit' as IntegrityMode,
 })
 const targetForm = reactive(emptyTarget())
 // Set while the form edits an existing target; unset when it adds one.
@@ -187,6 +189,7 @@ function openEditTarget(t: ScanTarget) {
     sudo: t.sudo,
     intervalMinutes: t.intervalMinutes,
     detectDirIds: [...t.detectDirIds],
+    integrity: t.integrity,
   })
   targetError.value = ''
   targetOpen.value = true
@@ -208,6 +211,7 @@ async function addTarget() {
         intervalMinutes: targetForm.intervalMinutes,
         resetHostKey: editing.hostKeyPinned && targetForm.resetHostKey ? true : undefined,
         detectDirIds: targetForm.detectDirIds,
+        integrity: targetForm.integrity,
       })
     } else {
       await createScanTarget({
@@ -221,6 +225,7 @@ async function addTarget() {
         hostKey: targetForm.hostKeyMode === 'pinned' ? targetForm.hostKey.trim() : undefined,
         intervalMinutes: targetForm.intervalMinutes,
         detectDirIds: targetForm.detectDirIds,
+        integrity: targetForm.integrity,
       })
     }
     targetOpen.value = false
@@ -437,6 +442,13 @@ async function removeCred() {
               <span v-if="row.detectDirIds.length === 0" class="whitespace-nowrap text-ink-3">실행 중인 것만</span>
               <span v-for="p in detectPaths(row)" v-else :key="p" class="mono block text-xs [overflow-wrap:anywhere]">{{ p }}</span>
             </template>
+            <template #cell-integrity="{ row }">
+              <NuxtLink v-if="row.assetId" :to="`/assets/${row.assetId}?tab=integrity`" class="hover:underline">
+                <StatusBadge :tone="row.integrityEnabled ? 'ok' : 'neutral'" :label="row.integrityEnabled ? '켜짐' : '꺼짐'" dot />
+              </NuxtLink>
+              <StatusBadge v-else :tone="row.integrityEnabled ? 'ok' : 'neutral'" :label="row.integrityEnabled ? '켜짐' : '꺼짐'" dot />
+              <div v-if="row.integrity !== 'inherit'" class="text-xs text-ink-3">{{ integrityModeLabel[row.integrity] }}</div>
+            </template>
             <template #cell-lastRun="{ row }">
               <template v-if="row.lastRun">
                 <div class="flex flex-wrap items-center gap-1.5">
@@ -551,6 +563,11 @@ async function removeCred() {
           <DetectDirPicker v-model="targetForm.detectDirIds" :dirs="detectDirs" :disabled="targetBusy" />
           <p class="mt-1 text-xs text-ink-3">고른 디렉터리만 하위까지 탐색합니다. 고르지 않으면 실행 중인 소프트웨어만 수집합니다.</p>
         </fieldset>
+        <FormField label="파일 무결성 검사" hint="기본값은 설정 › 파일 무결성의 Agentless (SSH) 기본값입니다.">
+          <select v-model="targetForm.integrity" class="select w-full">
+            <option v-for="m in (['inherit', 'on', 'off'] as const)" :key="m" :value="m">{{ integrityModeLabel[m] }}</option>
+          </select>
+        </FormField>
         <p v-if="targetError" class="note note-danger" role="alert">{{ targetError }}</p>
       </form>
       <template #footer>

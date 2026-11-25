@@ -148,26 +148,7 @@ func (s *Service) dispatchSSH(ctx context.Context, sc store.Agent, t store.ScanT
 	if err != nil {
 		return fmt.Errorf("scansvc: scan target %s: %w", t.ID, err)
 	}
-	plain := agentapi.SSHCredentialSecret{Kind: agentapi.SshPassword}
-	if cred.Kind == store.CredentialSSHKey {
-		plain.Kind = agentapi.SshKey
-	}
-	if len(secret.PrivateKey) > 0 {
-		k, p := string(secret.PrivateKey), string(secret.Passphrase)
-		plain.PrivateKey = &k
-		if p != "" {
-			plain.Passphrase = &p
-		}
-	}
-	if secret.Password != "" {
-		plain.Password = &secret.Password
-	}
-	pt, err := json.Marshal(plain)
-	if err != nil {
-		return err
-	}
-	sealed, err := seal(sc, jobID, "credential", pt)
-	clear(pt)
+	sealed, err := sealSSHCredential(sc, jobID, cred, secret)
 	if err != nil {
 		return err
 	}
@@ -269,4 +250,28 @@ func (s *Service) applySSHResult(ctx context.Context, sender ingest.Sender, targ
 	return s.ing.RecordScanResult(ctx, sender, t.ID, ingest.ScanResult{
 		Status: status, Message: msg, StartedAt: res.StartedAt, FinishedAt: res.FinishedAt,
 	})
+}
+
+// sealSSHCredential seals a target's credential to the scanner for one job.
+func sealSSHCredential(sc store.Agent, jobID string, cred store.Credential, secret runner.SSHCredential) ([]byte, error) {
+	plain := agentapi.SSHCredentialSecret{Kind: agentapi.SshPassword}
+	if cred.Kind == store.CredentialSSHKey {
+		plain.Kind = agentapi.SshKey
+	}
+	if len(secret.PrivateKey) > 0 {
+		k, p := string(secret.PrivateKey), string(secret.Passphrase)
+		plain.PrivateKey = &k
+		if p != "" {
+			plain.Passphrase = &p
+		}
+	}
+	if secret.Password != "" {
+		plain.Password = &secret.Password
+	}
+	pt, err := json.Marshal(plain)
+	if err != nil {
+		return nil, err
+	}
+	defer clear(pt)
+	return seal(sc, jobID, "credential", pt)
 }

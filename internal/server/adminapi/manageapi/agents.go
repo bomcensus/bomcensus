@@ -17,6 +17,7 @@ import (
 
 	gen "github.com/bomcensus/bomcensus/internal/gen/adminapi"
 	"github.com/bomcensus/bomcensus/internal/server/adminapi/apierr"
+	"github.com/bomcensus/bomcensus/internal/server/integritysvc"
 	"github.com/bomcensus/bomcensus/internal/server/store"
 )
 
@@ -25,11 +26,15 @@ type agentView struct {
 	onlineAfter   time.Time
 	bundleVersion int64
 	listenTargets map[string]string // agent id → listen target id
+	integrity     integritysvc.Policy
 }
 
 func (h *Handlers) agentView(ctx context.Context) (agentView, error) {
 	v := agentView{onlineAfter: h.now().Add(-OnlineWindow), listenTargets: map[string]string{}}
 	var err error
+	if v.integrity, err = integritysvc.Load(ctx, h.st); err != nil {
+		return v, err
+	}
 	if v.bundleVersion, err = h.st.TrustBundleVersion(ctx); err != nil {
 		return v, err
 	}
@@ -75,6 +80,11 @@ func (v agentView) agent(a store.Agent) gen.Agent {
 	}
 	if a.LastSeen != nil {
 		out.LastSeen = *a.LastSeen
+	}
+	if a.Kind == store.AgentKindAgent {
+		mode := cmp.Or(a.Integrity, store.IntegrityInherit)
+		m, on := gen.IntegrityMode(mode), integritysvc.Enabled(mode, v.integrity.Agents)
+		out.Integrity, out.IntegrityEnabled = &m, &on
 	}
 	return out
 }
@@ -222,6 +232,19 @@ func (h *Handlers) UpdateAgent(ctx context.Context, req gen.UpdateAgentRequestOb
 		}
 		h.log.Info("agent detect directories changed", "agent_id", a.ID, "hostname", a.Hostname,
 			"count", len(*b.DetectDirIds), "by", h.who(ctx))
+	}
+	if b.Integrity != nil {
+		if a.Kind != store.AgentKindAgent {
+			return nil, apierr.Invalid("file integrity applies to agents, not scanners")
+		}
+		if !b.Integrity.Valid() {
+			return nil, apierr.Invalid("unknown integrity mode %q", *b.Integrity)
+		}
+		if err := h.st.SetAgentIntegrity(ctx, a.ID, string(*b.Integrity)); err != nil {
+			return nil, err
+		}
+		h.log.Info("agent integrity mode changed", "agent_id", a.ID, "hostname", a.Hostname,
+			"mode", *b.Integrity, "by", h.who(ctx))
 	}
 	dto, err := h.getAgentDTO(ctx, a.ID)
 	if err != nil {

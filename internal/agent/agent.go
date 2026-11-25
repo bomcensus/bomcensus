@@ -155,6 +155,9 @@ func Run(ctx context.Context, o Options) error {
 	if _, err := newCollector(rt, probe, log); err != nil {
 		return err
 	}
+	if _, err := newIntegrityRunner(rt, probe, log); err != nil {
+		return err
+	}
 	if um != nil {
 		um.Attach(rt)
 	}

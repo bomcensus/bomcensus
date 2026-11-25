@@ -98,6 +98,8 @@ type Agent struct {
 	// their paths, both ordered by path. Read-only; see DetectDirs.
 	DetectDirIDs []string
 	DetectPaths  []string
+	// Integrity is the agent's integrity mode (IntegrityInherit, ...).
+	Integrity string
 
 	EnrolledAt time.Time
 	ApprovedAt *time.Time

@@ -65,6 +65,8 @@ tags:
     description: Vulnerability feed servers and the instance key
   - name: vulnerabilities
     description: Findings by update action and by vulnerability
+  - name: integrity
+    description: Package files that differ from their package database, and the rules that allow them
 
 paths:
   /meta:
@@ -2471,6 +2473,244 @@ paths:
         default:
           $ref: "#/components/responses/UnexpectedError"
 
+  /integrity/summary:
+    get:
+      tags: [integrity]
+      operationId: getIntegritySummary
+      summary: Numbers of the file integrity page
+      responses:
+        "200":
+          description: Summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntegritySummary"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /integrity/files:
+    get:
+      tags: [integrity]
+      operationId: listIntegrityFiles
+      summary: Changed package files, grouped by path, status and actual content
+      description: |
+        Open findings of current assets with the same path, status and actual
+        SHA-256 form one item, most assets first. Findings an active allow rule
+        hides are left out unless `includeAllowed`.
+      parameters:
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/IntegrityStatus"
+        - name: assetId
+          in: query
+          schema:
+            type: string
+        - $ref: "#/components/parameters/QueryQ"
+        - name: includeAllowed
+          in: query
+          schema:
+            type: boolean
+            default: false
+        - $ref: "#/components/parameters/QueryLimit"
+        - $ref: "#/components/parameters/QueryOffset"
+      responses:
+        "200":
+          description: Groups
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntegrityGroupList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /integrity/files/nodes:
+    get:
+      tags: [integrity]
+      operationId: listIntegrityFileNodes
+      summary: The assets of one group, with the finding on each
+      parameters:
+        - name: path
+          in: query
+          required: true
+          schema:
+            type: string
+            maxLength: 4096
+        - name: status
+          in: query
+          required: true
+          schema:
+            $ref: "#/components/schemas/IntegrityStatus"
+        - name: sha256
+          in: query
+          description: Actual SHA-256; absent or empty for a missing file.
+          schema:
+            type: string
+        - name: includeAllowed
+          in: query
+          schema:
+            type: boolean
+            default: false
+        - $ref: "#/components/parameters/QueryLimit"
+        - $ref: "#/components/parameters/QueryOffset"
+      responses:
+        "200":
+          description: Findings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntegrityFindingList"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /assets/{id}/integrity:
+    parameters:
+      - $ref: "#/components/parameters/PathId"
+    get:
+      tags: [integrity]
+      operationId: getAssetIntegrity
+      summary: File integrity of one asset
+      parameters:
+        - name: includeAllowed
+          in: query
+          schema:
+            type: boolean
+            default: false
+      responses:
+        "200":
+          description: Passes and findings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssetIntegrity"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /integrity/allow-rules:
+    get:
+      tags: [integrity]
+      operationId: listIntegrityAllowRules
+      summary: Allow rules, newest first
+      parameters:
+        - name: includeRevoked
+          in: query
+          schema:
+            type: boolean
+            default: false
+        - $ref: "#/components/parameters/QueryLimit"
+        - $ref: "#/components/parameters/QueryOffset"
+      responses:
+        "200":
+          description: Rules
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntegrityAllowRuleList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+    post:
+      tags: [integrity]
+      operationId: createIntegrityAllowRules
+      summary: Allow a changed file so that it is no longer shown
+      description: |
+        `scope` `asset` creates one rule per asset in `assetIds`: the finding is
+        hidden on those assets only. `scope` `fleet` creates one rule that hides
+        the finding on every asset, including assets that report the same path
+        and content later. A file that changes again has another SHA-256 and is
+        shown again.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IntegrityAllowRuleCreate"
+      responses:
+        "201":
+          description: Rules created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntegrityAllowRuleList"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /integrity/allow-rules/{id}:
+    parameters:
+      - $ref: "#/components/parameters/PathId"
+    delete:
+      tags: [integrity]
+      operationId: revokeIntegrityAllowRule
+      summary: Revoke a rule; the findings it hid are shown again
+      responses:
+        "204":
+          description: Revoked
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /settings/integrity:
+    get:
+      tags: [integrity]
+      operationId: getIntegrityPolicy
+      summary: When and how package files are checked
+      responses:
+        "200":
+          description: Policy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntegrityPolicy"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+    put:
+      tags: [integrity]
+      operationId: putIntegrityPolicy
+      summary: Replace the file integrity policy
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IntegrityPolicy"
+      responses:
+        "200":
+          description: Stored policy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntegrityPolicy"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
 components:
   securitySchemes:
     session:
@@ -2598,6 +2838,293 @@ components:
             $ref: "#/components/schemas/Error"
 
   schemas:
+    IntegrityStatus:
+      type: string
+      enum: [modified, missing]
+    IntegrityMode:
+      description: "`inherit` follows the default of the collector's kind in the integrity policy."
+      type: string
+      enum: [inherit, "on", "off"]
+    IntegrityPolicy:
+      type: object
+      required: [agents, ssh, windowStart, windowEnd, intervalDays, maxReadMbps, fullRehashDays, excludePaths]
+      properties:
+        agents:
+          description: Default for agents whose mode is `inherit`.
+          type: boolean
+        ssh:
+          description: Default for scan targets whose mode is `inherit`.
+          type: boolean
+        windowStart:
+          description: "Local time of the inspected host, `HH:MM`."
+          type: string
+          pattern: "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+        windowEnd:
+          description: "`HH:MM`; before `windowStart` crosses midnight, equal means all day."
+          type: string
+          pattern: "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+        intervalDays:
+          type: integer
+          minimum: 1
+          maximum: 30
+        maxReadMbps:
+          type: integer
+          minimum: 1
+          maximum: 1000
+        fullRehashDays:
+          description: Days after which a pass reads every file again instead of trusting unchanged metadata.
+          type: integer
+          minimum: 1
+          maximum: 365
+        excludePaths:
+          description: Absolute path prefixes or globs (`**` matches any number of directories).
+          type: array
+          maxItems: 256
+          items:
+            type: string
+            maxLength: 1024
+    IntegritySummary:
+      type: object
+      required: [groups, assets, rules, tracked, completed]
+      properties:
+        groups:
+          description: Changed files shown, by path and content.
+          type: integer
+        assets:
+          description: Assets with a changed file shown.
+          type: integer
+        rules:
+          description: Active allow rules.
+          type: integer
+        tracked:
+          description: Current assets with any pass.
+          type: integer
+        completed:
+          description: Assets whose last pass finished within the last two intervals.
+          type: integer
+    IntegrityGroup:
+      type: object
+      required: [path, status, pkgType, package, version, algo, expected, assets, allowedAssets, firstSeen, lastSeen]
+      properties:
+        path:
+          type: string
+        status:
+          $ref: "#/components/schemas/IntegrityStatus"
+        actualSha256:
+          description: Absent for a missing file.
+          type: string
+        pkgType:
+          type: string
+        package:
+          type: string
+        version:
+          description: Version on one of the assets; others may run another.
+          type: string
+        algo:
+          description: Algorithm of the package database (md5, sha1, sha256, ...).
+          type: string
+        expected:
+          type: string
+        actual:
+          description: Actual digest in `algo`; absent for a missing file.
+          type: string
+        assets:
+          type: integer
+        allowedAssets:
+          description: Assets on which an allow rule hides it (with `includeAllowed`).
+          type: integer
+        firstSeen:
+          type: string
+          format: date-time
+        lastSeen:
+          type: string
+          format: date-time
+    IntegrityGroupList:
+      type: object
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/IntegrityGroup"
+        total:
+          type: integer
+    IntegrityFinding:
+      type: object
+      required: [id, assetId, assetName, collector, path, status, pkgType, package, version, algo, expected, firstSeen, lastSeen]
+      properties:
+        id:
+          type: string
+        assetId:
+          type: string
+        assetName:
+          type: string
+        collector:
+          description: How the asset is collected (`agent`, `ssh`).
+          type: string
+        path:
+          type: string
+        status:
+          $ref: "#/components/schemas/IntegrityStatus"
+        pkgType:
+          type: string
+        package:
+          type: string
+        version:
+          type: string
+        arch:
+          type: string
+        algo:
+          type: string
+        expected:
+          type: string
+        actual:
+          type: string
+        actualSha256:
+          type: string
+        size:
+          type: integer
+          format: int64
+        mtime:
+          type: string
+          format: date-time
+        ctime:
+          type: string
+          format: date-time
+        firstSeen:
+          type: string
+          format: date-time
+        lastSeen:
+          type: string
+          format: date-time
+        allowedBy:
+          description: Id of the active rule that hides the finding.
+          type: string
+    IntegrityFindingList:
+      type: object
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/IntegrityFinding"
+        total:
+          type: integer
+    IntegrityPass:
+      type: object
+      required: [startedAt, lastChunkAt, checked, excluded, unreadable, coverage]
+      properties:
+        startedAt:
+          type: string
+          format: date-time
+        lastChunkAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+        checked:
+          type: integer
+          format: int64
+        excluded:
+          type: integer
+          format: int64
+        unreadable:
+          type: integer
+          format: int64
+        coverage:
+          type: string
+          enum: [full, partial, none]
+        reason:
+          type: string
+    AssetIntegrity:
+      type: object
+      required: [enabled, findings]
+      properties:
+        enabled:
+          description: Passes run for the asset's agent or scan target. False when it has neither.
+          type: boolean
+        mode:
+          $ref: "#/components/schemas/IntegrityMode"
+        lastPass:
+          $ref: "#/components/schemas/IntegrityPass"
+        lastCompletedPass:
+          $ref: "#/components/schemas/IntegrityPass"
+        findings:
+          type: array
+          items:
+            $ref: "#/components/schemas/IntegrityFinding"
+    IntegrityAllowRuleScope:
+      type: string
+      enum: [asset, fleet]
+    IntegrityAllowRule:
+      type: object
+      required: [id, scope, path, status, note, createdBy, createdAt, hidden]
+      properties:
+        id:
+          type: string
+        scope:
+          $ref: "#/components/schemas/IntegrityAllowRuleScope"
+        assetId:
+          type: string
+        assetName:
+          type: string
+        path:
+          type: string
+        status:
+          $ref: "#/components/schemas/IntegrityStatus"
+        actualSha256:
+          type: string
+        note:
+          type: string
+        createdBy:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        revokedBy:
+          type: string
+        revokedAt:
+          type: string
+          format: date-time
+        hidden:
+          description: Open findings the rule hides now.
+          type: integer
+    IntegrityAllowRuleList:
+      type: object
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/IntegrityAllowRule"
+        total:
+          type: integer
+    IntegrityAllowRuleCreate:
+      type: object
+      required: [scope, path, status, note]
+      properties:
+        scope:
+          $ref: "#/components/schemas/IntegrityAllowRuleScope"
+        assetIds:
+          description: Scope `asset` only.
+          type: array
+          minItems: 1
+          maxItems: 500
+          items:
+            type: string
+        path:
+          type: string
+          maxLength: 4096
+        status:
+          $ref: "#/components/schemas/IntegrityStatus"
+        actualSha256:
+          description: Required for `modified`, absent for `missing`.
+          type: string
+        note:
+          type: string
+          minLength: 1
+          maxLength: 1000
     Error:
       type: object
       required: [code, message]
@@ -3753,6 +4280,13 @@ components:
           type: array
           items:
             type: string
+        integrity:
+          description: File integrity mode. Absent for scanners.
+          allOf:
+            - $ref: "#/components/schemas/IntegrityMode"
+        integrityEnabled:
+          description: Whether passes run, from the mode and the policy default. Absent for scanners.
+          type: boolean
     AgentUpdate:
       type: object
       properties:
@@ -3765,6 +4299,10 @@ components:
           maxItems: 500
           items:
             type: string
+        integrity:
+          description: File integrity mode of an agent. Rejected with `400` for scanners.
+          allOf:
+            - $ref: "#/components/schemas/IntegrityMode"
     AgentList:
       type: object
       required: [items, total]
@@ -4026,7 +4564,7 @@ components:
           type: integer
     ScanTarget:
       type: object
-      required: [id, name, protocol, address, port, credentialId, sudo, hostKeyPinned, intervalMinutes, createdAt, detectDirIds]
+      required: [id, name, protocol, address, port, credentialId, sudo, hostKeyPinned, intervalMinutes, createdAt, detectDirIds, integrity, integrityEnabled]
       properties:
         id:
           type: string
@@ -4067,6 +4605,11 @@ components:
           type: array
           items:
             type: string
+        integrity:
+          $ref: "#/components/schemas/IntegrityMode"
+        integrityEnabled:
+          description: Whether passes run, from the mode and the policy default.
+          type: boolean
     ScanTargetCreate:
       description: |
         Without `hostKey` the first host key seen is pinned. The server stores
@@ -4113,6 +4656,8 @@ components:
           maxItems: 500
           items:
             type: string
+        integrity:
+          $ref: "#/components/schemas/IntegrityMode"
     ScanTargetUpdate:
       type: object
       properties:
@@ -4147,6 +4692,8 @@ components:
           maxItems: 500
           items:
             type: string
+        integrity:
+          $ref: "#/components/schemas/IntegrityMode"
     ScanTargetList:
       type: object
       required: [items, total]

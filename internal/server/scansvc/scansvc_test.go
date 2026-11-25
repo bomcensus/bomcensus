@@ -85,6 +85,12 @@ func (f *fakeRunner) RunSSH(ctx context.Context, j runner.SSHJob, d runner.Deps)
 			Subject: &report.Subject{Kind: report.SubjectScanTarget, ScanTargetID: j.TargetID},
 			Host: &report.HostSection{SectionMeta: report.SectionMeta{Coverage: report.CoverageFull, CollectedAt: now},
 				Hostname: "db-01", MachineID: "0123456789abcdef0123456789abcdef", Arch: "amd64"}}
+		if j.Integrity != nil {
+			r.Host = nil
+			r.Integrity = &report.IntegritySection{SectionMeta: report.SectionMeta{Coverage: report.CoverageFull, CollectedAt: now},
+				PassID: j.Integrity.PassID, Cursor: j.Integrity.Cursor + "x", Packages: 1, Checked: 5}
+			_, r.Integrity.UTCOffsetSeconds = time.Now().Zone()
+		}
 		var buf bytes.Buffer
 		if err := report.Encode(&buf, r); err != nil {
 			return res, err

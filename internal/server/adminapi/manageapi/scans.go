@@ -21,6 +21,7 @@ import (
 	gen "github.com/bomcensus/bomcensus/internal/gen/adminapi"
 	"github.com/bomcensus/bomcensus/internal/server/adminapi/apierr"
 	"github.com/bomcensus/bomcensus/internal/server/secret"
+	"github.com/bomcensus/bomcensus/internal/server/integritysvc"
 	"github.com/bomcensus/bomcensus/internal/server/store"
 )
 
@@ -59,7 +60,7 @@ func parseHostKey(s string) ([]byte, error) {
 	return blob, nil
 }
 
-func scanTargetDTO(t store.ScanTarget) gen.ScanTarget {
+func scanTargetDTO(t store.ScanTarget, pol integritysvc.Policy) gen.ScanTarget {
 	out := gen.ScanTarget{
 		Id:              t.ID,
 		Name:            t.Name,
@@ -75,6 +76,8 @@ func scanTargetDTO(t store.ScanTarget) gen.ScanTarget {
 		CreatedAt:       t.CreatedAt,
 		DetectDirIds:    orEmpty(t.DetectDirIDs),
 	}
+	mode := cmp.Or(t.Integrity, store.IntegrityInherit)
+	out.Integrity, out.IntegrityEnabled = gen.IntegrityMode(mode), integritysvc.Enabled(mode, pol.SSH)
 	if len(t.HostKey) > 0 {
 		fp := SSHFingerprint(t.HostKey)
 		out.HostKeyFingerprint = &fp
@@ -120,9 +123,13 @@ func (h *Handlers) ListScanTargets(ctx context.Context, req gen.ListScanTargetsR
 		}
 		return cmp.Or(c, cmpFold(x.Name, y.Name), cmp.Compare(x.ID, y.ID))
 	})
+	pol, err := integritysvc.Load(ctx, h.st)
+	if err != nil {
+		return nil, err
+	}
 	out := gen.ListScanTargets200JSONResponse{Items: []gen.ScanTarget{}, Total: len(kept)}
 	for _, t := range paginate(kept, pageOf(p.Limit, p.Offset)) {
-		out.Items = append(out.Items, scanTargetDTO(t))
+		out.Items = append(out.Items, scanTargetDTO(t, pol))
 	}
 	return out, nil
 }
@@ -141,8 +148,11 @@ func (h *Handlers) CreateScanTarget(ctx context.Context, req gen.CreateScanTarge
 		ScannerID:       deref(b.ScannerId),
 		Sudo:            deref(b.Sudo),
 		IntervalMinutes: deref(b.IntervalMinutes),
+		Integrity:       string(deref(b.Integrity)),
 	}
 	switch {
+	case b.Integrity != nil && !b.Integrity.Valid():
+		return nil, apierr.Invalid("unknown integrity mode %q", *b.Integrity)
 	case b.Protocol != nil && *b.Protocol != gen.ScanProtocolSsh:
 		return nil, apierr.Invalid("protocol must be ssh")
 	case t.Address == "" || len(t.Address) > 512 || strings.ContainsAny(t.Address, " \t\r\n/"):
@@ -189,7 +199,11 @@ func (h *Handlers) CreateScanTarget(ctx context.Context, req gen.CreateScanTarge
 		return nil, err
 	}
 	h.log.Info("scan target added", "scan_target_id", created.ID, "address", created.Address, "by", h.who(ctx))
-	return gen.CreateScanTarget201JSONResponse(scanTargetDTO(created)), nil
+	pol, err := integritysvc.Load(ctx, h.st)
+	if err != nil {
+		return nil, err
+	}
+	return gen.CreateScanTarget201JSONResponse(scanTargetDTO(created, pol)), nil
 }
 
 // checkScanTarget validates the fields a scan target shares between create
@@ -274,6 +288,12 @@ func (h *Handlers) UpdateScanTarget(ctx context.Context, req gen.UpdateScanTarge
 	if b.IntervalMinutes != nil {
 		t.IntervalMinutes = *b.IntervalMinutes
 	}
+	if b.Integrity != nil {
+		if !b.Integrity.Valid() {
+			return nil, apierr.Invalid("unknown integrity mode %q", *b.Integrity)
+		}
+		t.Integrity = string(*b.Integrity)
+	}
 	if err := checkScanTarget(t); err != nil {
 		return nil, err
 	}
@@ -316,7 +336,11 @@ func (h *Handlers) UpdateScanTarget(ctx context.Context, req gen.UpdateScanTarge
 		return nil, err
 	}
 	h.log.Info("scan target updated", "scan_target_id", t.ID, "host_key_reset", reset, "by", h.who(ctx))
-	return gen.UpdateScanTarget200JSONResponse(scanTargetDTO(t)), nil
+	pol, err := integritysvc.Load(ctx, h.st)
+	if err != nil {
+		return nil, err
+	}
+	return gen.UpdateScanTarget200JSONResponse(scanTargetDTO(t, pol)), nil
 }
 
 // DeleteScanTarget implements deleteScanTarget.

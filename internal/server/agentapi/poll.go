@@ -21,6 +21,7 @@ import (
 	"github.com/bomcensus/bomcensus/internal/pki"
 	"github.com/bomcensus/bomcensus/internal/report"
 	"github.com/bomcensus/bomcensus/internal/server/dispatch"
+	"github.com/bomcensus/bomcensus/internal/server/integritysvc"
 	"github.com/bomcensus/bomcensus/internal/server/store"
 )
 
@@ -109,7 +110,30 @@ func (h *Handlers) agentConfig(ctx context.Context, a store.Agent, bundleSerial 
 		paths := slices.Clone(a.DetectPaths)
 		cfg.Policy.WalkPaths = &paths
 	}
+	if a.Kind == store.AgentKindAgent && a.HasFeature(store.FeatureIntegrity) {
+		cfg.Integrity = h.integrityConfig(ctx, a)
+	}
 	return cfg, nil
+}
+
+// integrityConfig is the agent's integrity configuration. A policy that
+// cannot be read turns the passes off rather than failing the poll.
+func (h *Handlers) integrityConfig(ctx context.Context, a store.Agent) *gen.IntegrityConfig {
+	p, err := integritysvc.Load(ctx, h.st)
+	if err != nil {
+		h.log.WarnContext(ctx, "integrity policy unreadable; passes are off", "error", err)
+		p, a.Integrity = integritysvc.DefaultPolicy(), store.IntegrityOff
+	}
+	excl := slices.Clone(p.ExcludePaths)
+	return &gen.IntegrityConfig{
+		Enabled:        integritysvc.Enabled(a.Integrity, p.Agents),
+		WindowStart:    p.WindowStart,
+		WindowEnd:      p.WindowEnd,
+		IntervalDays:   p.IntervalDays,
+		MaxReadMbps:    p.MaxReadMBps,
+		FullRehashDays: p.FullRehashDays,
+		ExcludePaths:   &excl,
+	}
 }
 
 func validPoll(b *gen.PollRequest) bool {
@@ -163,6 +187,8 @@ func (h *Handlers) Poll(ctx context.Context, req gen.PollRequestObject) (gen.Pol
 	if err != nil {
 		return nil, err
 	}
+	// The configuration follows the features of this poll.
+	a.Features = status.Features
 	cfg, err := h.agentConfig(ctx, a, bundle.Serial)
 	if err != nil {
 		return nil, err
@@ -197,7 +223,7 @@ func knownFeatures(in *[]string) []string {
 	}
 	var out []string
 	for _, f := range *in {
-		if f == store.FeatureGoSymbols && !slices.Contains(out, f) {
+		if (f == store.FeatureGoSymbols || f == store.FeatureIntegrity) && !slices.Contains(out, f) {
 			out = append(out, f)
 		}
 	}

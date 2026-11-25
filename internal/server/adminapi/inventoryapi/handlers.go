@@ -10,6 +10,7 @@ package inventoryapi
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -29,7 +30,11 @@ type Store interface {
 	store.AssetRequests
 	store.VulnQuery
 	store.Triage
+	store.Integrity
 	GetActiveFeedServer(ctx context.Context) (store.FeedServer, error)
+	GetSetting(ctx context.Context, key string) (json.RawMessage, error)
+	PutSetting(ctx context.Context, key string, value json.RawMessage) error
+	GetScanTarget(ctx context.Context, id string) (store.ScanTarget, error)
 	CountMatches(ctx context.Context, e store.MatchEpoch) (store.MatchCounts, error)
 }
 

@@ -19,6 +19,8 @@ import type {
   FeedServerCreate,
   FeedServerUpdate,
   TriageRuleCreate,
+  IntegrityAllowRuleCreate,
+  IntegrityPolicy,
   ListenTargetCreate,
   ListenTargetUpdate,
   LoginRequest,
@@ -199,3 +201,20 @@ export const createTriageRule = (body: TriageRuleCreate) => call(sdk.createTriag
 export const revokeTriageRule = (id: string) => call(sdk.revokeTriageRule({ path: { id } }))
 /** The active rules as an OpenVEX document. */
 export const exportVex = () => call(sdk.exportVex())
+
+// ── file integrity ──────────────────────────────────────
+
+export const getIntegritySummary = () => call(sdk.getIntegritySummary())
+export const listIntegrityFiles = (query?: Query<gen.ListIntegrityFilesData>) => call(sdk.listIntegrityFiles({ query }))
+export const listIntegrityFileNodes = (query: Query<gen.ListIntegrityFileNodesData>) =>
+  call(sdk.listIntegrityFileNodes({ query }))
+export const getAssetIntegrity = (id: string, query?: Query<gen.GetAssetIntegrityData>) =>
+  call(sdk.getAssetIntegrity({ path: { id }, query }))
+export const listIntegrityAllowRules = (query?: Query<gen.ListIntegrityAllowRulesData>) =>
+  call(sdk.listIntegrityAllowRules({ query }))
+export const createIntegrityAllowRules = (body: IntegrityAllowRuleCreate) => call(sdk.createIntegrityAllowRules({ body }))
+export const revokeIntegrityAllowRule = async (id: string) => {
+  await call(sdk.revokeIntegrityAllowRule({ path: { id } }))
+}
+export const getIntegrityPolicy = () => call(sdk.getIntegrityPolicy())
+export const putIntegrityPolicy = (body: IntegrityPolicy) => call(sdk.putIntegrityPolicy({ body }))

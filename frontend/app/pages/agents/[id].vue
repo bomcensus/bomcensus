@@ -6,8 +6,19 @@
 
 <script setup lang="ts">
 import { Ban, Check, Pencil } from '@lucide/vue'
-import type { Agent } from '~/types'
-import { approveAgent, getAgent, getAsset, getRegisterKey, listDetectDirs, optional, revokeAgent, toApiError, updateAgent } from '~/api'
+import type { Agent, IntegrityMode } from '~/types'
+import {
+  approveAgent,
+  getAgent,
+  getAsset,
+  getIntegrityPolicy,
+  getRegisterKey,
+  listDetectDirs,
+  optional,
+  revokeAgent,
+  toApiError,
+  updateAgent,
+} from '~/api'
 
 const route = useRoute()
 const id = String(route.params.id)
@@ -18,9 +29,10 @@ const { data: detail, error, refresh } = useLoad(`agent:${id}`, async () => {
   const asset = agent.assetId ? await optional(getAsset(agent.assetId)) : undefined
   // The key may be revoked and deleted; the agent still shows its id.
   const key = agent.registerKeyId ? await optional(getRegisterKey(agent.registerKeyId)) : undefined
-  // Only agents take detect directories.
+  // Only agents take detect directories and integrity modes.
   const dirs = agent.kind === 'agent' ? (await listDetectDirs()).items : []
-  return { agent, asset, key, dirs }
+  const integrity = agent.kind === 'agent' ? await getIntegrityPolicy() : undefined
+  return { agent, asset, key, dirs, integrity }
 })
 
 const agent = computed(() => detail.value?.agent)
@@ -112,6 +124,27 @@ async function saveDirs() {
     dirsBusy.value = false
   }
 }
+
+// ── File integrity ────────────────────────────────────
+
+const integrityMode = ref<IntegrityMode>('inherit')
+watch(agent, (a) => (integrityMode.value = a?.integrity ?? 'inherit'), { immediate: true })
+const integrityBusy = ref(false)
+const integrityError = ref('')
+watch(integrityMode, async (m) => {
+  if (!agent.value || m === (agent.value.integrity ?? 'inherit') || integrityBusy.value) return
+  integrityBusy.value = true
+  integrityError.value = ''
+  try {
+    await updateAgent(id, { integrity: m })
+    await refresh()
+  } catch (e) {
+    integrityError.value = toApiError(e).message
+    integrityMode.value = agent.value.integrity ?? 'inherit'
+  } finally {
+    integrityBusy.value = false
+  }
+})
 
 // ── Revoke ────────────────────────────────────────────
 
@@ -256,6 +289,28 @@ async function revoke() {
           </li>
         </ul>
         <p v-else class="text-sm text-ink-3">선택한 디렉터리가 없습니다. 실행 중인 소프트웨어만 수집합니다.</p>
+      </Panel>
+
+      <Panel
+        v-if="agent.kind === 'agent'"
+        class="mt-4"
+        title="파일 무결성 검사"
+        :description="detail?.integrity ? `검사 시간대(${detail.integrity.windowStart}~${detail.integrity.windowEnd}, 노드 현지 시각)에 패키지 파일을 DB 해시와 비교합니다.` : undefined"
+      >
+        <template #actions>
+          <StatusBadge :tone="agent.integrityEnabled ? 'ok' : 'neutral'" :label="agent.integrityEnabled ? '켜짐' : '꺼짐'" dot />
+        </template>
+        <IntegrityModePicker
+          v-model="integrityMode"
+          name="agent-integrity"
+          kind-label="에이전트"
+          :kind-default="detail?.integrity?.agents"
+          :disabled="integrityBusy || agent.status === 'revoked'"
+        />
+        <p v-if="integrityError" class="note note-danger mt-2" role="alert">{{ integrityError }}</p>
+        <p v-if="asset" class="mt-2 text-xs text-ink-2">
+          결과는 <NuxtLink :to="`/assets/${asset.id}?tab=integrity`" class="link">자산 › 파일 무결성</NuxtLink>에서 봅니다.
+        </p>
       </Panel>
 
       <AppModal v-model:open="dirsOpen" title="감지 대상 디렉터리 선택">

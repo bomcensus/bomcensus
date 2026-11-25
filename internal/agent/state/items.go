@@ -327,3 +327,56 @@ func (d *Dir) SaveProbeCache(c json.RawMessage) error {
 	}
 	return d.WriteFile(cacheName, c, 0o600)
 }
+
+// Integrity records the package file integrity passes of the agent's host.
+type Integrity struct {
+	// PassID, Cursor and FullRehash describe the pass in progress; PassID
+	// is empty between passes.
+	PassID     string    `json:"pass_id,omitempty"`
+	Cursor     string    `json:"cursor,omitempty"`
+	FullRehash bool      `json:"full_rehash,omitempty"`
+	StartedAt  time.Time `json:"started_at,omitzero"`
+	// LastStart is when the last pass started, LastDone when one finished
+	// and LastFull when one that hashed every file finished.
+	LastStart time.Time `json:"last_start,omitzero"`
+	LastDone  time.Time `json:"last_done,omitzero"`
+	LastFull  time.Time `json:"last_full,omitzero"`
+	// UTCOffset is the host's offset from UTC as the probe last saw it, in
+	// seconds; nil before the first chunk.
+	UTCOffset *int `json:"utc_offset_s,omitempty"`
+}
+
+// LoadIntegrity returns the stored integrity state (zero when absent).
+func (d *Dir) LoadIntegrity() (*Integrity, error) {
+	s := &Integrity{}
+	if _, err := d.readJSON(integrityName, s); err != nil {
+		return nil, err
+	}
+	return s, nil
+}
+
+// SaveIntegrity stores s.
+func (d *Dir) SaveIntegrity(s *Integrity) error { return d.writeJSON(integrityName, s, 0o600) }
+
+// LoadIntegrityCache returns the integrity check's cache or nil.
+func (d *Dir) LoadIntegrityCache() (json.RawMessage, error) {
+	b, err := d.ReadFile(integrityCacheName)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("state: read %s: %w", integrityCacheName, err)
+	}
+	if !json.Valid(b) {
+		return nil, nil
+	}
+	return b, nil
+}
+
+// SaveIntegrityCache stores the integrity check's cache.
+func (d *Dir) SaveIntegrityCache(c json.RawMessage) error {
+	if len(c) == 0 {
+		return d.Remove(integrityCacheName)
+	}
+	return d.WriteFile(integrityCacheName, c, 0o600)
+}

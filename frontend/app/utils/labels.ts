@@ -17,6 +17,9 @@ import type {
   Exposure,
   FindingLayer,
   FixState,
+  IntegrityMode,
+  IntegrityPass,
+  IntegrityStatus,
   K8sPodPhase,
   PrivilegeLevel,
   Reachability,
@@ -267,4 +270,42 @@ export const justificationLabel: Record<TriageJustification, string> = {
   requires_environment: '환경 필요(해당 없음)',
   protected_at_runtime: '런타임 보호',
   protected_by_mitigating_control: '완화 조치 적용',
+}
+
+export const integrityStatusLabel: Record<IntegrityStatus, string> = {
+  modified: '변경됨',
+  missing: '누락',
+}
+
+export const integrityStatusTone: Record<IntegrityStatus, Tone> = {
+  modified: 'danger',
+  missing: 'warn',
+}
+
+export const integrityModeLabel: Record<IntegrityMode, string> = {
+  inherit: '기본값 따름',
+  on: '켜기',
+  off: '끄기',
+}
+
+type IntegrityPassCoverage = IntegrityPass['coverage']
+
+export const integrityCoverageLabel: Record<IntegrityPassCoverage, string> = {
+  full: '전체',
+  partial: '일부',
+  none: '없음',
+}
+
+export const integrityCoverageTone: Record<IntegrityPassCoverage, Tone> = {
+  full: 'ok',
+  partial: 'warn',
+  none: 'danger',
+}
+
+export const integrityAlgoLabel: Record<string, string> = {
+  md5: 'MD5',
+  sha1: 'SHA-1',
+  sha256: 'SHA-256',
+  sha384: 'SHA-384',
+  sha512: 'SHA-512',
 }

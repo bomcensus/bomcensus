@@ -26,7 +26,7 @@ const mgAgentColumns = `a.id::text, a.kind, a.hostname, a.description, a.identit
 	array(SELECT x.dir_id::text FROM agent_detect_dirs x JOIN detect_dirs dd ON dd.id = x.dir_id
 		WHERE x.agent_id = a.id ORDER BY dd.path),
 	array(SELECT dd.path FROM agent_detect_dirs x JOIN detect_dirs dd ON dd.id = x.dir_id
-		WHERE x.agent_id = a.id ORDER BY dd.path)`
+		WHERE x.agent_id = a.id ORDER BY dd.path), a.integrity`
 
 // mgScanAgent scans mgAgentColumns followed by extra.
 func mgScanAgent(r mgRow, extra ...any) (store.Agent, error) {
@@ -35,7 +35,7 @@ func mgScanAgent(r mgRow, extra ...any) (store.Agent, error) {
 		&a.RegisterKeyID, &a.State, &a.Version, &a.OS, &a.Arch, &a.ConnectMode, &a.ListenAddress,
 		&a.TLSMode, &a.ObservedIssuer, &a.Privilege, &a.ExecHelper, &a.Address, &a.TrustBundleVersion,
 		&a.UpdateState, &a.UpdateMessage, &a.AssetID, &a.EnrolledAt, &a.ApprovedAt, &a.RevokedAt, &a.LastSeen,
-		&a.CertNotAfter, &a.Features, &a.DetectDirIDs, &a.DetectPaths}
+		&a.CertNotAfter, &a.Features, &a.DetectDirIDs, &a.DetectPaths, &a.Integrity}
 	if err := r.Scan(append(dest, extra...)...); err != nil {
 		return store.Agent{}, err
 	}

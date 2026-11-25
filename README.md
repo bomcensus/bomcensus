@@ -6,7 +6,7 @@ bomcensus collects the software installed and running on servers, containers, an
 
 ## Status
 
-Implemented: Linux agents (connect and listen mode), agentless collection over SSH, Kubernetes inventory and exec collection, vulnerability matching, automatic agent updates, and the web console. All commands build and run on Windows (amd64, arm64); a Windows agent reports the host identity only.
+Implemented: Linux agents (connect and listen mode), agentless collection over SSH, Kubernetes inventory and exec collection, vulnerability matching, package file integrity checks, automatic agent updates, and the web console. All commands build and run on Windows (amd64, arm64); a Windows agent reports the host identity only.
 
 ## Install
 
@@ -31,6 +31,7 @@ curl -fsSL https://github.com/bomcensus/bomcensus/releases/latest/download/insta
 - [docs/SECURITY.md](docs/SECURITY.md): security design, privileges and known limitations.
 - [docs/PROTOCOL.md](docs/PROTOCOL.md): signatures and sealed secrets on the agent protocol.
 - [docs/GO_SYMBOLS.md](docs/GO_SYMBOLS.md): the Go symbol check, supported executables and the Go versions it was tested with.
+- [docs/FILE_INTEGRITY.md](docs/FILE_INTEGRITY.md): package file integrity checks, their schedule and allow rules.
 - [docs/RELEASING.md](docs/RELEASING.md): published images, charts and binaries, and how to verify them.
 
 ## License

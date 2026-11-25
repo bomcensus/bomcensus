@@ -286,6 +286,7 @@ const tabs = computed(() => [
   { key: 'components', label: '컴포넌트', count: countOf(componentsPending.value, componentRows.value) },
   { key: 'processes', label: '프로세스', count: countOf(procsPending.value, procs.value) },
   ...(assetContainers.value.length > 0 ? [{ key: 'containers', label: '컨테이너', count: assetContainers.value.length }] : []),
+  ...(asset.value?.kind === 'host' ? [{ key: 'integrity', label: '파일 무결성' }] : []),
   { key: 'collection', label: '수집' },
 ])
 </script>
@@ -657,6 +658,8 @@ const tabs = computed(() => [
         :error="vulnsError"
         @retry="refreshVulns"
       />
+
+      <AssetIntegrityPanel v-else-if="tab === 'integrity'" :asset-id="asset.id" />
 
       <!-- Collection -->
       <div v-else-if="tab === 'collection'" class="space-y-4">

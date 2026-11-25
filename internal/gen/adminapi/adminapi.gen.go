@@ -532,6 +532,84 @@ func (e FixState) Valid() bool {
 	}
 }
 
+// Defines values for IntegrityAllowRuleScope.
+const (
+	IntegrityAllowRuleScopeAsset IntegrityAllowRuleScope = "asset"
+	IntegrityAllowRuleScopeFleet IntegrityAllowRuleScope = "fleet"
+)
+
+// Valid indicates whether the value is a known member of the IntegrityAllowRuleScope enum.
+func (e IntegrityAllowRuleScope) Valid() bool {
+	switch e {
+	case IntegrityAllowRuleScopeAsset:
+		return true
+	case IntegrityAllowRuleScopeFleet:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for IntegrityMode.
+const (
+	IntegrityModeInherit IntegrityMode = "inherit"
+	IntegrityModeOff     IntegrityMode = "off"
+	IntegrityModeOn      IntegrityMode = "on"
+)
+
+// Valid indicates whether the value is a known member of the IntegrityMode enum.
+func (e IntegrityMode) Valid() bool {
+	switch e {
+	case IntegrityModeInherit:
+		return true
+	case IntegrityModeOff:
+		return true
+	case IntegrityModeOn:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for IntegrityPassCoverage.
+const (
+	IntegrityPassCoverageFull    IntegrityPassCoverage = "full"
+	IntegrityPassCoverageNone    IntegrityPassCoverage = "none"
+	IntegrityPassCoveragePartial IntegrityPassCoverage = "partial"
+)
+
+// Valid indicates whether the value is a known member of the IntegrityPassCoverage enum.
+func (e IntegrityPassCoverage) Valid() bool {
+	switch e {
+	case IntegrityPassCoverageFull:
+		return true
+	case IntegrityPassCoverageNone:
+		return true
+	case IntegrityPassCoveragePartial:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for IntegrityStatus.
+const (
+	Missing  IntegrityStatus = "missing"
+	Modified IntegrityStatus = "modified"
+)
+
+// Valid indicates whether the value is a known member of the IntegrityStatus enum.
+func (e IntegrityStatus) Valid() bool {
+	switch e {
+	case Missing:
+		return true
+	case Modified:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for K8sConnection.
 const (
 	K8sConnectionInCluster  K8sConnection = "in_cluster"
@@ -2024,8 +2102,14 @@ type Agent struct {
 	ExecHelper   bool      `json:"execHelper"`
 	Hostname     string    `json:"hostname"`
 	Id           string    `json:"id"`
-	Kind         AgentKind `json:"kind"`
-	LastSeen     time.Time `json:"lastSeen"`
+
+	// Integrity File integrity mode. Absent for scanners.
+	Integrity *IntegrityMode `json:"integrity,omitempty"`
+
+	// IntegrityEnabled Whether passes run, from the mode and the policy default. Absent for scanners.
+	IntegrityEnabled *bool     `json:"integrityEnabled,omitempty"`
+	Kind             AgentKind `json:"kind"`
+	LastSeen         time.Time `json:"lastSeen"`
 
 	// ListenAddress Address the server dials (`connMode=listen`).
 	ListenAddress  *string        `json:"listenAddress,omitempty"`
@@ -2082,6 +2166,9 @@ type AgentUpdate struct {
 
 	// DetectDirIds Replaces the detect directories of an agent. Rejected with `400` for scanners.
 	DetectDirIds *[]string `json:"detectDirIds,omitempty"`
+
+	// Integrity File integrity mode of an agent. Rejected with `400` for scanners.
+	Integrity *IntegrityMode `json:"integrity,omitempty"`
 }
 
 // Asset defines model for Asset.
@@ -2205,6 +2292,18 @@ type AssetGroup struct {
 type AssetGroupList struct {
 	Items []AssetGroup `json:"items"`
 	Total int          `json:"total"`
+}
+
+// AssetIntegrity defines model for AssetIntegrity.
+type AssetIntegrity struct {
+	// Enabled Passes run for the asset's agent or scan target. False when it has neither.
+	Enabled           bool               `json:"enabled"`
+	Findings          []IntegrityFinding `json:"findings"`
+	LastCompletedPass *IntegrityPass     `json:"lastCompletedPass,omitempty"`
+	LastPass          *IntegrityPass     `json:"lastPass,omitempty"`
+
+	// Mode `inherit` follows the default of the collector's kind in the integrity policy.
+	Mode *IntegrityMode `json:"mode,omitempty"`
 }
 
 // AssetKind defines model for AssetKind.
@@ -2888,6 +2987,175 @@ type ImageUse struct {
 	Container AssetContainer `json:"container"`
 }
 
+// IntegrityAllowRule defines model for IntegrityAllowRule.
+type IntegrityAllowRule struct {
+	ActualSha256 *string   `json:"actualSha256,omitempty"`
+	AssetId      *string   `json:"assetId,omitempty"`
+	AssetName    *string   `json:"assetName,omitempty"`
+	CreatedAt    time.Time `json:"createdAt"`
+	CreatedBy    string    `json:"createdBy"`
+
+	// Hidden Open findings the rule hides now.
+	Hidden    int                     `json:"hidden"`
+	Id        string                  `json:"id"`
+	Note      string                  `json:"note"`
+	Path      string                  `json:"path"`
+	RevokedAt *time.Time              `json:"revokedAt,omitempty"`
+	RevokedBy *string                 `json:"revokedBy,omitempty"`
+	Scope     IntegrityAllowRuleScope `json:"scope"`
+	Status    IntegrityStatus         `json:"status"`
+}
+
+// IntegrityAllowRuleCreate defines model for IntegrityAllowRuleCreate.
+type IntegrityAllowRuleCreate struct {
+	// ActualSha256 Required for `modified`, absent for `missing`.
+	ActualSha256 *string `json:"actualSha256,omitempty"`
+
+	// AssetIds Scope `asset` only.
+	AssetIds *[]string               `json:"assetIds,omitempty"`
+	Note     string                  `json:"note"`
+	Path     string                  `json:"path"`
+	Scope    IntegrityAllowRuleScope `json:"scope"`
+	Status   IntegrityStatus         `json:"status"`
+}
+
+// IntegrityAllowRuleList defines model for IntegrityAllowRuleList.
+type IntegrityAllowRuleList struct {
+	Items []IntegrityAllowRule `json:"items"`
+	Total int                  `json:"total"`
+}
+
+// IntegrityAllowRuleScope defines model for IntegrityAllowRuleScope.
+type IntegrityAllowRuleScope string
+
+// IntegrityFinding defines model for IntegrityFinding.
+type IntegrityFinding struct {
+	Actual       *string `json:"actual,omitempty"`
+	ActualSha256 *string `json:"actualSha256,omitempty"`
+	Algo         string  `json:"algo"`
+
+	// AllowedBy Id of the active rule that hides the finding.
+	AllowedBy *string `json:"allowedBy,omitempty"`
+	Arch      *string `json:"arch,omitempty"`
+	AssetId   string  `json:"assetId"`
+	AssetName string  `json:"assetName"`
+
+	// Collector How the asset is collected (`agent`, `ssh`).
+	Collector string          `json:"collector"`
+	Ctime     *time.Time      `json:"ctime,omitempty"`
+	Expected  string          `json:"expected"`
+	FirstSeen time.Time       `json:"firstSeen"`
+	Id        string          `json:"id"`
+	LastSeen  time.Time       `json:"lastSeen"`
+	Mtime     *time.Time      `json:"mtime,omitempty"`
+	Package   string          `json:"package"`
+	Path      string          `json:"path"`
+	PkgType   string          `json:"pkgType"`
+	Size      *int64          `json:"size,omitempty"`
+	Status    IntegrityStatus `json:"status"`
+	Version   string          `json:"version"`
+}
+
+// IntegrityFindingList defines model for IntegrityFindingList.
+type IntegrityFindingList struct {
+	Items []IntegrityFinding `json:"items"`
+	Total int                `json:"total"`
+}
+
+// IntegrityGroup defines model for IntegrityGroup.
+type IntegrityGroup struct {
+	// Actual Actual digest in `algo`; absent for a missing file.
+	Actual *string `json:"actual,omitempty"`
+
+	// ActualSha256 Absent for a missing file.
+	ActualSha256 *string `json:"actualSha256,omitempty"`
+
+	// Algo Algorithm of the package database (md5, sha1, sha256, ...).
+	Algo string `json:"algo"`
+
+	// AllowedAssets Assets on which an allow rule hides it (with `includeAllowed`).
+	AllowedAssets int             `json:"allowedAssets"`
+	Assets        int             `json:"assets"`
+	Expected      string          `json:"expected"`
+	FirstSeen     time.Time       `json:"firstSeen"`
+	LastSeen      time.Time       `json:"lastSeen"`
+	Package       string          `json:"package"`
+	Path          string          `json:"path"`
+	PkgType       string          `json:"pkgType"`
+	Status        IntegrityStatus `json:"status"`
+
+	// Version Version on one of the assets; others may run another.
+	Version string `json:"version"`
+}
+
+// IntegrityGroupList defines model for IntegrityGroupList.
+type IntegrityGroupList struct {
+	Items []IntegrityGroup `json:"items"`
+	Total int              `json:"total"`
+}
+
+// IntegrityMode `inherit` follows the default of the collector's kind in the integrity policy.
+type IntegrityMode string
+
+// IntegrityPass defines model for IntegrityPass.
+type IntegrityPass struct {
+	Checked     int64                 `json:"checked"`
+	CompletedAt *time.Time            `json:"completedAt,omitempty"`
+	Coverage    IntegrityPassCoverage `json:"coverage"`
+	Excluded    int64                 `json:"excluded"`
+	LastChunkAt time.Time             `json:"lastChunkAt"`
+	Reason      *string               `json:"reason,omitempty"`
+	StartedAt   time.Time             `json:"startedAt"`
+	Unreadable  int64                 `json:"unreadable"`
+}
+
+// IntegrityPassCoverage defines model for IntegrityPass.Coverage.
+type IntegrityPassCoverage string
+
+// IntegrityPolicy defines model for IntegrityPolicy.
+type IntegrityPolicy struct {
+	// Agents Default for agents whose mode is `inherit`.
+	Agents bool `json:"agents"`
+
+	// ExcludePaths Absolute path prefixes or globs (`**` matches any number of directories).
+	ExcludePaths []string `json:"excludePaths"`
+
+	// FullRehashDays Days after which a pass reads every file again instead of trusting unchanged metadata.
+	FullRehashDays int `json:"fullRehashDays"`
+	IntervalDays   int `json:"intervalDays"`
+	MaxReadMbps    int `json:"maxReadMbps"`
+
+	// Ssh Default for scan targets whose mode is `inherit`.
+	Ssh bool `json:"ssh"`
+
+	// WindowEnd `HH:MM`; before `windowStart` crosses midnight, equal means all day.
+	WindowEnd string `json:"windowEnd"`
+
+	// WindowStart Local time of the inspected host, `HH:MM`.
+	WindowStart string `json:"windowStart"`
+}
+
+// IntegrityStatus defines model for IntegrityStatus.
+type IntegrityStatus string
+
+// IntegritySummary defines model for IntegritySummary.
+type IntegritySummary struct {
+	// Assets Assets with a changed file shown.
+	Assets int `json:"assets"`
+
+	// Completed Assets whose last pass finished within the last two intervals.
+	Completed int `json:"completed"`
+
+	// Groups Changed files shown, by path and content.
+	Groups int `json:"groups"`
+
+	// Rules Active allow rules.
+	Rules int `json:"rules"`
+
+	// Tracked Current assets with any pass.
+	Tracked int `json:"tracked"`
+}
+
 // K8sCluster defines model for K8sCluster.
 type K8sCluster struct {
 	// Connection `kubeconfig`: the scanner uses a stored kubeconfig credential. `in_cluster`: a scanner deployed inside the cluster uses its ServiceAccount.
@@ -3356,6 +3624,12 @@ type ScanTarget struct {
 	HostKeyPinned bool   `json:"hostKeyPinned"`
 	Id            string `json:"id"`
 
+	// Integrity `inherit` follows the default of the collector's kind in the integrity policy.
+	Integrity IntegrityMode `json:"integrity"`
+
+	// IntegrityEnabled Whether passes run, from the mode and the policy default.
+	IntegrityEnabled bool `json:"integrityEnabled"`
+
 	// IntervalMinutes Minutes between scheduled scans. 0 means on demand only.
 	IntervalMinutes int          `json:"intervalMinutes"`
 	LastRun         *ScanRun     `json:"lastRun,omitempty"`
@@ -3380,6 +3654,9 @@ type ScanTargetCreate struct {
 	HostKey            *string `json:"hostKey,omitempty"`
 	HostKeyFingerprint *string `json:"hostKeyFingerprint,omitempty"`
 
+	// Integrity `inherit` follows the default of the collector's kind in the integrity policy.
+	Integrity *IntegrityMode `json:"integrity,omitempty"`
+
 	// IntervalMinutes Minutes between scheduled scans. 0 means on demand only.
 	IntervalMinutes *int          `json:"intervalMinutes,omitempty"`
 	Name            string        `json:"name"`
@@ -3400,7 +3677,10 @@ type ScanTargetUpdate struct {
 	CredentialId *string `json:"credentialId,omitempty"`
 
 	// DetectDirIds Replaces the detect directories of the target.
-	DetectDirIds    *[]string                 `json:"detectDirIds,omitempty"`
+	DetectDirIds *[]string `json:"detectDirIds,omitempty"`
+
+	// Integrity `inherit` follows the default of the collector's kind in the integrity policy.
+	Integrity       *IntegrityMode            `json:"integrity,omitempty"`
 	IntervalMinutes *int                      `json:"intervalMinutes,omitempty"`
 	Name            *string                   `json:"name,omitempty"`
 	Port            *int                      `json:"port,omitempty"`
@@ -4168,6 +4448,11 @@ type ListAssetInstancesParams struct {
 // ListAssetInstancesParamsSort defines parameters for ListAssetInstances.
 type ListAssetInstancesParamsSort string
 
+// GetAssetIntegrityParams defines parameters for GetAssetIntegrity.
+type GetAssetIntegrityParams struct {
+	IncludeAllowed *bool `form:"includeAllowed,omitempty" json:"includeAllowed,omitempty"`
+}
+
 // ListAssetProcessesParams defines parameters for ListAssetProcesses.
 type ListAssetProcessesParams struct {
 	// Q Free-text search, case-insensitive substring match.
@@ -4248,6 +4533,37 @@ type ListImagesParams struct {
 
 // ListImagesParamsSort defines parameters for ListImages.
 type ListImagesParamsSort string
+
+// ListIntegrityAllowRulesParams defines parameters for ListIntegrityAllowRules.
+type ListIntegrityAllowRulesParams struct {
+	IncludeRevoked *bool        `form:"includeRevoked,omitempty" json:"includeRevoked,omitempty"`
+	Limit          *QueryLimit  `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset         *QueryOffset `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
+// ListIntegrityFilesParams defines parameters for ListIntegrityFiles.
+type ListIntegrityFilesParams struct {
+	Status  *IntegrityStatus `form:"status,omitempty" json:"status,omitempty"`
+	AssetId *string          `form:"assetId,omitempty" json:"assetId,omitempty"`
+
+	// Q Free-text search, case-insensitive substring match.
+	Q              *QueryQ      `form:"q,omitempty" json:"q,omitempty"`
+	IncludeAllowed *bool        `form:"includeAllowed,omitempty" json:"includeAllowed,omitempty"`
+	Limit          *QueryLimit  `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset         *QueryOffset `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
+// ListIntegrityFileNodesParams defines parameters for ListIntegrityFileNodes.
+type ListIntegrityFileNodesParams struct {
+	Path   string          `form:"path" json:"path"`
+	Status IntegrityStatus `form:"status" json:"status"`
+
+	// Sha256 Actual SHA-256; absent or empty for a missing file.
+	Sha256         *string      `form:"sha256,omitempty" json:"sha256,omitempty"`
+	IncludeAllowed *bool        `form:"includeAllowed,omitempty" json:"includeAllowed,omitempty"`
+	Limit          *QueryLimit  `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset         *QueryOffset `form:"offset,omitempty" json:"offset,omitempty"`
+}
 
 // ListK8sClustersParams defines parameters for ListK8sClusters.
 type ListK8sClustersParams struct {
@@ -4495,6 +4811,9 @@ type UpdateFeedServerJSONRequestBody = FeedServerUpdate
 // TrustFeedServerKeyJSONRequestBody defines body for TrustFeedServerKey for application/json ContentType.
 type TrustFeedServerKeyJSONRequestBody = FeedServerTrustKey
 
+// CreateIntegrityAllowRulesJSONRequestBody defines body for CreateIntegrityAllowRules for application/json ContentType.
+type CreateIntegrityAllowRulesJSONRequestBody = IntegrityAllowRuleCreate
+
 // CreateK8sClusterJSONRequestBody defines body for CreateK8sCluster for application/json ContentType.
 type CreateK8sClusterJSONRequestBody = K8sClusterCreate
 
@@ -4518,6 +4837,9 @@ type CreateScanTargetJSONRequestBody = ScanTargetCreate
 
 // UpdateScanTargetJSONRequestBody defines body for UpdateScanTarget for application/json ContentType.
 type UpdateScanTargetJSONRequestBody = ScanTargetUpdate
+
+// PutIntegrityPolicyJSONRequestBody defines body for PutIntegrityPolicy for application/json ContentType.
+type PutIntegrityPolicyJSONRequestBody = IntegrityPolicy
 
 // ChangeAgentTlsAnchorJSONRequestBody defines body for ChangeAgentTlsAnchor for application/json ContentType.
 type ChangeAgentTlsAnchorJSONRequestBody = AgentAnchorChange
@@ -4688,6 +5010,11 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /assets/{id}/instances (the `ListAssetInstances` operationId).
 	ListAssetInstances(ctx context.Context, id PathId, params *ListAssetInstancesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetAssetIntegrity File integrity of one asset
+	//
+	// Corresponds with GET /assets/{id}/integrity (the `GetAssetIntegrity` operationId).
+	GetAssetIntegrity(ctx context.Context, id PathId, params *GetAssetIntegrityParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListAssetProcesses Processes of an asset
 	//
@@ -4965,6 +5292,61 @@ type ClientInterface interface {
 	// Corresponds with GET /images/{digest} (the `GetImage` operationId).
 	GetImage(ctx context.Context, digest PathDigest, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ListIntegrityAllowRules Allow rules, newest first
+	//
+	// Corresponds with GET /integrity/allow-rules (the `ListIntegrityAllowRules` operationId).
+	ListIntegrityAllowRules(ctx context.Context, params *ListIntegrityAllowRulesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateIntegrityAllowRulesWithBody Allow a changed file so that it is no longer shown
+	//
+	// `scope` `asset` creates one rule per asset in `assetIds`: the finding is
+	// hidden on those assets only. `scope` `fleet` creates one rule that hides
+	// the finding on every asset, including assets that report the same path
+	// and content later. A file that changes again has another SHA-256 and is
+	// shown again.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /integrity/allow-rules (the `CreateIntegrityAllowRules` operationId).
+	CreateIntegrityAllowRulesWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateIntegrityAllowRules Allow a changed file so that it is no longer shown
+	//
+	// `scope` `asset` creates one rule per asset in `assetIds`: the finding is
+	// hidden on those assets only. `scope` `fleet` creates one rule that hides
+	// the finding on every asset, including assets that report the same path
+	// and content later. A file that changes again has another SHA-256 and is
+	// shown again.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /integrity/allow-rules (the `CreateIntegrityAllowRules` operationId).
+	CreateIntegrityAllowRules(ctx context.Context, body CreateIntegrityAllowRulesJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RevokeIntegrityAllowRule Revoke a rule; the findings it hid are shown again
+	//
+	// Corresponds with DELETE /integrity/allow-rules/{id} (the `RevokeIntegrityAllowRule` operationId).
+	RevokeIntegrityAllowRule(ctx context.Context, id PathId, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListIntegrityFiles Changed package files, grouped by path, status and actual content
+	//
+	// Open findings of current assets with the same path, status and actual
+	// SHA-256 form one item, most assets first. Findings an active allow rule
+	// hides are left out unless `includeAllowed`.
+	//
+	// Corresponds with GET /integrity/files (the `ListIntegrityFiles` operationId).
+	ListIntegrityFiles(ctx context.Context, params *ListIntegrityFilesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListIntegrityFileNodes The assets of one group, with the finding on each
+	//
+	// Corresponds with GET /integrity/files/nodes (the `ListIntegrityFileNodes` operationId).
+	ListIntegrityFileNodes(ctx context.Context, params *ListIntegrityFileNodesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetIntegritySummary Numbers of the file integrity page
+	//
+	// Corresponds with GET /integrity/summary (the `GetIntegritySummary` operationId).
+	GetIntegritySummary(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListK8sClusters List Kubernetes clusters
 	//
 	// Corresponds with GET /k8s/clusters (the `ListK8sClusters` operationId).
@@ -5215,6 +5597,25 @@ type ClientInterface interface {
 	//
 	// Corresponds with POST /scan-targets/{id}/run (the `RunScanTarget` operationId).
 	RunScanTarget(ctx context.Context, id PathId, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetIntegrityPolicy When and how package files are checked
+	//
+	// Corresponds with GET /settings/integrity (the `GetIntegrityPolicy` operationId).
+	GetIntegrityPolicy(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PutIntegrityPolicyWithBody Replace the file integrity policy
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PUT /settings/integrity (the `PutIntegrityPolicy` operationId).
+	PutIntegrityPolicyWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PutIntegrityPolicy Replace the file integrity policy
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PUT /settings/integrity (the `PutIntegrityPolicy` operationId).
+	PutIntegrityPolicy(ctx context.Context, body PutIntegrityPolicyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetTlsSettings State of the Web/API and Agent TLS configurations
 	//
@@ -5625,6 +6026,21 @@ func (c *Client) ListAssetComponents(ctx context.Context, id PathId, params *Lis
 // Corresponds with GET /assets/{id}/instances (the `ListAssetInstances` operationId).
 func (c *Client) ListAssetInstances(ctx context.Context, id PathId, params *ListAssetInstancesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListAssetInstancesRequest(c.Server, id, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetAssetIntegrity File integrity of one asset
+//
+// Corresponds with GET /assets/{id}/integrity (the `GetAssetIntegrity` operationId).
+func (c *Client) GetAssetIntegrity(ctx context.Context, id PathId, params *GetAssetIntegrityParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetAssetIntegrityRequest(c.Server, id, params)
 	if err != nil {
 		return nil, err
 	}
@@ -6271,6 +6687,131 @@ func (c *Client) GetImage(ctx context.Context, digest PathDigest, reqEditors ...
 	return c.Client.Do(req)
 }
 
+// ListIntegrityAllowRules Allow rules, newest first
+//
+// Corresponds with GET /integrity/allow-rules (the `ListIntegrityAllowRules` operationId).
+func (c *Client) ListIntegrityAllowRules(ctx context.Context, params *ListIntegrityAllowRulesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListIntegrityAllowRulesRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateIntegrityAllowRulesWithBody Allow a changed file so that it is no longer shown
+//
+// `scope` `asset` creates one rule per asset in `assetIds`: the finding is
+// hidden on those assets only. `scope` `fleet` creates one rule that hides
+// the finding on every asset, including assets that report the same path
+// and content later. A file that changes again has another SHA-256 and is
+// shown again.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /integrity/allow-rules (the `CreateIntegrityAllowRules` operationId).
+func (c *Client) CreateIntegrityAllowRulesWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateIntegrityAllowRulesRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateIntegrityAllowRules Allow a changed file so that it is no longer shown
+//
+// `scope` `asset` creates one rule per asset in `assetIds`: the finding is
+// hidden on those assets only. `scope` `fleet` creates one rule that hides
+// the finding on every asset, including assets that report the same path
+// and content later. A file that changes again has another SHA-256 and is
+// shown again.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /integrity/allow-rules (the `CreateIntegrityAllowRules` operationId).
+func (c *Client) CreateIntegrityAllowRules(ctx context.Context, body CreateIntegrityAllowRulesJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateIntegrityAllowRulesRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// RevokeIntegrityAllowRule Revoke a rule; the findings it hid are shown again
+//
+// Corresponds with DELETE /integrity/allow-rules/{id} (the `RevokeIntegrityAllowRule` operationId).
+func (c *Client) RevokeIntegrityAllowRule(ctx context.Context, id PathId, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRevokeIntegrityAllowRuleRequest(c.Server, id)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListIntegrityFiles Changed package files, grouped by path, status and actual content
+//
+// Open findings of current assets with the same path, status and actual
+// SHA-256 form one item, most assets first. Findings an active allow rule
+// hides are left out unless `includeAllowed`.
+//
+// Corresponds with GET /integrity/files (the `ListIntegrityFiles` operationId).
+func (c *Client) ListIntegrityFiles(ctx context.Context, params *ListIntegrityFilesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListIntegrityFilesRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListIntegrityFileNodes The assets of one group, with the finding on each
+//
+// Corresponds with GET /integrity/files/nodes (the `ListIntegrityFileNodes` operationId).
+func (c *Client) ListIntegrityFileNodes(ctx context.Context, params *ListIntegrityFileNodesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListIntegrityFileNodesRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetIntegritySummary Numbers of the file integrity page
+//
+// Corresponds with GET /integrity/summary (the `GetIntegritySummary` operationId).
+func (c *Client) GetIntegritySummary(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetIntegritySummaryRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // ListK8sClusters List Kubernetes clusters
 //
 // Corresponds with GET /k8s/clusters (the `ListK8sClusters` operationId).
@@ -6842,6 +7383,55 @@ func (c *Client) UpdateScanTarget(ctx context.Context, id PathId, body UpdateSca
 // Corresponds with POST /scan-targets/{id}/run (the `RunScanTarget` operationId).
 func (c *Client) RunScanTarget(ctx context.Context, id PathId, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewRunScanTargetRequest(c.Server, id)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetIntegrityPolicy When and how package files are checked
+//
+// Corresponds with GET /settings/integrity (the `GetIntegrityPolicy` operationId).
+func (c *Client) GetIntegrityPolicy(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetIntegrityPolicyRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PutIntegrityPolicyWithBody Replace the file integrity policy
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PUT /settings/integrity (the `PutIntegrityPolicy` operationId).
+func (c *Client) PutIntegrityPolicyWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPutIntegrityPolicyRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PutIntegrityPolicy Replace the file integrity policy
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PUT /settings/integrity (the `PutIntegrityPolicy` operationId).
+func (c *Client) PutIntegrityPolicy(ctx context.Context, body PutIntegrityPolicyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPutIntegrityPolicyRequest(c.Server, body)
 	if err != nil {
 		return nil, err
 	}
@@ -8206,6 +8796,67 @@ func NewListAssetInstancesRequest(server string, id PathId, params *ListAssetIns
 		if params.Offset != nil {
 
 			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "offset", *params.Offset, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetAssetIntegrityRequest constructs an http.Request for the GetAssetIntegrity method
+func NewGetAssetIntegrityRequest(server string, id PathId, params *GetAssetIntegrityParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/assets/%s/integrity", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.IncludeAllowed != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "includeAllowed", *params.IncludeAllowed, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "boolean", Format: ""}); err != nil {
 				return nil, err
 			} else {
 				for _, qp := range strings.Split(queryFrag, "&") {
@@ -9636,6 +10287,405 @@ func NewGetImageRequest(server string, digest PathDigest) (*http.Request, error)
 	}
 
 	operationPath := fmt.Sprintf("/images/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListIntegrityAllowRulesRequest constructs an http.Request for the ListIntegrityAllowRules method
+func NewListIntegrityAllowRulesRequest(server string, params *ListIntegrityAllowRulesParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/integrity/allow-rules")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.IncludeRevoked != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "includeRevoked", *params.IncludeRevoked, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "boolean", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Offset != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "offset", *params.Offset, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateIntegrityAllowRulesRequest calls the generic CreateIntegrityAllowRules builder with application/json body
+func NewCreateIntegrityAllowRulesRequest(server string, body CreateIntegrityAllowRulesJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateIntegrityAllowRulesRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewCreateIntegrityAllowRulesRequestWithBody constructs an http.Request for the CreateIntegrityAllowRules method, with any body, and a specified content type
+func NewCreateIntegrityAllowRulesRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/integrity/allow-rules")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewRevokeIntegrityAllowRuleRequest constructs an http.Request for the RevokeIntegrityAllowRule method
+func NewRevokeIntegrityAllowRuleRequest(server string, id PathId) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/integrity/allow-rules/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListIntegrityFilesRequest constructs an http.Request for the ListIntegrityFiles method
+func NewListIntegrityFilesRequest(server string, params *ListIntegrityFilesParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/integrity/files")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Status != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "status", *params.Status, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.AssetId != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "assetId", *params.AssetId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Q != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "q", *params.Q, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.IncludeAllowed != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "includeAllowed", *params.IncludeAllowed, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "boolean", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Offset != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "offset", *params.Offset, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListIntegrityFileNodesRequest constructs an http.Request for the ListIntegrityFileNodes method
+func NewListIntegrityFileNodesRequest(server string, params *ListIntegrityFileNodesParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/integrity/files/nodes")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if queryFrag, err := runtime.StyleParamWithOptions("form", true, "path", params.Path, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+			return nil, err
+		} else {
+			for _, qp := range strings.Split(queryFrag, "&") {
+				rawQueryFragments = append(rawQueryFragments, qp)
+			}
+		}
+
+		if queryFrag, err := runtime.StyleParamWithOptions("form", true, "status", params.Status, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+			return nil, err
+		} else {
+			for _, qp := range strings.Split(queryFrag, "&") {
+				rawQueryFragments = append(rawQueryFragments, qp)
+			}
+		}
+
+		if params.Sha256 != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "sha256", *params.Sha256, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.IncludeAllowed != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "includeAllowed", *params.IncludeAllowed, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "boolean", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Offset != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "offset", *params.Offset, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetIntegritySummaryRequest constructs an http.Request for the GetIntegritySummary method
+func NewGetIntegritySummaryRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/integrity/summary")
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -11322,6 +12372,73 @@ func NewRunScanTargetRequest(server string, id PathId) (*http.Request, error) {
 	return req, nil
 }
 
+// NewGetIntegrityPolicyRequest constructs an http.Request for the GetIntegrityPolicy method
+func NewGetIntegrityPolicyRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/settings/integrity")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewPutIntegrityPolicyRequest calls the generic PutIntegrityPolicy builder with application/json body
+func NewPutIntegrityPolicyRequest(server string, body PutIntegrityPolicyJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPutIntegrityPolicyRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewPutIntegrityPolicyRequestWithBody constructs an http.Request for the PutIntegrityPolicy method, with any body, and a specified content type
+func NewPutIntegrityPolicyRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/settings/integrity")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewGetTlsSettingsRequest constructs an http.Request for the GetTlsSettings method
 func NewGetTlsSettingsRequest(server string) (*http.Request, error) {
 	var err error
@@ -12531,6 +13648,13 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /assets/{id}/instances (the `ListAssetInstances` operationId).
 	ListAssetInstancesWithResponse(ctx context.Context, id PathId, params *ListAssetInstancesParams, reqEditors ...RequestEditorFn) (*ListAssetInstancesResponse, error)
 
+	// GetAssetIntegrityWithResponse File integrity of one asset
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /assets/{id}/integrity (the `GetAssetIntegrity` operationId).
+	GetAssetIntegrityWithResponse(ctx context.Context, id PathId, params *GetAssetIntegrityParams, reqEditors ...RequestEditorFn) (*GetAssetIntegrityResponse, error)
+
 	// ListAssetProcessesWithResponse Processes of an asset
 	//
 	// `q` matches executable path, user, command line and pid.
@@ -12847,6 +13971,71 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /images/{digest} (the `GetImage` operationId).
 	GetImageWithResponse(ctx context.Context, digest PathDigest, reqEditors ...RequestEditorFn) (*GetImageResponse, error)
 
+	// ListIntegrityAllowRulesWithResponse Allow rules, newest first
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /integrity/allow-rules (the `ListIntegrityAllowRules` operationId).
+	ListIntegrityAllowRulesWithResponse(ctx context.Context, params *ListIntegrityAllowRulesParams, reqEditors ...RequestEditorFn) (*ListIntegrityAllowRulesResponse, error)
+
+	// CreateIntegrityAllowRulesWithBodyWithResponse Allow a changed file so that it is no longer shown
+	//
+	// `scope` `asset` creates one rule per asset in `assetIds`: the finding is
+	// hidden on those assets only. `scope` `fleet` creates one rule that hides
+	// the finding on every asset, including assets that report the same path
+	// and content later. A file that changes again has another SHA-256 and is
+	// shown again.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /integrity/allow-rules (the `CreateIntegrityAllowRules` operationId).
+	CreateIntegrityAllowRulesWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateIntegrityAllowRulesResponse, error)
+
+	// CreateIntegrityAllowRulesWithResponse Allow a changed file so that it is no longer shown
+	//
+	// `scope` `asset` creates one rule per asset in `assetIds`: the finding is
+	// hidden on those assets only. `scope` `fleet` creates one rule that hides
+	// the finding on every asset, including assets that report the same path
+	// and content later. A file that changes again has another SHA-256 and is
+	// shown again.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /integrity/allow-rules (the `CreateIntegrityAllowRules` operationId).
+	CreateIntegrityAllowRulesWithResponse(ctx context.Context, body CreateIntegrityAllowRulesJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateIntegrityAllowRulesResponse, error)
+
+	// RevokeIntegrityAllowRuleWithResponse Revoke a rule; the findings it hid are shown again
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /integrity/allow-rules/{id} (the `RevokeIntegrityAllowRule` operationId).
+	RevokeIntegrityAllowRuleWithResponse(ctx context.Context, id PathId, reqEditors ...RequestEditorFn) (*RevokeIntegrityAllowRuleResponse, error)
+
+	// ListIntegrityFilesWithResponse Changed package files, grouped by path, status and actual content
+	//
+	// Open findings of current assets with the same path, status and actual
+	// SHA-256 form one item, most assets first. Findings an active allow rule
+	// hides are left out unless `includeAllowed`.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /integrity/files (the `ListIntegrityFiles` operationId).
+	ListIntegrityFilesWithResponse(ctx context.Context, params *ListIntegrityFilesParams, reqEditors ...RequestEditorFn) (*ListIntegrityFilesResponse, error)
+
+	// ListIntegrityFileNodesWithResponse The assets of one group, with the finding on each
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /integrity/files/nodes (the `ListIntegrityFileNodes` operationId).
+	ListIntegrityFileNodesWithResponse(ctx context.Context, params *ListIntegrityFileNodesParams, reqEditors ...RequestEditorFn) (*ListIntegrityFileNodesResponse, error)
+
+	// GetIntegritySummaryWithResponse Numbers of the file integrity page
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /integrity/summary (the `GetIntegritySummary` operationId).
+	GetIntegritySummaryWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetIntegritySummaryResponse, error)
+
 	// ListK8sClustersWithResponse List Kubernetes clusters
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -13133,6 +14322,27 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with POST /scan-targets/{id}/run (the `RunScanTarget` operationId).
 	RunScanTargetWithResponse(ctx context.Context, id PathId, reqEditors ...RequestEditorFn) (*RunScanTargetResponse, error)
+
+	// GetIntegrityPolicyWithResponse When and how package files are checked
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /settings/integrity (the `GetIntegrityPolicy` operationId).
+	GetIntegrityPolicyWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetIntegrityPolicyResponse, error)
+
+	// PutIntegrityPolicyWithBodyWithResponse Replace the file integrity policy
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /settings/integrity (the `PutIntegrityPolicy` operationId).
+	PutIntegrityPolicyWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PutIntegrityPolicyResponse, error)
+
+	// PutIntegrityPolicyWithResponse Replace the file integrity policy
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /settings/integrity (the `PutIntegrityPolicy` operationId).
+	PutIntegrityPolicyWithResponse(ctx context.Context, body PutIntegrityPolicyJSONRequestBody, reqEditors ...RequestEditorFn) (*PutIntegrityPolicyResponse, error)
 
 	// GetTlsSettingsWithResponse State of the Web/API and Agent TLS configurations
 	//
@@ -14097,6 +15307,68 @@ func (r ListAssetInstancesResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r ListAssetInstancesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetAssetIntegrityResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *AssetIntegrity
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *UnexpectedError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetAssetIntegrityResponse) GetJSON200() *AssetIntegrity {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetAssetIntegrityResponse) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetAssetIntegrityResponse) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r GetAssetIntegrityResponse) GetJSONDefault() *UnexpectedError {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetAssetIntegrityResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetAssetIntegrityResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetAssetIntegrityResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetAssetIntegrityResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -15902,6 +17174,357 @@ func (r GetImageResponse) ContentType() string {
 	return ""
 }
 
+type ListIntegrityAllowRulesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *IntegrityAllowRuleList
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *UnexpectedError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListIntegrityAllowRulesResponse) GetJSON200() *IntegrityAllowRuleList {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ListIntegrityAllowRulesResponse) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r ListIntegrityAllowRulesResponse) GetJSONDefault() *UnexpectedError {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ListIntegrityAllowRulesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListIntegrityAllowRulesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListIntegrityAllowRulesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListIntegrityAllowRulesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type CreateIntegrityAllowRulesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *IntegrityAllowRuleList
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *BadRequest
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *UnexpectedError
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r CreateIntegrityAllowRulesResponse) GetJSON201() *IntegrityAllowRuleList {
+	return r.JSON201
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r CreateIntegrityAllowRulesResponse) GetJSON400() *BadRequest {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r CreateIntegrityAllowRulesResponse) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r CreateIntegrityAllowRulesResponse) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r CreateIntegrityAllowRulesResponse) GetJSONDefault() *UnexpectedError {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r CreateIntegrityAllowRulesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateIntegrityAllowRulesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateIntegrityAllowRulesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CreateIntegrityAllowRulesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type RevokeIntegrityAllowRuleResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *UnexpectedError
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r RevokeIntegrityAllowRuleResponse) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r RevokeIntegrityAllowRuleResponse) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r RevokeIntegrityAllowRuleResponse) GetJSONDefault() *UnexpectedError {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r RevokeIntegrityAllowRuleResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r RevokeIntegrityAllowRuleResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RevokeIntegrityAllowRuleResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r RevokeIntegrityAllowRuleResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListIntegrityFilesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *IntegrityGroupList
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *UnexpectedError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListIntegrityFilesResponse) GetJSON200() *IntegrityGroupList {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ListIntegrityFilesResponse) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r ListIntegrityFilesResponse) GetJSONDefault() *UnexpectedError {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ListIntegrityFilesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListIntegrityFilesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListIntegrityFilesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListIntegrityFilesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListIntegrityFileNodesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *IntegrityFindingList
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *BadRequest
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *UnexpectedError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListIntegrityFileNodesResponse) GetJSON200() *IntegrityFindingList {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r ListIntegrityFileNodesResponse) GetJSON400() *BadRequest {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ListIntegrityFileNodesResponse) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r ListIntegrityFileNodesResponse) GetJSONDefault() *UnexpectedError {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ListIntegrityFileNodesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListIntegrityFileNodesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListIntegrityFileNodesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListIntegrityFileNodesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetIntegritySummaryResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *IntegritySummary
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *UnexpectedError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetIntegritySummaryResponse) GetJSON200() *IntegritySummary {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetIntegritySummaryResponse) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r GetIntegritySummaryResponse) GetJSONDefault() *UnexpectedError {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetIntegritySummaryResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetIntegritySummaryResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetIntegritySummaryResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetIntegritySummaryResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type ListK8sClustersResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -17584,6 +19207,123 @@ func (r RunScanTargetResponse) ContentType() string {
 	return ""
 }
 
+type GetIntegrityPolicyResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *IntegrityPolicy
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *UnexpectedError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetIntegrityPolicyResponse) GetJSON200() *IntegrityPolicy {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetIntegrityPolicyResponse) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r GetIntegrityPolicyResponse) GetJSONDefault() *UnexpectedError {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetIntegrityPolicyResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetIntegrityPolicyResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetIntegrityPolicyResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetIntegrityPolicyResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type PutIntegrityPolicyResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *IntegrityPolicy
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *BadRequest
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *UnexpectedError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r PutIntegrityPolicyResponse) GetJSON200() *IntegrityPolicy {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r PutIntegrityPolicyResponse) GetJSON400() *BadRequest {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r PutIntegrityPolicyResponse) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r PutIntegrityPolicyResponse) GetJSONDefault() *UnexpectedError {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r PutIntegrityPolicyResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r PutIntegrityPolicyResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PutIntegrityPolicyResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r PutIntegrityPolicyResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type GetTlsSettingsResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -18931,6 +20671,19 @@ func (c *ClientWithResponses) ListAssetInstancesWithResponse(ctx context.Context
 	return ParseListAssetInstancesResponse(rsp)
 }
 
+// GetAssetIntegrityWithResponse File integrity of one asset
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /assets/{id}/integrity (the `GetAssetIntegrity` operationId).
+func (c *ClientWithResponses) GetAssetIntegrityWithResponse(ctx context.Context, id PathId, params *GetAssetIntegrityParams, reqEditors ...RequestEditorFn) (*GetAssetIntegrityResponse, error) {
+	rsp, err := c.GetAssetIntegrity(ctx, id, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetAssetIntegrityResponse(rsp)
+}
+
 // ListAssetProcessesWithResponse Processes of an asset
 //
 // `q` matches executable path, user, command line and pid.
@@ -19463,6 +21216,113 @@ func (c *ClientWithResponses) GetImageWithResponse(ctx context.Context, digest P
 	return ParseGetImageResponse(rsp)
 }
 
+// ListIntegrityAllowRulesWithResponse Allow rules, newest first
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /integrity/allow-rules (the `ListIntegrityAllowRules` operationId).
+func (c *ClientWithResponses) ListIntegrityAllowRulesWithResponse(ctx context.Context, params *ListIntegrityAllowRulesParams, reqEditors ...RequestEditorFn) (*ListIntegrityAllowRulesResponse, error) {
+	rsp, err := c.ListIntegrityAllowRules(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListIntegrityAllowRulesResponse(rsp)
+}
+
+// CreateIntegrityAllowRulesWithBodyWithResponse Allow a changed file so that it is no longer shown
+//
+// `scope` `asset` creates one rule per asset in `assetIds`: the finding is
+// hidden on those assets only. `scope` `fleet` creates one rule that hides
+// the finding on every asset, including assets that report the same path
+// and content later. A file that changes again has another SHA-256 and is
+// shown again.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /integrity/allow-rules (the `CreateIntegrityAllowRules` operationId).
+func (c *ClientWithResponses) CreateIntegrityAllowRulesWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateIntegrityAllowRulesResponse, error) {
+	rsp, err := c.CreateIntegrityAllowRulesWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateIntegrityAllowRulesResponse(rsp)
+}
+
+// CreateIntegrityAllowRulesWithResponse Allow a changed file so that it is no longer shown
+//
+// `scope` `asset` creates one rule per asset in `assetIds`: the finding is
+// hidden on those assets only. `scope` `fleet` creates one rule that hides
+// the finding on every asset, including assets that report the same path
+// and content later. A file that changes again has another SHA-256 and is
+// shown again.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /integrity/allow-rules (the `CreateIntegrityAllowRules` operationId).
+func (c *ClientWithResponses) CreateIntegrityAllowRulesWithResponse(ctx context.Context, body CreateIntegrityAllowRulesJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateIntegrityAllowRulesResponse, error) {
+	rsp, err := c.CreateIntegrityAllowRules(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateIntegrityAllowRulesResponse(rsp)
+}
+
+// RevokeIntegrityAllowRuleWithResponse Revoke a rule; the findings it hid are shown again
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /integrity/allow-rules/{id} (the `RevokeIntegrityAllowRule` operationId).
+func (c *ClientWithResponses) RevokeIntegrityAllowRuleWithResponse(ctx context.Context, id PathId, reqEditors ...RequestEditorFn) (*RevokeIntegrityAllowRuleResponse, error) {
+	rsp, err := c.RevokeIntegrityAllowRule(ctx, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRevokeIntegrityAllowRuleResponse(rsp)
+}
+
+// ListIntegrityFilesWithResponse Changed package files, grouped by path, status and actual content
+//
+// Open findings of current assets with the same path, status and actual
+// SHA-256 form one item, most assets first. Findings an active allow rule
+// hides are left out unless `includeAllowed`.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /integrity/files (the `ListIntegrityFiles` operationId).
+func (c *ClientWithResponses) ListIntegrityFilesWithResponse(ctx context.Context, params *ListIntegrityFilesParams, reqEditors ...RequestEditorFn) (*ListIntegrityFilesResponse, error) {
+	rsp, err := c.ListIntegrityFiles(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListIntegrityFilesResponse(rsp)
+}
+
+// ListIntegrityFileNodesWithResponse The assets of one group, with the finding on each
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /integrity/files/nodes (the `ListIntegrityFileNodes` operationId).
+func (c *ClientWithResponses) ListIntegrityFileNodesWithResponse(ctx context.Context, params *ListIntegrityFileNodesParams, reqEditors ...RequestEditorFn) (*ListIntegrityFileNodesResponse, error) {
+	rsp, err := c.ListIntegrityFileNodes(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListIntegrityFileNodesResponse(rsp)
+}
+
+// GetIntegritySummaryWithResponse Numbers of the file integrity page
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /integrity/summary (the `GetIntegritySummary` operationId).
+func (c *ClientWithResponses) GetIntegritySummaryWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetIntegritySummaryResponse, error) {
+	rsp, err := c.GetIntegritySummary(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetIntegritySummaryResponse(rsp)
+}
+
 // ListK8sClustersWithResponse List Kubernetes clusters
 //
 // Returns a wrapper object for the known response body format(s).
@@ -19946,6 +21806,45 @@ func (c *ClientWithResponses) RunScanTargetWithResponse(ctx context.Context, id 
 		return nil, err
 	}
 	return ParseRunScanTargetResponse(rsp)
+}
+
+// GetIntegrityPolicyWithResponse When and how package files are checked
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /settings/integrity (the `GetIntegrityPolicy` operationId).
+func (c *ClientWithResponses) GetIntegrityPolicyWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetIntegrityPolicyResponse, error) {
+	rsp, err := c.GetIntegrityPolicy(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetIntegrityPolicyResponse(rsp)
+}
+
+// PutIntegrityPolicyWithBodyWithResponse Replace the file integrity policy
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /settings/integrity (the `PutIntegrityPolicy` operationId).
+func (c *ClientWithResponses) PutIntegrityPolicyWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PutIntegrityPolicyResponse, error) {
+	rsp, err := c.PutIntegrityPolicyWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePutIntegrityPolicyResponse(rsp)
+}
+
+// PutIntegrityPolicyWithResponse Replace the file integrity policy
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /settings/integrity (the `PutIntegrityPolicy` operationId).
+func (c *ClientWithResponses) PutIntegrityPolicyWithResponse(ctx context.Context, body PutIntegrityPolicyJSONRequestBody, reqEditors ...RequestEditorFn) (*PutIntegrityPolicyResponse, error) {
+	rsp, err := c.PutIntegrityPolicy(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePutIntegrityPolicyResponse(rsp)
 }
 
 // GetTlsSettingsWithResponse State of the Web/API and Agent TLS configurations
@@ -20862,6 +22761,53 @@ func ParseListAssetInstancesResponse(rsp *http.Response) (*ListAssetInstancesRes
 			return nil, err
 		}
 		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest UnexpectedError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetAssetIntegrityResponse parses an HTTP response from a GetAssetIntegrityWithResponse call
+func ParseGetAssetIntegrityResponse(rsp *http.Response) (*GetAssetIntegrityResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetAssetIntegrityResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AssetIntegrity
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
 		var dest Unauthorized
@@ -22298,6 +24244,270 @@ func ParseGetImageResponse(rsp *http.Response) (*GetImageResponse, error) {
 	return response, nil
 }
 
+// ParseListIntegrityAllowRulesResponse parses an HTTP response from a ListIntegrityAllowRulesWithResponse call
+func ParseListIntegrityAllowRulesResponse(rsp *http.Response) (*ListIntegrityAllowRulesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListIntegrityAllowRulesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest IntegrityAllowRuleList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest UnexpectedError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateIntegrityAllowRulesResponse parses an HTTP response from a CreateIntegrityAllowRulesWithResponse call
+func ParseCreateIntegrityAllowRulesResponse(rsp *http.Response) (*CreateIntegrityAllowRulesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateIntegrityAllowRulesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest IntegrityAllowRuleList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest UnexpectedError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRevokeIntegrityAllowRuleResponse parses an HTTP response from a RevokeIntegrityAllowRuleWithResponse call
+func ParseRevokeIntegrityAllowRuleResponse(rsp *http.Response) (*RevokeIntegrityAllowRuleResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RevokeIntegrityAllowRuleResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest UnexpectedError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListIntegrityFilesResponse parses an HTTP response from a ListIntegrityFilesWithResponse call
+func ParseListIntegrityFilesResponse(rsp *http.Response) (*ListIntegrityFilesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListIntegrityFilesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest IntegrityGroupList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest UnexpectedError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListIntegrityFileNodesResponse parses an HTTP response from a ListIntegrityFileNodesWithResponse call
+func ParseListIntegrityFileNodesResponse(rsp *http.Response) (*ListIntegrityFileNodesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListIntegrityFileNodesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest IntegrityFindingList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest UnexpectedError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetIntegritySummaryResponse parses an HTTP response from a GetIntegritySummaryWithResponse call
+func ParseGetIntegritySummaryResponse(rsp *http.Response) (*GetIntegritySummaryResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetIntegritySummaryResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest IntegritySummary
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest UnexpectedError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseListK8sClustersResponse parses an HTTP response from a ListK8sClustersWithResponse call
 func ParseListK8sClustersResponse(rsp *http.Response) (*ListK8sClustersResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -23611,6 +25821,93 @@ func ParseRunScanTargetResponse(rsp *http.Response) (*RunScanTargetResponse, err
 	return response, nil
 }
 
+// ParseGetIntegrityPolicyResponse parses an HTTP response from a GetIntegrityPolicyWithResponse call
+func ParseGetIntegrityPolicyResponse(rsp *http.Response) (*GetIntegrityPolicyResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetIntegrityPolicyResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest IntegrityPolicy
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest UnexpectedError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePutIntegrityPolicyResponse parses an HTTP response from a PutIntegrityPolicyWithResponse call
+func ParsePutIntegrityPolicyResponse(rsp *http.Response) (*PutIntegrityPolicyResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PutIntegrityPolicyResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest IntegrityPolicy
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest UnexpectedError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseGetTlsSettingsResponse parses an HTTP response from a GetTlsSettingsWithResponse call
 func ParseGetTlsSettingsResponse(rsp *http.Response) (*GetTlsSettingsResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -24532,6 +26829,9 @@ type ServerInterface interface {
 	// ListAssetInstances Instances (pods) of a workload asset
 	// (GET /assets/{id}/instances)
 	ListAssetInstances(w http.ResponseWriter, r *http.Request, id PathId, params ListAssetInstancesParams)
+	// GetAssetIntegrity File integrity of one asset
+	// (GET /assets/{id}/integrity)
+	GetAssetIntegrity(w http.ResponseWriter, r *http.Request, id PathId, params GetAssetIntegrityParams)
 	// ListAssetProcesses Processes of an asset
 	// (GET /assets/{id}/processes)
 	ListAssetProcesses(w http.ResponseWriter, r *http.Request, id PathId, params ListAssetProcessesParams)
@@ -24616,6 +26916,24 @@ type ServerInterface interface {
 	// GetImage Get an image with the containers that use it and its components
 	// (GET /images/{digest})
 	GetImage(w http.ResponseWriter, r *http.Request, digest PathDigest)
+	// ListIntegrityAllowRules Allow rules, newest first
+	// (GET /integrity/allow-rules)
+	ListIntegrityAllowRules(w http.ResponseWriter, r *http.Request, params ListIntegrityAllowRulesParams)
+	// CreateIntegrityAllowRules Allow a changed file so that it is no longer shown
+	// (POST /integrity/allow-rules)
+	CreateIntegrityAllowRules(w http.ResponseWriter, r *http.Request)
+	// RevokeIntegrityAllowRule Revoke a rule; the findings it hid are shown again
+	// (DELETE /integrity/allow-rules/{id})
+	RevokeIntegrityAllowRule(w http.ResponseWriter, r *http.Request, id PathId)
+	// ListIntegrityFiles Changed package files, grouped by path, status and actual content
+	// (GET /integrity/files)
+	ListIntegrityFiles(w http.ResponseWriter, r *http.Request, params ListIntegrityFilesParams)
+	// ListIntegrityFileNodes The assets of one group, with the finding on each
+	// (GET /integrity/files/nodes)
+	ListIntegrityFileNodes(w http.ResponseWriter, r *http.Request, params ListIntegrityFileNodesParams)
+	// GetIntegritySummary Numbers of the file integrity page
+	// (GET /integrity/summary)
+	GetIntegritySummary(w http.ResponseWriter, r *http.Request)
 	// ListK8sClusters List Kubernetes clusters
 	// (GET /k8s/clusters)
 	ListK8sClusters(w http.ResponseWriter, r *http.Request, params ListK8sClustersParams)
@@ -24694,6 +27012,12 @@ type ServerInterface interface {
 	// RunScanTarget Scan a target now
 	// (POST /scan-targets/{id}/run)
 	RunScanTarget(w http.ResponseWriter, r *http.Request, id PathId)
+	// GetIntegrityPolicy When and how package files are checked
+	// (GET /settings/integrity)
+	GetIntegrityPolicy(w http.ResponseWriter, r *http.Request)
+	// PutIntegrityPolicy Replace the file integrity policy
+	// (PUT /settings/integrity)
+	PutIntegrityPolicy(w http.ResponseWriter, r *http.Request)
 	// GetTlsSettings State of the Web/API and Agent TLS configurations
 	// (GET /settings/tls)
 	GetTlsSettings(w http.ResponseWriter, r *http.Request)
@@ -24820,6 +27144,12 @@ func (_ Unimplemented) ListAssetComponents(w http.ResponseWriter, r *http.Reques
 // ListAssetInstances Instances (pods) of a workload asset
 // (GET /assets/{id}/instances)
 func (_ Unimplemented) ListAssetInstances(w http.ResponseWriter, r *http.Request, id PathId, params ListAssetInstancesParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetAssetIntegrity File integrity of one asset
+// (GET /assets/{id}/integrity)
+func (_ Unimplemented) GetAssetIntegrity(w http.ResponseWriter, r *http.Request, id PathId, params GetAssetIntegrityParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -24991,6 +27321,42 @@ func (_ Unimplemented) GetImage(w http.ResponseWriter, r *http.Request, digest P
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// ListIntegrityAllowRules Allow rules, newest first
+// (GET /integrity/allow-rules)
+func (_ Unimplemented) ListIntegrityAllowRules(w http.ResponseWriter, r *http.Request, params ListIntegrityAllowRulesParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// CreateIntegrityAllowRules Allow a changed file so that it is no longer shown
+// (POST /integrity/allow-rules)
+func (_ Unimplemented) CreateIntegrityAllowRules(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// RevokeIntegrityAllowRule Revoke a rule; the findings it hid are shown again
+// (DELETE /integrity/allow-rules/{id})
+func (_ Unimplemented) RevokeIntegrityAllowRule(w http.ResponseWriter, r *http.Request, id PathId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListIntegrityFiles Changed package files, grouped by path, status and actual content
+// (GET /integrity/files)
+func (_ Unimplemented) ListIntegrityFiles(w http.ResponseWriter, r *http.Request, params ListIntegrityFilesParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListIntegrityFileNodes The assets of one group, with the finding on each
+// (GET /integrity/files/nodes)
+func (_ Unimplemented) ListIntegrityFileNodes(w http.ResponseWriter, r *http.Request, params ListIntegrityFileNodesParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetIntegritySummary Numbers of the file integrity page
+// (GET /integrity/summary)
+func (_ Unimplemented) GetIntegritySummary(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // ListK8sClusters List Kubernetes clusters
 // (GET /k8s/clusters)
 func (_ Unimplemented) ListK8sClusters(w http.ResponseWriter, r *http.Request, params ListK8sClustersParams) {
@@ -25144,6 +27510,18 @@ func (_ Unimplemented) UpdateScanTarget(w http.ResponseWriter, r *http.Request, 
 // RunScanTarget Scan a target now
 // (POST /scan-targets/{id}/run)
 func (_ Unimplemented) RunScanTarget(w http.ResponseWriter, r *http.Request, id PathId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetIntegrityPolicy When and how package files are checked
+// (GET /settings/integrity)
+func (_ Unimplemented) GetIntegrityPolicy(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// PutIntegrityPolicy Replace the file integrity policy
+// (PUT /settings/integrity)
+func (_ Unimplemented) PutIntegrityPolicy(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -26068,6 +28446,48 @@ func (siw *ServerInterfaceWrapper) ListAssetInstances(w http.ResponseWriter, r *
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListAssetInstances(w, r, id, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAssetIntegrity operation middleware
+func (siw *ServerInterfaceWrapper) GetAssetIntegrity(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id PathId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetAssetIntegrityParams
+
+	// ------------- Optional query parameter "includeAllowed" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "includeAllowed", r.URL.Query(), &params.IncludeAllowed, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "includeAllowed"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "includeAllowed", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAssetIntegrity(w, r, id, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -27080,6 +29500,315 @@ func (siw *ServerInterfaceWrapper) GetImage(w http.ResponseWriter, r *http.Reque
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetImage(w, r, digest)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListIntegrityAllowRules operation middleware
+func (siw *ServerInterfaceWrapper) ListIntegrityAllowRules(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListIntegrityAllowRulesParams
+
+	// ------------- Optional query parameter "includeRevoked" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "includeRevoked", r.URL.Query(), &params.IncludeRevoked, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "includeRevoked"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "includeRevoked", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "offset" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "offset", r.URL.Query(), &params.Offset, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "offset"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "offset", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListIntegrityAllowRules(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateIntegrityAllowRules operation middleware
+func (siw *ServerInterfaceWrapper) CreateIntegrityAllowRules(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateIntegrityAllowRules(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RevokeIntegrityAllowRule operation middleware
+func (siw *ServerInterfaceWrapper) RevokeIntegrityAllowRule(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id PathId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RevokeIntegrityAllowRule(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListIntegrityFiles operation middleware
+func (siw *ServerInterfaceWrapper) ListIntegrityFiles(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListIntegrityFilesParams
+
+	// ------------- Optional query parameter "status" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "status", r.URL.Query(), &params.Status, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "status"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "status", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "assetId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "assetId", r.URL.Query(), &params.AssetId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "assetId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "assetId", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "q" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "q", r.URL.Query(), &params.Q, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "q"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "q", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "includeAllowed" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "includeAllowed", r.URL.Query(), &params.IncludeAllowed, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "includeAllowed"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "includeAllowed", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "offset" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "offset", r.URL.Query(), &params.Offset, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "offset"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "offset", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListIntegrityFiles(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListIntegrityFileNodes operation middleware
+func (siw *ServerInterfaceWrapper) ListIntegrityFileNodes(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListIntegrityFileNodesParams
+
+	// ------------- Required query parameter "path" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "path", r.URL.Query(), &params.Path, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "path"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "path", Err: err})
+		}
+		return
+	}
+
+	// ------------- Required query parameter "status" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "status", r.URL.Query(), &params.Status, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "status"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "status", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "sha256" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "sha256", r.URL.Query(), &params.Sha256, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "sha256"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sha256", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "includeAllowed" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "includeAllowed", r.URL.Query(), &params.IncludeAllowed, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "includeAllowed"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "includeAllowed", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "offset" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "offset", r.URL.Query(), &params.Offset, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "offset"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "offset", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListIntegrityFileNodes(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetIntegritySummary operation middleware
+func (siw *ServerInterfaceWrapper) GetIntegritySummary(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetIntegritySummary(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -28359,6 +31088,34 @@ func (siw *ServerInterfaceWrapper) RunScanTarget(w http.ResponseWriter, r *http.
 	handler.ServeHTTP(w, r)
 }
 
+// GetIntegrityPolicy operation middleware
+func (siw *ServerInterfaceWrapper) GetIntegrityPolicy(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetIntegrityPolicy(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutIntegrityPolicy operation middleware
+func (siw *ServerInterfaceWrapper) PutIntegrityPolicy(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutIntegrityPolicy(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetTlsSettings operation middleware
 func (siw *ServerInterfaceWrapper) GetTlsSettings(w http.ResponseWriter, r *http.Request) {
 
@@ -29482,6 +32239,33 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/vex", wrapper.ExportVex)
 	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/integrity/summary", wrapper.GetIntegritySummary)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/integrity/files", wrapper.ListIntegrityFiles)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/integrity/files/nodes", wrapper.ListIntegrityFileNodes)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/assets/{id}/integrity", wrapper.GetAssetIntegrity)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/integrity/allow-rules", wrapper.ListIntegrityAllowRules)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/integrity/allow-rules", wrapper.CreateIntegrityAllowRules)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/integrity/allow-rules/{id}", wrapper.RevokeIntegrityAllowRule)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/settings/integrity", wrapper.GetIntegrityPolicy)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/settings/integrity", wrapper.PutIntegrityPolicy)
+	})
 
 	return r
 }
@@ -30320,6 +33104,74 @@ type ListAssetInstancesdefaultJSONResponse struct {
 }
 
 func (response ListAssetInstancesdefaultJSONResponse) VisitListAssetInstancesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAssetIntegrityRequestObject struct {
+	Id     PathId `json:"id"`
+	Params GetAssetIntegrityParams
+}
+
+type GetAssetIntegrityResponseObject interface {
+	VisitGetAssetIntegrityResponse(w http.ResponseWriter) error
+}
+
+type GetAssetIntegrity200JSONResponse AssetIntegrity
+
+func (response GetAssetIntegrity200JSONResponse) VisitGetAssetIntegrityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAssetIntegrity401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response GetAssetIntegrity401JSONResponse) VisitGetAssetIntegrityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAssetIntegrity404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetAssetIntegrity404JSONResponse) VisitGetAssetIntegrityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAssetIntegritydefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetAssetIntegritydefaultJSONResponse) VisitGetAssetIntegrityResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -32352,6 +35204,373 @@ func (response GetImagedefaultJSONResponse) VisitGetImageResponse(w http.Respons
 	return err
 }
 
+type ListIntegrityAllowRulesRequestObject struct {
+	Params ListIntegrityAllowRulesParams
+}
+
+type ListIntegrityAllowRulesResponseObject interface {
+	VisitListIntegrityAllowRulesResponse(w http.ResponseWriter) error
+}
+
+type ListIntegrityAllowRules200JSONResponse IntegrityAllowRuleList
+
+func (response ListIntegrityAllowRules200JSONResponse) VisitListIntegrityAllowRulesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListIntegrityAllowRules401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response ListIntegrityAllowRules401JSONResponse) VisitListIntegrityAllowRulesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListIntegrityAllowRulesdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ListIntegrityAllowRulesdefaultJSONResponse) VisitListIntegrityAllowRulesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateIntegrityAllowRulesRequestObject struct {
+	Body *CreateIntegrityAllowRulesJSONRequestBody
+}
+
+type CreateIntegrityAllowRulesResponseObject interface {
+	VisitCreateIntegrityAllowRulesResponse(w http.ResponseWriter) error
+}
+
+type CreateIntegrityAllowRules201JSONResponse IntegrityAllowRuleList
+
+func (response CreateIntegrityAllowRules201JSONResponse) VisitCreateIntegrityAllowRulesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateIntegrityAllowRules400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response CreateIntegrityAllowRules400JSONResponse) VisitCreateIntegrityAllowRulesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateIntegrityAllowRules401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response CreateIntegrityAllowRules401JSONResponse) VisitCreateIntegrityAllowRulesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateIntegrityAllowRules404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response CreateIntegrityAllowRules404JSONResponse) VisitCreateIntegrityAllowRulesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateIntegrityAllowRulesdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response CreateIntegrityAllowRulesdefaultJSONResponse) VisitCreateIntegrityAllowRulesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeIntegrityAllowRuleRequestObject struct {
+	Id PathId `json:"id"`
+}
+
+type RevokeIntegrityAllowRuleResponseObject interface {
+	VisitRevokeIntegrityAllowRuleResponse(w http.ResponseWriter) error
+}
+
+type RevokeIntegrityAllowRule204Response struct {
+}
+
+func (response RevokeIntegrityAllowRule204Response) VisitRevokeIntegrityAllowRuleResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type RevokeIntegrityAllowRule401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response RevokeIntegrityAllowRule401JSONResponse) VisitRevokeIntegrityAllowRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeIntegrityAllowRule404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response RevokeIntegrityAllowRule404JSONResponse) VisitRevokeIntegrityAllowRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeIntegrityAllowRuledefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response RevokeIntegrityAllowRuledefaultJSONResponse) VisitRevokeIntegrityAllowRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListIntegrityFilesRequestObject struct {
+	Params ListIntegrityFilesParams
+}
+
+type ListIntegrityFilesResponseObject interface {
+	VisitListIntegrityFilesResponse(w http.ResponseWriter) error
+}
+
+type ListIntegrityFiles200JSONResponse IntegrityGroupList
+
+func (response ListIntegrityFiles200JSONResponse) VisitListIntegrityFilesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListIntegrityFiles401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response ListIntegrityFiles401JSONResponse) VisitListIntegrityFilesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListIntegrityFilesdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ListIntegrityFilesdefaultJSONResponse) VisitListIntegrityFilesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListIntegrityFileNodesRequestObject struct {
+	Params ListIntegrityFileNodesParams
+}
+
+type ListIntegrityFileNodesResponseObject interface {
+	VisitListIntegrityFileNodesResponse(w http.ResponseWriter) error
+}
+
+type ListIntegrityFileNodes200JSONResponse IntegrityFindingList
+
+func (response ListIntegrityFileNodes200JSONResponse) VisitListIntegrityFileNodesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListIntegrityFileNodes400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response ListIntegrityFileNodes400JSONResponse) VisitListIntegrityFileNodesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListIntegrityFileNodes401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response ListIntegrityFileNodes401JSONResponse) VisitListIntegrityFileNodesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListIntegrityFileNodesdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ListIntegrityFileNodesdefaultJSONResponse) VisitListIntegrityFileNodesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIntegritySummaryRequestObject struct {
+}
+
+type GetIntegritySummaryResponseObject interface {
+	VisitGetIntegritySummaryResponse(w http.ResponseWriter) error
+}
+
+type GetIntegritySummary200JSONResponse IntegritySummary
+
+func (response GetIntegritySummary200JSONResponse) VisitGetIntegritySummaryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIntegritySummary401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response GetIntegritySummary401JSONResponse) VisitGetIntegritySummaryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIntegritySummarydefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetIntegritySummarydefaultJSONResponse) VisitGetIntegritySummaryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListK8sClustersRequestObject struct {
 	Params ListK8sClustersParams
 }
@@ -34274,6 +37493,125 @@ func (response RunScanTargetdefaultJSONResponse) VisitRunScanTargetResponse(w ht
 	return err
 }
 
+type GetIntegrityPolicyRequestObject struct {
+}
+
+type GetIntegrityPolicyResponseObject interface {
+	VisitGetIntegrityPolicyResponse(w http.ResponseWriter) error
+}
+
+type GetIntegrityPolicy200JSONResponse IntegrityPolicy
+
+func (response GetIntegrityPolicy200JSONResponse) VisitGetIntegrityPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIntegrityPolicy401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response GetIntegrityPolicy401JSONResponse) VisitGetIntegrityPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIntegrityPolicydefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetIntegrityPolicydefaultJSONResponse) VisitGetIntegrityPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutIntegrityPolicyRequestObject struct {
+	Body *PutIntegrityPolicyJSONRequestBody
+}
+
+type PutIntegrityPolicyResponseObject interface {
+	VisitPutIntegrityPolicyResponse(w http.ResponseWriter) error
+}
+
+type PutIntegrityPolicy200JSONResponse IntegrityPolicy
+
+func (response PutIntegrityPolicy200JSONResponse) VisitPutIntegrityPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutIntegrityPolicy400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response PutIntegrityPolicy400JSONResponse) VisitPutIntegrityPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutIntegrityPolicy401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response PutIntegrityPolicy401JSONResponse) VisitPutIntegrityPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutIntegrityPolicydefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response PutIntegrityPolicydefaultJSONResponse) VisitPutIntegrityPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetTlsSettingsRequestObject struct {
 }
 
@@ -35565,6 +38903,9 @@ type StrictServerInterface interface {
 	// ListAssetInstances Instances (pods) of a workload asset
 	// (GET /assets/{id}/instances)
 	ListAssetInstances(ctx context.Context, request ListAssetInstancesRequestObject) (ListAssetInstancesResponseObject, error)
+	// GetAssetIntegrity File integrity of one asset
+	// (GET /assets/{id}/integrity)
+	GetAssetIntegrity(ctx context.Context, request GetAssetIntegrityRequestObject) (GetAssetIntegrityResponseObject, error)
 	// ListAssetProcesses Processes of an asset
 	// (GET /assets/{id}/processes)
 	ListAssetProcesses(ctx context.Context, request ListAssetProcessesRequestObject) (ListAssetProcessesResponseObject, error)
@@ -35649,6 +38990,24 @@ type StrictServerInterface interface {
 	// GetImage Get an image with the containers that use it and its components
 	// (GET /images/{digest})
 	GetImage(ctx context.Context, request GetImageRequestObject) (GetImageResponseObject, error)
+	// ListIntegrityAllowRules Allow rules, newest first
+	// (GET /integrity/allow-rules)
+	ListIntegrityAllowRules(ctx context.Context, request ListIntegrityAllowRulesRequestObject) (ListIntegrityAllowRulesResponseObject, error)
+	// CreateIntegrityAllowRules Allow a changed file so that it is no longer shown
+	// (POST /integrity/allow-rules)
+	CreateIntegrityAllowRules(ctx context.Context, request CreateIntegrityAllowRulesRequestObject) (CreateIntegrityAllowRulesResponseObject, error)
+	// RevokeIntegrityAllowRule Revoke a rule; the findings it hid are shown again
+	// (DELETE /integrity/allow-rules/{id})
+	RevokeIntegrityAllowRule(ctx context.Context, request RevokeIntegrityAllowRuleRequestObject) (RevokeIntegrityAllowRuleResponseObject, error)
+	// ListIntegrityFiles Changed package files, grouped by path, status and actual content
+	// (GET /integrity/files)
+	ListIntegrityFiles(ctx context.Context, request ListIntegrityFilesRequestObject) (ListIntegrityFilesResponseObject, error)
+	// ListIntegrityFileNodes The assets of one group, with the finding on each
+	// (GET /integrity/files/nodes)
+	ListIntegrityFileNodes(ctx context.Context, request ListIntegrityFileNodesRequestObject) (ListIntegrityFileNodesResponseObject, error)
+	// GetIntegritySummary Numbers of the file integrity page
+	// (GET /integrity/summary)
+	GetIntegritySummary(ctx context.Context, request GetIntegritySummaryRequestObject) (GetIntegritySummaryResponseObject, error)
 	// ListK8sClusters List Kubernetes clusters
 	// (GET /k8s/clusters)
 	ListK8sClusters(ctx context.Context, request ListK8sClustersRequestObject) (ListK8sClustersResponseObject, error)
@@ -35727,6 +39086,12 @@ type StrictServerInterface interface {
 	// RunScanTarget Scan a target now
 	// (POST /scan-targets/{id}/run)
 	RunScanTarget(ctx context.Context, request RunScanTargetRequestObject) (RunScanTargetResponseObject, error)
+	// GetIntegrityPolicy When and how package files are checked
+	// (GET /settings/integrity)
+	GetIntegrityPolicy(ctx context.Context, request GetIntegrityPolicyRequestObject) (GetIntegrityPolicyResponseObject, error)
+	// PutIntegrityPolicy Replace the file integrity policy
+	// (PUT /settings/integrity)
+	PutIntegrityPolicy(ctx context.Context, request PutIntegrityPolicyRequestObject) (PutIntegrityPolicyResponseObject, error)
 	// GetTlsSettings State of the Web/API and Agent TLS configurations
 	// (GET /settings/tls)
 	GetTlsSettings(ctx context.Context, request GetTlsSettingsRequestObject) (GetTlsSettingsResponseObject, error)
@@ -36113,6 +39478,33 @@ func (sh *strictHandler) ListAssetInstances(w http.ResponseWriter, r *http.Reque
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ListAssetInstancesResponseObject); ok {
 		if err := validResponse.VisitListAssetInstancesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetAssetIntegrity operation middleware
+func (sh *strictHandler) GetAssetIntegrity(w http.ResponseWriter, r *http.Request, id PathId, params GetAssetIntegrityParams) {
+	var request GetAssetIntegrityRequestObject
+
+	request.Id = id
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetAssetIntegrity(ctx, request.(GetAssetIntegrityRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetAssetIntegrity")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetAssetIntegrityResponseObject); ok {
+		if err := validResponse.VisitGetAssetIntegrityResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -36886,6 +40278,165 @@ func (sh *strictHandler) GetImage(w http.ResponseWriter, r *http.Request, digest
 	}
 }
 
+// ListIntegrityAllowRules operation middleware
+func (sh *strictHandler) ListIntegrityAllowRules(w http.ResponseWriter, r *http.Request, params ListIntegrityAllowRulesParams) {
+	var request ListIntegrityAllowRulesRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListIntegrityAllowRules(ctx, request.(ListIntegrityAllowRulesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListIntegrityAllowRules")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListIntegrityAllowRulesResponseObject); ok {
+		if err := validResponse.VisitListIntegrityAllowRulesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateIntegrityAllowRules operation middleware
+func (sh *strictHandler) CreateIntegrityAllowRules(w http.ResponseWriter, r *http.Request) {
+	var request CreateIntegrityAllowRulesRequestObject
+
+	var body CreateIntegrityAllowRulesJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateIntegrityAllowRules(ctx, request.(CreateIntegrityAllowRulesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateIntegrityAllowRules")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateIntegrityAllowRulesResponseObject); ok {
+		if err := validResponse.VisitCreateIntegrityAllowRulesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RevokeIntegrityAllowRule operation middleware
+func (sh *strictHandler) RevokeIntegrityAllowRule(w http.ResponseWriter, r *http.Request, id PathId) {
+	var request RevokeIntegrityAllowRuleRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RevokeIntegrityAllowRule(ctx, request.(RevokeIntegrityAllowRuleRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RevokeIntegrityAllowRule")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RevokeIntegrityAllowRuleResponseObject); ok {
+		if err := validResponse.VisitRevokeIntegrityAllowRuleResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListIntegrityFiles operation middleware
+func (sh *strictHandler) ListIntegrityFiles(w http.ResponseWriter, r *http.Request, params ListIntegrityFilesParams) {
+	var request ListIntegrityFilesRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListIntegrityFiles(ctx, request.(ListIntegrityFilesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListIntegrityFiles")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListIntegrityFilesResponseObject); ok {
+		if err := validResponse.VisitListIntegrityFilesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListIntegrityFileNodes operation middleware
+func (sh *strictHandler) ListIntegrityFileNodes(w http.ResponseWriter, r *http.Request, params ListIntegrityFileNodesParams) {
+	var request ListIntegrityFileNodesRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListIntegrityFileNodes(ctx, request.(ListIntegrityFileNodesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListIntegrityFileNodes")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListIntegrityFileNodesResponseObject); ok {
+		if err := validResponse.VisitListIntegrityFileNodesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetIntegritySummary operation middleware
+func (sh *strictHandler) GetIntegritySummary(w http.ResponseWriter, r *http.Request) {
+	var request GetIntegritySummaryRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetIntegritySummary(ctx, request.(GetIntegritySummaryRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetIntegritySummary")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetIntegritySummaryResponseObject); ok {
+		if err := validResponse.VisitGetIntegritySummaryResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ListK8sClusters operation middleware
 func (sh *strictHandler) ListK8sClusters(w http.ResponseWriter, r *http.Request, params ListK8sClustersParams) {
 	var request ListK8sClustersRequestObject
@@ -37601,6 +41152,61 @@ func (sh *strictHandler) RunScanTarget(w http.ResponseWriter, r *http.Request, i
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(RunScanTargetResponseObject); ok {
 		if err := validResponse.VisitRunScanTargetResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetIntegrityPolicy operation middleware
+func (sh *strictHandler) GetIntegrityPolicy(w http.ResponseWriter, r *http.Request) {
+	var request GetIntegrityPolicyRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetIntegrityPolicy(ctx, request.(GetIntegrityPolicyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetIntegrityPolicy")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetIntegrityPolicyResponseObject); ok {
+		if err := validResponse.VisitGetIntegrityPolicyResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutIntegrityPolicy operation middleware
+func (sh *strictHandler) PutIntegrityPolicy(w http.ResponseWriter, r *http.Request) {
+	var request PutIntegrityPolicyRequestObject
+
+	var body PutIntegrityPolicyJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutIntegrityPolicy(ctx, request.(PutIntegrityPolicyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutIntegrityPolicy")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutIntegrityPolicyResponseObject); ok {
+		if err := validResponse.VisitPutIntegrityPolicyResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
