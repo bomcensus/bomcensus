@@ -1,6 +1,6 @@
 module github.com/bomcensus/bomcensus
 
-go 1.26.3
+go 1.26.11
 
 require (
 	github.com/bomcensus/feed-protocol v0.1.0

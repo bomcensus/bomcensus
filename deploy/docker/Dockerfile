@@ -32,7 +32,7 @@
 #
 #   docker buildx build --build-context dist=dist/release/docker ...
 
-ARG GO_VERSION=1.26.3
+ARG GO_VERSION=1.26.11
 ARG NODE_VERSION=26
 ARG DEBIAN_RELEASE=trixie
 
