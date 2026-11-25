@@ -5,7 +5,9 @@
 package inventoryapi
 
 import (
+	"fmt"
 	"net/http"
+	"slices"
 	"testing"
 
 	gen "github.com/bomcensus/bomcensus/internal/gen/adminapi"
@@ -244,5 +246,88 @@ func TestNegligibleSeverity(t *testing.T) {
 	s := sm.(gen.GetVulnerabilitySummary200JSONResponse)
 	if s.Negligible != 1 || s.Totals.Cves != 2 || s.Totals.Components != 1 || s.Urgent.Components != 0 {
 		t.Fatalf("summary %+v", s)
+	}
+}
+
+// TestComponentCveReachability: a component's CVE row combines the
+// reachability of its places, and a linked vulnerable function outranks KEV
+// within one exposure.
+func TestComponentCveReachability(t *testing.T) {
+	f, ids := seedVulns(t)
+	ctx := f.ctx
+	set := func(vuln string, reach ...string) {
+		t.Helper()
+		rows, err := f.db.Pool().Query(ctx, `SELECT DISTINCT asset_id FROM findings
+			WHERE component_id = $1 AND vuln_id = $2 ORDER BY asset_id`, ids["openssl"], vuln)
+		must(t, err)
+		var assets []string
+		for rows.Next() {
+			var a string
+			must(t, rows.Scan(&a))
+			assets = append(assets, a)
+		}
+		rows.Close()
+		if len(assets) != len(reach) {
+			t.Fatalf("%s at %d places", vuln, len(assets))
+		}
+		for i, a := range assets {
+			var r *string
+			if reach[i] != "" {
+				r = &reach[i]
+			}
+			_, err := f.db.Pool().Exec(ctx, `UPDATE findings SET reachability = $1
+				WHERE asset_id = $2 AND component_id = $3 AND vuln_id = $4`, r, a, ids["openssl"], vuln)
+			must(t, err)
+		}
+	}
+	_, err := f.db.Pool().Exec(ctx, `UPDATE component_vulns SET symbols = $1
+		WHERE component_id = $2 AND vuln_id = 'CVE-B'`, `[{"path":"crypto/tls","symbols":["Conn.Handshake"]}]`, ids["openssl"])
+	must(t, err)
+	get := func() map[string]gen.VulnCve {
+		t.Helper()
+		det, err := f.h.GetVulnerableComponent(ctx, gen.GetVulnerableComponentRequestObject{Id: ids["openssl"]})
+		must(t, err)
+		d := det.(gen.GetVulnerableComponent200JSONResponse)
+		out := map[string]gen.VulnCve{}
+		for i, v := range d.Cves {
+			out[v.VulnId] = v
+			out[fmt.Sprint(i)] = v
+		}
+		return out
+	}
+	reach := func(v gen.VulnCve) string {
+		if v.Reachability == nil {
+			return ""
+		}
+		return string(*v.Reachability)
+	}
+	absent := func(v gen.VulnCve) int {
+		if v.SymbolAbsent == nil {
+			return 0
+		}
+		return *v.SymbolAbsent
+	}
+
+	set("CVE-A", store.ReachSymbolAbsent, "")
+	set("CVE-B", store.ReachSymbolAbsent, store.ReachSymbolAbsent)
+	got := get()
+	if a := got["CVE-A"]; reach(a) != "" || absent(a) != 1 {
+		t.Errorf("one place absent, one unknown: %v %d", reach(a), absent(a))
+	}
+	if b := got["CVE-B"]; reach(b) != store.ReachSymbolAbsent || absent(b) != 2 || b.Symbols == nil ||
+		!slices.Equal(*b.Symbols, []string{"crypto/tls.Conn.Handshake"}) {
+		t.Errorf("all absent: %v %d %v", reach(b), absent(b), b.Symbols)
+	}
+	if got["0"].VulnId != "CVE-A" {
+		t.Errorf("order %s first", got["0"].VulnId)
+	}
+
+	set("CVE-B", store.ReachSymbolPresent, store.ReachSymbolAbsent)
+	got = get()
+	if b := got["CVE-B"]; reach(b) != store.ReachSymbolPresent || absent(b) != 1 {
+		t.Errorf("one place present: %v %d", reach(b), absent(b))
+	}
+	if got["0"].VulnId != "CVE-B" {
+		t.Errorf("present after KEV: %s first", got["0"].VulnId)
 	}
 }

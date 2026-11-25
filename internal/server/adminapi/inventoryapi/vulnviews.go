@@ -44,6 +44,39 @@ func placeRank(exposure string, reach *gen.Reachability) int {
 	return exposureLevel[exposure]*3 + r
 }
 
+// reachTally combines the reachability of several findings or places: present
+// when any is, absent when all are, otherwise not known.
+type reachTally struct{ present, absent, n int }
+
+func (r *reachTally) add(reach string) {
+	r.n++
+	switch reach {
+	case store.ReachSymbolPresent:
+		r.present++
+	case store.ReachSymbolAbsent:
+		r.absent++
+	}
+}
+
+func (r reachTally) result() string {
+	switch {
+	case r.present > 0:
+		return store.ReachSymbolPresent
+	case r.n > 0 && r.absent == r.n:
+		return store.ReachSymbolAbsent
+	}
+	return ""
+}
+
+// absentCount is the number of absent ones, nil when there are none.
+func (r reachTally) absentCount() *int {
+	if r.absent == 0 {
+		return nil
+	}
+	n := r.absent
+	return &n
+}
+
 func reachabilityDTO(r string) *gen.Reachability {
 	if r == "" {
 		return nil
@@ -449,8 +482,7 @@ func locationsOf(fs []store.OpenFinding) []gen.VulnLocation {
 	type key struct{ asset, container, comp string }
 	index := map[key]int{}
 	var out []gen.VulnLocation
-	type reach struct{ present, absent, n int }
-	reaches := map[int]*reach{}
+	reaches := map[int]*reachTally{}
 	for _, f := range fs {
 		k := key{f.AssetID, f.Container, f.Component.ID}
 		i, ok := index[k]
@@ -476,30 +508,14 @@ func locationsOf(fs []store.OpenFinding) []gen.VulnLocation {
 		if f.FirstSeen.Before(out[i].FirstSeen) {
 			out[i].FirstSeen = f.FirstSeen
 		}
-		r := reaches[i]
-		if r == nil {
-			r = &reach{}
-			reaches[i] = r
+		if reaches[i] == nil {
+			reaches[i] = &reachTally{}
 		}
-		r.n++
-		switch f.Reachability {
-		case store.ReachSymbolPresent:
-			r.present++
-		case store.ReachSymbolAbsent:
-			r.absent++
-		}
+		reaches[i].add(f.Reachability)
 	}
 	for i, r := range reaches {
-		switch {
-		case r.present > 0:
-			out[i].Reachability = reachabilityDTO(store.ReachSymbolPresent)
-		case r.absent == r.n:
-			out[i].Reachability = reachabilityDTO(store.ReachSymbolAbsent)
-		}
-		if r.absent > 0 {
-			n := r.absent
-			out[i].SymbolAbsent = &n
-		}
+		out[i].Reachability = reachabilityDTO(r.result())
+		out[i].SymbolAbsent = r.absentCount()
 	}
 	slices.SortStableFunc(out, func(a, b gen.VulnLocation) int {
 		if c := cmp.Compare(placeRank(string(b.Exposure), b.Reachability), placeRank(string(a.Exposure), a.Reachability)); c != 0 {
@@ -523,11 +539,13 @@ func (h *Handlers) GetVulnerableComponent(ctx context.Context, req gen.GetVulner
 		Component: componentUnitDTO(unitOf(fs[0].Component, fs)),
 		Locations: locationsOf(fs),
 	}
-	// One row per vulnerability: the most exposed place and its processes.
+	// One row per vulnerability: the most exposed place and its processes, and
+	// whether the Go executables of its places link its vulnerable functions.
 	type agg struct {
 		f        store.OpenFinding
 		assets   map[string]bool
 		places   map[string]string
+		reaches  map[string]*reachTally
 		rules    rulesOf
 		deferred int
 	}
@@ -536,12 +554,17 @@ func (h *Handlers) GetVulnerableComponent(ctx context.Context, req gen.GetVulner
 	for _, f := range fs {
 		a := byVuln[f.VulnID]
 		if a == nil {
-			a = &agg{f: f, assets: map[string]bool{}, places: map[string]string{}, rules: rulesOf{}}
+			a = &agg{f: f, assets: map[string]bool{}, places: map[string]string{}, reaches: map[string]*reachTally{}, rules: rulesOf{}}
 			byVuln[f.VulnID] = a
 			order = append(order, f.VulnID)
 		}
 		a.assets[f.AssetID] = true
-		a.places[f.AssetID+"\x00"+f.Container] = f.Exposure
+		place := f.AssetID + "\x00" + f.Container
+		a.places[place] = f.Exposure
+		if a.reaches[place] == nil {
+			a.reaches[place] = &reachTally{}
+		}
+		a.reaches[place].add(f.Reachability)
 		a.rules.add(f)
 		if f.Triage != nil && f.Triage.Active {
 			a.deferred++
@@ -561,6 +584,12 @@ func (h *Handlers) GetVulnerableComponent(ctx context.Context, req gen.GetVulner
 		v.FixState, v.FixedVersion = &fs, optStr(a.f.Match.FixedVersion)
 		p := processesDTO(a.f.Processes)
 		v.Processes = &p
+		var reach reachTally
+		for _, r := range a.reaches {
+			reach.add(r.result())
+		}
+		v.Reachability, v.SymbolAbsent = reachabilityDTO(reach.result()), reach.absentCount()
+		v.Symbols = symbolNames(a.f.Match.Symbols)
 		if a.deferred > 0 {
 			n := a.deferred
 			v.Deferred = &n
@@ -589,7 +618,7 @@ func sortCves(vs []gen.VulnCve) {
 		if c := negligibleLast(isNegligible(a.Severity), isNegligible(b.Severity)); c != 0 {
 			return c
 		}
-		return cmpRank(exposureLevel[string(a.Exposure)], exposureLevel[string(b.Exposure)], a.Kev, b.Kev,
+		return cmpRank(placeRank(string(a.Exposure), a.Reachability), placeRank(string(b.Exposure), b.Reachability), a.Kev, b.Kev,
 			a.Epss, b.Epss, a.Score, b.Score, a.VulnId, b.VulnId)
 	})
 }

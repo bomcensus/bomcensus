@@ -3732,6 +3732,9 @@ type VulnCve struct {
 	// Processes In the context of one component; the loading processes of the most exposed location.
 	Processes *[]FindingProcess `json:"processes,omitempty"`
 
+	// Reachability In the context of one component: present when the Go executables at one location link a vulnerable function, absent when those at every location link none. Absent when not known.
+	Reachability *Reachability `json:"reachability,omitempty"`
+
 	// Rules In the context of one component; the triage rules deciding its findings.
 	Rules *[]TriageRule `json:"rules,omitempty"`
 	Score *float64      `json:"score,omitempty"`
@@ -3744,7 +3747,13 @@ type VulnCve struct {
 	// aggregate, the highest rating of its matches.
 	Severity *Severity `json:"severity,omitempty"`
 	Summary  *string   `json:"summary,omitempty"`
-	VulnId   string    `json:"vulnId"`
+
+	// SymbolAbsent In the context of one component; locations whose Go executables link none of the vulnerable functions.
+	SymbolAbsent *int `json:"symbolAbsent,omitempty"`
+
+	// Symbols In the context of one component; the vulnerable functions checked against the Go executables (package path and name).
+	Symbols *[]string `json:"symbols,omitempty"`
+	VulnId  string    `json:"vulnId"`
 }
 
 // VulnCveComponent defines model for VulnCveComponent.

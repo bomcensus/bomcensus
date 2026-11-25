@@ -1515,6 +1515,18 @@ export type VulnCve = {
      */
     processes?: Array<FindingProcess>;
     /**
+     * In the context of one component: present when the Go executables at one location link a vulnerable function, absent when those at every location link none. Absent when not known.
+     */
+    reachability?: Reachability;
+    /**
+     * In the context of one component; the vulnerable functions checked against the Go executables (package path and name).
+     */
+    symbols?: Array<string>;
+    /**
+     * In the context of one component; locations whose Go executables link none of the vulnerable functions.
+     */
+    symbolAbsent?: number;
+    /**
      * Deferred findings among them (when deferred ones are included).
      */
     deferred?: number;

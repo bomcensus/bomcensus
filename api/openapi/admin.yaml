@@ -4879,6 +4879,18 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/FindingProcess"
+        reachability:
+          description: "In the context of one component: present when the Go executables at one location link a vulnerable function, absent when those at every location link none. Absent when not known."
+          allOf:
+            - $ref: "#/components/schemas/Reachability"
+        symbols:
+          description: In the context of one component; the vulnerable functions checked against the Go executables (package path and name).
+          type: array
+          items:
+            type: string
+        symbolAbsent:
+          description: In the context of one component; locations whose Go executables link none of the vulnerable functions.
+          type: integer
         deferred:
           description: Deferred findings among them (when deferred ones are included).
           type: integer

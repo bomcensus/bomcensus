@@ -97,6 +97,8 @@ function mix(c: ExposureCounts): string {
     .join(' · ')
 }
 
+const placeCount = (c: ExposureCounts) => c.listening + c.running + c.installed + c.unknown
+
 // Advisory texts are wrapped at a fixed width; blank lines separate paragraphs.
 const paragraphs = (text: string) =>
   text
@@ -452,7 +454,13 @@ const tabModel = computed({ get: () => view.value as string, set: (v: string) =>
                       <span v-if="v.fixedVersion" class="mono whitespace-nowrap text-xs">→ {{ v.fixedVersion }}</span>
                       <span v-else-if="v.fixState" class="text-xs text-ink-3">{{ fixStateLabel[v.fixState] }}</span>
                     </td>
-                    <td class="px-3 py-2"><ExposureMeter :exposure="v.exposure" /></td>
+                    <td class="px-3 py-2">
+                      <ExposureMeter :exposure="v.exposure" />
+                      <ReachabilityBadge :reachability="v.reachability" :symbols="v.symbols" />
+                      <div v-if="v.symbolAbsent && v.reachability !== 'symbol_absent'" class="text-xs whitespace-nowrap text-ink-3">
+                        {{ placeCount(v.exposureCounts) }}곳 중 {{ v.symbolAbsent }}곳 취약 함수 없음
+                      </div>
+                    </td>
                     <td class="mono hidden py-2 pl-3 pr-3.5 text-xs text-ink-2 md:table-cell">
                       <template v-if="v.processes?.length">
                         {{ v.processes[0]!.exe.split('/').pop() }}<template v-if="v.processes[0]!.ports.length"> · {{ v.processes[0]!.ports.join(', ') }}</template>
