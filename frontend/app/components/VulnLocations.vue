@@ -8,7 +8,8 @@
 import type { VulnLocation } from '~/types'
 
 // Places a vulnerable component is: asset, container, files, how it was found, exposure, processes.
-defineProps<{ items: VulnLocation[]; where: (l: VulnLocation) => string; processText: (l: VulnLocation) => string }>()
+// exe, when set, puts the processes running that executable first.
+defineProps<{ items: VulnLocation[]; exe?: string }>()
 </script>
 
 <template>
@@ -27,12 +28,14 @@ defineProps<{ items: VulnLocation[]; where: (l: VulnLocation) => string; process
         <tr v-for="l in items" :key="`${l.assetId}/${l.container ?? ''}/${l.componentId}`" class="border-b border-line align-top last:border-b-0">
           <td class="py-2 pl-3.5">
             <NuxtLink :to="`/assets/${l.assetId}?tab=vulnerabilities`" class="font-medium hover:underline">{{ l.assetName }}</NuxtLink>
-            <div class="text-xs text-ink-3">{{ where(l) }}</div>
+            <div class="text-xs text-ink-3">{{ locationWhere(l) }}</div>
           </td>
           <td class="px-3 py-2">
-            <span v-if="l.locations.length" class="mono break-all text-xs">{{ l.locations[0] }}</span>
-            <span v-if="l.locations.length > 1" class="text-xs text-ink-3"> 외 {{ l.locations.length - 1 }}</span>
-            <span v-if="!l.locations.length" class="text-ink-3">—</span>
+            <span v-if="l.locations.length" :title="l.locations.join('\n')">
+              <span class="mono break-all text-xs">{{ l.locations[0] }}</span>
+              <span v-if="l.locations.length > 1" class="text-xs text-ink-3"> 외 {{ l.locations.length - 1 }}</span>
+            </span>
+            <span v-else class="text-ink-3">—</span>
             <div class="mono text-xs text-ink-3">{{ l.componentName }} {{ l.componentVersion }}</div>
           </td>
           <td class="hidden px-3 py-2 text-xs text-ink-2 md:table-cell">{{ l.method ? detectMethodLabel[l.method] : '—' }}</td>
@@ -43,7 +46,7 @@ defineProps<{ items: VulnLocation[]; where: (l: VulnLocation) => string; process
               {{ l.cves }}개 중 {{ l.symbolAbsent }}개 취약 함수 없음
             </div>
           </td>
-          <td class="mono py-2 pl-3 pr-3.5 text-xs text-ink-2">{{ processText(l) || '—' }}</td>
+          <td class="mono py-2 pl-3 pr-3.5 text-xs text-ink-2" :title="locationProcessTitle(l, exe) || undefined">{{ locationProcess(l, exe) || '—' }}</td>
         </tr>
       </tbody>
     </table>

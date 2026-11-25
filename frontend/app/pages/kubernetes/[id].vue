@@ -323,7 +323,7 @@ async function remove() {
                     <div class="mono text-xs break-all text-ink-3">{{ c.imageRef }}</div>
                   </td>
                   <td class="hidden px-3 py-2 md:table-cell">
-                    <NuxtLink v-if="c.imageDigest" :to="`/images/${encodeURIComponent(c.imageDigest)}`" class="link mono">{{ shortHash(c.imageDigest) }}</NuxtLink>
+                    <NuxtLink v-if="c.imageDigest" :to="`/images/${encodeURIComponent(c.imageDigest)}`" class="link mono" :title="c.imageDigest">{{ shortHash(c.imageDigest) }}</NuxtLink>
                     <span v-else class="text-ink-3">—</span>
                   </td>
                   <td class="px-3 py-2">

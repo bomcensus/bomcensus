@@ -116,7 +116,7 @@ const short = (h: string) => `${h.slice(0, 12)}…`
                 <StatusBadge :tone="integrityStatusTone[g.status]" :label="integrityStatusLabel[g.status]" />
                 <span class="min-w-0">
                   <span class="mono block truncate text-sm" :title="g.path">{{ g.path }}</span>
-                  <span class="block truncate text-xs text-ink-3">
+                  <span class="block truncate text-xs text-ink-3" :title="[`${g.package} ${g.version}`, g.actualSha256].filter(Boolean).join('\n')">
                     {{ g.package }} {{ g.version }}<template v-if="g.actualSha256"> · <span class="mono">{{ short(g.actualSha256) }}</span></template>
                   </span>
                 </span>

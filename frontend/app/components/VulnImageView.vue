@@ -48,11 +48,11 @@ const title = (tags: string[], digest: string) => tags[0] ?? shortHash(digest)
             >
               <span class="flex items-center gap-1.5">
                 <span v-if="i.severity" class="text-[11px]" :class="severityText[i.severity]">■</span>
-                <span class="mono truncate text-sm font-medium">{{ title(i.tags, i.digest) }}</span>
+                <span class="mono truncate text-sm font-medium" :title="i.tags.length ? i.tags.join('\n') : i.digest">{{ title(i.tags, i.digest) }}</span>
                 <StatusBadge v-if="i.kev" tone="danger" label="KEV" />
                 <span class="mono ml-auto text-xs text-ink-2">{{ i.score !== undefined ? i.score.toFixed(1) : '—' }}</span>
               </span>
-              <span class="mono mt-0.5 block truncate text-xs text-ink-3">{{ shortHash(i.digest) }}</span>
+              <span class="mono mt-0.5 block truncate text-xs text-ink-3" :title="i.digest">{{ shortHash(i.digest) }}</span>
               <span class="mt-1 block text-xs text-ink-3">
                 CVE {{ i.cves }} · 컴포넌트 {{ i.components }} ·
                 {{ i.containers ? `실행 중 컨테이너 ${i.containers}` : '실행 안 함' }}

@@ -167,10 +167,10 @@ function showRaw(row: ComponentAssetRow) {
               </div>
             </template>
             <template #cell-locations="{ row }">
-              <template v-if="row.locations.length">
+              <span v-if="row.locations.length" :title="row.locations.join('\n')">
                 <span class="mono break-all text-xs">{{ row.locations[0] }}</span>
                 <span v-if="row.locations.length > 1" class="text-xs text-ink-3"> 외 {{ row.locations.length - 1 }}</span>
-              </template>
+              </span>
               <span v-else class="text-ink-3">—</span>
             </template>
             <template #cell-method="{ row }">{{ detectMethodLabel[row.method] }}</template>

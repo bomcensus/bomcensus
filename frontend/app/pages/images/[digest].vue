@@ -49,9 +49,10 @@ const componentColumns: TableColumn<ImageComponent>[] = [
     <template v-if="image">
       <PageHeader
         :title="title"
-        :subtitle="shortHash(image.digest)"
         :back="{ to: '/images', label: '이미지' }"
-      />
+      >
+        <template #subtitle><span :title="image.digest">{{ shortHash(image.digest) }}</span></template>
+      </PageHeader>
 
       <Panel title="이미지">
         <dl class="kv">

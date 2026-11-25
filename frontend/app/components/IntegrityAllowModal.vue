@@ -66,7 +66,7 @@ async function save() {
       <div class="text-sm">
         <div class="mono break-all">{{ path }}</div>
         <div class="mt-0.5 text-xs text-ink-2">
-          <template v-if="status === 'modified'">SHA-256 <span class="mono">{{ sha256?.slice(0, 16) }}…</span></template>
+          <template v-if="status === 'modified'">SHA-256 <span class="mono" :title="sha256">{{ sha256?.slice(0, 16) }}…</span></template>
           <template v-else>누락된 파일</template>
         </div>
       </div>

@@ -211,7 +211,7 @@ const tabModel = computed({ get: () => view.value as string, set: (v: string) =>
                   <StatusBadge v-if="v.deferred" label="유예" />
                   <span class="mono ml-auto text-xs text-ink-2">{{ v.score !== undefined ? v.score.toFixed(1) : '—' }}</span>
                 </span>
-                <span v-if="v.summary" class="mt-0.5 line-clamp-1 block text-xs text-ink-2">{{ v.summary }}</span>
+                <span v-if="v.summary" class="mt-0.5 line-clamp-1 block text-xs text-ink-2" :title="v.summary">{{ v.summary }}</span>
                 <span class="mt-1 flex items-center gap-2 text-xs text-ink-3">
                   <ExposureMeter :exposure="v.exposure" />
                   <span>자산 {{ v.assets }} · EPSS {{ pct(v.epss) }}</span>
@@ -239,12 +239,12 @@ const tabModel = computed({ get: () => view.value as string, set: (v: string) =>
               >
                 <span class="flex items-center gap-1.5">
                   <span v-if="c.severity" class="text-[11px]" :class="severityText[c.severity]">■</span>
-                  <span class="truncate text-sm font-medium">{{ c.name }}</span>
+                  <span class="truncate text-sm font-medium" :title="c.name">{{ c.name }}</span>
                   <StatusBadge v-if="c.kev" tone="danger" label="KEV" />
                   <StatusBadge v-if="c.deferred" label="유예" />
                   <span class="mono ml-auto text-xs text-ink-2">{{ c.score !== undefined ? c.score.toFixed(1) : '—' }}</span>
                 </span>
-                <span class="mono mt-0.5 block truncate text-xs text-ink-2">
+                <span class="mono mt-0.5 block truncate text-xs text-ink-2" :title="c.fixedVersion ? `${c.version} → ${c.fixedVersion}` : c.version">
                   {{ c.version }}<template v-if="c.fixedVersion"> → {{ c.fixedVersion }}</template>
                 </span>
                 <span class="mt-1 flex items-center gap-2 text-xs text-ink-3">
@@ -272,7 +272,12 @@ const tabModel = computed({ get: () => view.value as string, set: (v: string) =>
                 <SeverityBadge :severity="cveDetail.vulnerability.severity" :score="cveDetail.vulnerability.score" />
                 <StatusBadge v-if="cveDetail.vulnerability.kev" tone="danger" :label="`KEV · ${cveDetail.vulnerability.kev.dateAdded}`" />
                 <span class="text-xs text-ink-2">EPSS {{ pct(cveDetail.vulnerability.epss) }}</span>
-                <span v-for="c in cveDetail.vulnerability.cvss.slice(0, 1)" :key="c.vector" class="mono break-all text-xs text-ink-3">{{ c.vector }}</span>
+                <span
+                  v-for="c in cveDetail.vulnerability.cvss.slice(0, 1)"
+                  :key="c.vector"
+                  class="mono break-all text-xs text-ink-3"
+                  :title="cveDetail.vulnerability.cvss.map((x) => x.vector).join('\n')"
+                >{{ c.vector }}<template v-if="cveDetail.vulnerability.cvss.length > 1"> 외 {{ cveDetail.vulnerability.cvss.length - 1 }}</template></span>
               </div>
               <h2 class="mono mt-2 text-lg font-semibold">{{ cveDetail.vulnerability.vulnId }}</h2>
               <p v-if="cveDetail.vulnerability.summary" class="mt-1 text-sm font-medium">{{ cveDetail.vulnerability.summary }}</p>
@@ -306,6 +311,11 @@ const tabModel = computed({ get: () => view.value as string, set: (v: string) =>
                       rel="noopener noreferrer"
                       class="link break-all text-xs"
                     >{{ r }}</a>
+                    <span
+                      v-if="cveDetail.vulnerability.references.length > 5"
+                      class="text-xs text-ink-3"
+                      :title="cveDetail.vulnerability.references.slice(5).join('\n')"
+                    >외 {{ cveDetail.vulnerability.references.length - 5 }}</span>
                   </dd>
                 </template>
               </dl>
@@ -358,7 +368,7 @@ const tabModel = computed({ get: () => view.value as string, set: (v: string) =>
             </Panel>
 
             <Panel title="위치" flush>
-              <VulnLocations :items="visible(cveDetail.locations)" :where="locationWhere" :process-text="locationProcess" />
+              <VulnLocations :items="visible(cveDetail.locations)" />
               <button
                 v-if="cveDetail.locations.length > locationLimit && !showAllLocations"
                 type="button"
@@ -472,7 +482,7 @@ const tabModel = computed({ get: () => view.value as string, set: (v: string) =>
             </Panel>
 
             <Panel title="위치" flush>
-              <VulnLocations :items="visible(compDetail.locations)" :where="locationWhere" :process-text="locationProcess" />
+              <VulnLocations :items="visible(compDetail.locations)" />
               <button
                 v-if="compDetail.locations.length > locationLimit && !showAllLocations"
                 type="button"

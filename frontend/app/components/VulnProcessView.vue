@@ -50,7 +50,7 @@ const base = (exe: string) => exe.split('/').pop() ?? exe
                 <StatusBadge v-if="p.kev" tone="danger" label="KEV" />
                 <span class="mono ml-auto text-xs text-ink-2">{{ p.score !== undefined ? p.score.toFixed(1) : '—' }}</span>
               </span>
-              <span class="mono mt-0.5 block truncate text-xs text-ink-3">{{ p.exe }}</span>
+              <span class="mono mt-0.5 block truncate text-xs text-ink-3" :title="p.exe">{{ p.exe }}</span>
               <span class="mt-1 block text-xs text-ink-3">
                 자산 {{ p.assets }} · listen ports {{ p.listening }} · CVE {{ p.cves }}
               </span>
@@ -85,7 +85,7 @@ const base = (exe: string) => exe.split('/').pop() ?? exe
             <VulnActionTable :items="detail.components" />
           </Panel>
           <Panel title="위치" flush>
-            <VulnLocations :items="detail.locations" :where="locationWhere" :process-text="locationProcess" />
+            <VulnLocations :items="detail.locations" :exe="current" />
           </Panel>
         </div>
       </div>

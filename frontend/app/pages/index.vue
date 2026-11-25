@@ -143,7 +143,7 @@ const coverageMax = computed(() => Math.max(1, ...(dashboard.value?.coverage.map
         <Panel title="수집 범위" class="min-w-0">
           <ul class="grid gap-2">
             <li v-for="c in dashboard.coverage" :key="c.coverage" class="grid grid-cols-[6rem_1fr_2.5rem] items-center gap-2 text-sm">
-              <span class="truncate">{{ coverageLabel[c.coverage] }}</span>
+              <span class="truncate" :title="coverageLabel[c.coverage]">{{ coverageLabel[c.coverage] }}</span>
               <div class="h-2 rounded-sm bg-surface-2">
                 <div class="h-2 rounded-sm" :class="c.coverage === 'full' ? 'bg-ok' : 'bg-accent'" :style="{ width: `${(c.count / coverageMax) * 100}%` }" />
               </div>

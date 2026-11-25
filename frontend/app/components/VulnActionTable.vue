@@ -113,10 +113,11 @@ const sevCounts = (c: VulnComponent) =>
             </td>
             <td class="hidden px-3 py-2.5 lg:table-cell">
               <span v-if="!c.processes.length" class="text-ink-3">—</span>
-              <span v-else class="flex flex-wrap gap-1">
+              <span v-else class="flex flex-wrap gap-1" :title="c.processes.map((p) => `${p.exe} ×${p.count}`).join('\n')">
                 <span v-for="p in c.processes.slice(0, 3)" :key="p.exe" class="mono rounded-sm bg-surface-2 px-1.5 text-xs">
                   {{ p.exe.split('/').pop() }} ×{{ p.count }}
                 </span>
+                <span v-if="c.processes.length > 3" class="text-xs text-ink-3">외 {{ c.processes.length - 3 }}</span>
               </span>
             </td>
             <td class="mono py-2.5 pl-3 pr-3.5 text-right">{{ c.assets }}</td>

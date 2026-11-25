@@ -72,7 +72,7 @@ async function revoke(r: IntegrityAllowRule) {
               </td>
               <td class="px-3 py-2.5">
                 <div class="mono break-all text-xs">{{ r.path }}</div>
-                <div class="mono text-xs text-ink-3">{{ r.actualSha256 ? `${r.actualSha256.slice(0, 16)}…` : '누락' }}</div>
+                <div class="mono text-xs text-ink-3" :title="r.actualSha256 || undefined">{{ r.actualSha256 ? `${r.actualSha256.slice(0, 16)}…` : '누락' }}</div>
               </td>
               <td class="mono px-3 py-2.5 text-right">{{ r.revokedAt ? '—' : r.hidden }}</td>
               <td class="px-3 py-2.5 text-xs">{{ r.note }}</td>

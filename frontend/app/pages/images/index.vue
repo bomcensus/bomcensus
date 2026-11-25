@@ -63,18 +63,18 @@ const columns: TableColumn<ContainerImage>[] = [
             <NuxtLink :to="`/images/${encodeURIComponent(row.digest)}`" class="mono font-medium hover:underline">
               {{ row.currentTags[0] }}
             </NuxtLink>
-            <span v-if="row.currentTags.length > 1" class="whitespace-nowrap text-xs text-ink-3"> 외 {{ row.currentTags.length - 1 }}</span>
-            <span v-if="row.previousTags.length" class="whitespace-nowrap text-xs text-ink-3"> · 이전 {{ row.previousTags.length }}</span>
+            <span v-if="row.currentTags.length > 1" class="whitespace-nowrap text-xs text-ink-3" :title="row.currentTags.join('\n')"> 외 {{ row.currentTags.length - 1 }}</span>
+            <span v-if="row.previousTags.length" class="whitespace-nowrap text-xs text-ink-3" :title="row.previousTags.map((t) => t.tag).join('\n')"> · 이전 {{ row.previousTags.length }}</span>
           </template>
           <template v-else-if="row.previousTags.length">
             <NuxtLink :to="`/images/${encodeURIComponent(row.digest)}`" class="mono text-ink-3 hover:underline">
               {{ row.previousTags[0]?.tag }}
             </NuxtLink>
-            <span class="whitespace-nowrap text-xs text-ink-3"> 이전<template v-if="row.previousTags.length > 1"> 외 {{ row.previousTags.length - 1 }}</template></span>
+            <span class="whitespace-nowrap text-xs text-ink-3" :title="row.previousTags.map((t) => t.tag).join('\n')"> 이전<template v-if="row.previousTags.length > 1"> 외 {{ row.previousTags.length - 1 }}</template></span>
           </template>
           <NuxtLink v-else :to="`/images/${encodeURIComponent(row.digest)}`" class="mono font-medium hover:underline">tag 없음</NuxtLink>
         </template>
-        <template #cell-digest="{ row }"><span class="mono whitespace-nowrap">{{ shortHash(row.digest) }}</span></template>
+        <template #cell-digest="{ row }"><span class="mono whitespace-nowrap" :title="row.digest">{{ shortHash(row.digest) }}</span></template>
         <template #cell-os="{ row }">{{ row.os ?? '—' }}</template>
         <template #cell-arch="{ row }"><span class="mono whitespace-nowrap">{{ row.arch ?? '—' }}</span></template>
         <template #cell-size="{ row }"><span class="mono whitespace-nowrap">{{ formatBytes(row.sizeBytes) }}</span></template>

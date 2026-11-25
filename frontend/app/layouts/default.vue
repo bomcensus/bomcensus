@@ -155,7 +155,7 @@ function toggleTheme() {
             <component :is="theme === 'dark' ? Sun : Moon" :size="16" aria-hidden="true" />
           </button>
           <template v-if="user">
-            <span class="ml-1 max-w-40 truncate whitespace-nowrap text-xs text-ink-2">{{ user.name }}</span>
+            <span class="ml-1 max-w-40 truncate whitespace-nowrap text-xs text-ink-2" :title="user.name">{{ user.name }}</span>
             <button
               type="button"
               class="inline-flex size-8 items-center justify-center rounded-md text-ink-2 hover:bg-surface-2 hover:text-ink"

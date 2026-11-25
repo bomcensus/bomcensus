@@ -142,7 +142,7 @@ const allRows = computed(() => {
             </template>
             <template #cell-state="{ row }"><StatusBadge :tone="suspiciousTone(row)" :label="suspiciousState(row)" /></template>
             <template #cell-path="{ row }"><span class="mono text-xs break-all">{{ row.exePath }}</span></template>
-            <template #cell-sha="{ row }"><span class="mono text-xs">{{ shortHash(row.sha256) }}</span></template>
+            <template #cell-sha="{ row }"><span class="mono text-xs" :title="row.sha256">{{ shortHash(row.sha256) }}</span></template>
             <template #cell-startedAt="{ row }"><TimeAgo :at="row.startedAt" class="text-ink-2" /></template>
           </DataTable>
         </Panel>
