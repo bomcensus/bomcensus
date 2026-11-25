@@ -19,6 +19,8 @@ import (
 	"github.com/riverqueue/river/riverdriver/riverpgxv5"
 	"github.com/riverqueue/river/rivermigrate"
 	"github.com/riverqueue/river/rivertype"
+
+	"github.com/bomcensus/bomcensus/server/scope"
 )
 
 // RiverConfig configures the River queue.
@@ -73,7 +75,7 @@ type riverWorker struct {
 }
 
 func (w *riverWorker) Work(ctx context.Context, j *river.Job[riverArgs]) error {
-	err := w.h(ctx, Job{
+	err := w.h(scope.System(ctx), Job{
 		ID:          strconv.FormatInt(j.ID, 10),
 		Kind:        w.kind,
 		Args:        j.Args.Args,

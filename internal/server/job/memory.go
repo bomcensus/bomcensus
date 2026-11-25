@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"sync"
 	"time"
+
+	"github.com/bomcensus/bomcensus/server/scope"
 )
 
 // Memory is an in-process queue for tests and single-process tools. Jobs
@@ -220,7 +222,7 @@ func (m *Memory) dispatch() {
 func (m *Memory) run(j *memJob, h Handler) {
 	defer m.wg.Done()
 	j.Attempt++
-	err := h(m.ctx, j.Job)
+	err := h(scope.System(m.ctx), j.Job)
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.running--

@@ -13,11 +13,12 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/bomcensus/bomcensus/internal/server/store"
+	"github.com/bomcensus/bomcensus/server/scope"
 )
 
 func TestManageDetectDirs(t *testing.T) {
 	db := newTestDB(t)
-	ctx := context.Background()
+	ctx := scope.System(context.Background())
 
 	opt, err := db.CreateDetectDir(ctx, store.DetectDir{Path: "/opt", Description: "applications"})
 	if err != nil {

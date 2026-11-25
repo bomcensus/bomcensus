@@ -20,7 +20,7 @@ import (
 	gossh "golang.org/x/crypto/ssh"
 	corev1 "k8s.io/api/core/v1"
 
-	"github.com/bomcensus/bomcensus/internal/gen/agentapi"
+	"github.com/bomcensus/bomcensus/agentproto/dto"
 	"github.com/bomcensus/bomcensus/internal/report"
 	"github.com/bomcensus/bomcensus/internal/scanner/hpkebox"
 	"github.com/bomcensus/bomcensus/internal/scanner/kube"
@@ -30,6 +30,7 @@ import (
 	"github.com/bomcensus/bomcensus/internal/server/secret"
 	"github.com/bomcensus/bomcensus/internal/server/store"
 	"github.com/bomcensus/bomcensus/internal/server/store/postgres"
+	"github.com/bomcensus/bomcensus/server/scope"
 )
 
 var _ Store = (*postgres.DB)(nil)
@@ -76,11 +77,11 @@ func (f *fakeRunner) RunSSH(ctx context.Context, j runner.SSHJob, d runner.Deps)
 	f.wait(ctx)
 	now := time.Now().UTC()
 	key := f.hostKey
-	res := runner.Result{ScanJobResult: agentapi.ScanJobResult{Status: agentapi.ScanJobStatusOk, StartedAt: now, FinishedAt: now, HostKey: &key}}
+	res := runner.Result{ScanJobResult: dto.ScanJobResult{Status: dto.ScanJobStatusOk, StartedAt: now, FinishedAt: now, HostKey: &key}}
 	if f.sshRes != nil {
 		res = f.sshRes(j)
 	}
-	if res.Status != agentapi.ScanJobStatusFailed {
+	if res.Status != dto.ScanJobStatusFailed {
 		r := &report.Report{SchemaVersion: report.SchemaVersion, CollectedAt: now,
 			Subject: &report.Subject{Kind: report.SubjectScanTarget, ScanTargetID: j.TargetID},
 			Host: &report.HostSection{SectionMeta: report.SectionMeta{Coverage: report.CoverageFull, CollectedAt: now},
@@ -112,7 +113,7 @@ func (f *fakeRunner) RunK8sSync(ctx context.Context, j runner.K8sSyncJob, d runn
 	if err := d.Sink.SubmitInventory(ctx, f.inv.Payload(j.ClusterID, j.JobID)); err != nil {
 		return nil, err
 	}
-	res := runner.Result{ScanJobResult: agentapi.ScanJobResult{Status: agentapi.ScanJobStatusOk, StartedAt: now, FinishedAt: now}}
+	res := runner.Result{ScanJobResult: dto.ScanJobResult{Status: dto.ScanJobStatusOk, StartedAt: now, FinishedAt: now}}
 	return f.inv, d.Sink.SubmitResult(ctx, j.JobID, res)
 }
 
@@ -122,11 +123,11 @@ func (f *fakeRunner) RunK8sExec(ctx context.Context, j runner.K8sExecJob, d runn
 	f.mu.Unlock()
 	defer f.finished(j.JobID)
 	now := time.Now().UTC()
-	var targets []agentapi.ExecTargetResult
+	var targets []dto.ExecTargetResult
 	for _, t := range j.Targets {
-		targets = append(targets, kube.ContainerOutcome{Coverage: agentapi.CoverageUnsupported, Reason: "no shell"}.Result(t, ""))
+		targets = append(targets, kube.ContainerOutcome{Coverage: dto.CoverageUnsupported, Reason: "no shell"}.Result(t, ""))
 	}
-	res := runner.Result{ScanJobResult: agentapi.ScanJobResult{Status: agentapi.ScanJobStatusFailed, StartedAt: now, FinishedAt: now, Targets: &targets}}
+	res := runner.Result{ScanJobResult: dto.ScanJobResult{Status: dto.ScanJobStatusFailed, StartedAt: now, FinishedAt: now, Targets: &targets}}
 	return res, d.Sink.SubmitResult(ctx, j.JobID, res)
 }
 
@@ -161,11 +162,11 @@ func newFixture(t *testing.T, embedded bool) *fixture {
 	must(t, err)
 	_, hostPriv, _ := ed25519.GenerateKey(rand.Reader)
 	signer, _ := gossh.NewSignerFromKey(hostPriv)
-	f := &fixture{t: t, ctx: context.Background(), db: db, box: box,
+	f := &fixture{t: t, ctx: scope.System(context.Background()), db: db, box: box,
 		run: &fakeRunner{hostKey: signer.PublicKey().Marshal(), done: make(chan string, 16)}}
 	f.svc, err = New(Config{Store: db, Ingest: ingest.New(db, nil, nil), Secrets: box, Runner: f.run, EmbeddedScanner: embedded})
 	must(t, err)
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(scope.System(context.Background()))
 	f.cancel = cancel
 	stopped := make(chan struct{})
 	go func() { _ = f.svc.Run(ctx); close(stopped) }()
@@ -333,7 +334,7 @@ func TestEmbeddedScheduleNoDoubleRunAndPinning(t *testing.T) {
 	f.run.sshRes = func(j runner.SSHJob) runner.Result {
 		m := runner.Message(runner.ReasonHostKeyChanged, "offered SHA256:x")
 		now := time.Now().UTC()
-		return runner.Result{ScanJobResult: agentapi.ScanJobResult{Status: agentapi.ScanJobStatusFailed, Message: &m, StartedAt: now, FinishedAt: now}}
+		return runner.Result{ScanJobResult: dto.ScanJobResult{Status: dto.ScanJobStatusFailed, Message: &m, StartedAt: now, FinishedAt: now}}
 	}
 	must(t, f.svc.RequestRun(f.ctx, tg.ID))
 	f.waitDone()
@@ -356,7 +357,7 @@ func TestEmbeddedScheduleNoDoubleRunAndPinning(t *testing.T) {
 	f.run.sshRes = func(runner.SSHJob) runner.Result {
 		now := time.Now().UTC()
 		k := os.PublicKey().Marshal()
-		return runner.Result{ScanJobResult: agentapi.ScanJobResult{Status: agentapi.ScanJobStatusOk, StartedAt: now, FinishedAt: now, HostKey: &k}}
+		return runner.Result{ScanJobResult: dto.ScanJobResult{Status: dto.ScanJobStatusOk, StartedAt: now, FinishedAt: now, HostKey: &k}}
 	}
 	must(t, f.svc.RequestRun(f.ctx, tg.ID))
 	f.waitDone()
@@ -405,7 +406,7 @@ func TestRemoteSSHDispatch(t *testing.T) {
 	if n, _, _ := f.run.counts(); n != 0 {
 		t.Fatal("remote target ran embedded")
 	}
-	var d agentapi.ScanSshDirective
+	var d dto.ScanSshDirective
 	must(t, json.Unmarshal(ds[0].Payload, &d))
 	if d.ScanTargetId != tg.ID || d.Address != "10.0.0.9" || d.Username != "scan" || !d.Sudo || d.HostKeyFingerprint != nil || d.HostKey != nil ||
 		d.Policy.WalkPaths == nil || !slices.Equal(*d.Policy.WalkPaths, []string{"/opt", "/srv"}) {
@@ -414,9 +415,9 @@ func TestRemoteSSHDispatch(t *testing.T) {
 	// The credential opens only with this scanner's key, job and field.
 	plain, err := hpkebox.Open(priv, d.Credential, hpkebox.SecretInfo(sc.ID, d.JobId, "credential"))
 	must(t, err)
-	var cs agentapi.SSHCredentialSecret
+	var cs dto.SSHCredentialSecret
 	must(t, json.Unmarshal(plain, &cs))
-	if cs.Kind != agentapi.SshPassword || cs.Password == nil || *cs.Password != "hunter2" {
+	if cs.Kind != dto.SshPassword || cs.Password == nil || *cs.Password != "hunter2" {
 		t.Fatalf("secret %+v", cs)
 	}
 	otherPriv, _, _ := hpkebox.GenerateKey()
@@ -441,7 +442,7 @@ func TestRemoteSSHDispatch(t *testing.T) {
 	// Results: another scanner is refused, unknown jobs are not found.
 	now := time.Now().UTC()
 	fp := gossh.FingerprintSHA256(mustKey(t, f.run.hostKey))
-	res := agentapi.ScanJobResult{Status: agentapi.ScanJobStatusOk, StartedAt: now.Add(-time.Second), FinishedAt: now, HostKeyFingerprint: &fp}
+	res := dto.ScanJobResult{Status: dto.ScanJobStatusOk, StartedAt: now.Add(-time.Second), FinishedAt: now, HostKeyFingerprint: &fp}
 	if err := f.svc.RecordJobResult(f.ctx, other, d.JobId, res); err == nil || !isPermanent(err) {
 		t.Fatalf("result from another scanner: %v", err)
 	}
@@ -615,9 +616,9 @@ func TestRemoteK8s(t *testing.T) {
 	if len(ds) != 1 || ds[0].Type != "k8s_sync" {
 		t.Fatalf("pending %+v", ds)
 	}
-	var sd agentapi.K8sSyncDirective
+	var sd dto.K8sSyncDirective
 	must(t, json.Unmarshal(ds[0].Payload, &sd))
-	if sd.ClusterId != cl.ID || !sd.ExecEnabled || sd.Connection != agentapi.Kubeconfig || sd.Kubeconfig == nil {
+	if sd.ClusterId != cl.ID || !sd.ExecEnabled || sd.Connection != dto.Kubeconfig || sd.Kubeconfig == nil {
 		t.Fatalf("directive %+v", sd)
 	}
 	plain, err := hpkebox.Open(priv, *sd.Kubeconfig, hpkebox.SecretInfo(sc.ID, sd.JobId, "kubeconfig"))
@@ -638,7 +639,7 @@ func TestRemoteK8s(t *testing.T) {
 	if len(ds) != 2 || ds[1].Type != "k8s_exec" {
 		t.Fatalf("pending %+v", ds)
 	}
-	var ed agentapi.K8sExecDirective
+	var ed dto.K8sExecDirective
 	must(t, json.Unmarshal(ds[1].Payload, &ed))
 	ts := make([]kube.ExecTarget, 0, len(ed.Targets))
 	for _, et := range ed.Targets {
@@ -662,16 +663,16 @@ func TestRemoteK8s(t *testing.T) {
 	// Sync failure is recorded on the cluster; exec results set coverage.
 	now := time.Now().UTC()
 	m := "sync_failed: forbidden"
-	must(t, f.svc.RecordJobResult(f.ctx, sc, sd.JobId, agentapi.ScanJobResult{Status: agentapi.ScanJobStatusFailed, Message: &m,
+	must(t, f.svc.RecordJobResult(f.ctx, sc, sd.JobId, dto.ScanJobResult{Status: dto.ScanJobStatusFailed, Message: &m,
 		StartedAt: now, FinishedAt: now.Add(time.Second)}))
 	c, _ := f.db.GetCluster(f.ctx, cl.ID)
 	if c.SyncStatus != store.K8sSyncFailed || c.SyncMessage != m {
 		t.Fatalf("sync status %s %q", c.SyncStatus, c.SyncMessage)
 	}
 	reason := "no shell"
-	targets := []agentapi.ExecTargetResult{{Namespace: "prod", Pod: "api-a", Container: "app", Status: agentapi.ScanJobStatusFailed,
-		Coverage: agentapi.CoverageUnsupported, Reason: &reason}}
-	must(t, f.svc.RecordJobResult(f.ctx, sc, ed.JobId, agentapi.ScanJobResult{Status: agentapi.ScanJobStatusFailed,
+	targets := []dto.ExecTargetResult{{Namespace: "prod", Pod: "api-a", Container: "app", Status: dto.ScanJobStatusFailed,
+		Coverage: dto.CoverageUnsupported, Reason: &reason}}
+	must(t, f.svc.RecordJobResult(f.ctx, sc, ed.JobId, dto.ScanJobResult{Status: dto.ScanJobStatusFailed,
 		StartedAt: now, FinishedAt: now, Targets: &targets}))
 	pod, err := f.db.GetPod(f.ctx, cl.ID, "prod", "api-a")
 	must(t, err)

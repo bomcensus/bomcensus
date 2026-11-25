@@ -22,6 +22,7 @@ import (
 	"github.com/bomcensus/bomcensus/internal/server/store"
 	"github.com/bomcensus/bomcensus/internal/server/store/postgres"
 	"github.com/bomcensus/bomcensus/internal/token"
+	"github.com/bomcensus/bomcensus/server/scope"
 )
 
 const (
@@ -53,7 +54,7 @@ func (e *env) bootstrapPKI(t *testing.T) *pkisvc.Service {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := svc.Bootstrap(context.Background()); err != nil {
+	if err := svc.Bootstrap(scope.System(context.Background())); err != nil {
 		t.Fatal(err)
 	}
 	return svc
@@ -69,7 +70,7 @@ func (e *env) opts() Options {
 
 func (e *env) run(t *testing.T, o Options) Result {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(scope.System(context.Background()), 30*time.Second)
 	defer cancel()
 	res, err := Scanner(ctx, o)
 	if err != nil {
@@ -80,7 +81,7 @@ func (e *env) run(t *testing.T, o Options) Result {
 
 func (e *env) stored(t *testing.T) (token.Token, *corev1.Secret) {
 	t.Helper()
-	s, err := e.kube.CoreV1().Secrets(testNS).Get(context.Background(), testSecret, metav1.GetOptions{})
+	s, err := e.kube.CoreV1().Secrets(testNS).Get(scope.System(context.Background()), testSecret, metav1.GetOptions{})
 	if err != nil {
 		t.Fatalf("get secret: %v", err)
 	}
@@ -113,7 +114,7 @@ func TestScannerCreatesAndKeeps(t *testing.T) {
 	if s.Labels["app.kubernetes.io/component"] != "scanner-enrollment" {
 		t.Errorf("labels = %v", s.Labels)
 	}
-	k, err := e.db.GetRegisterKey(context.Background(), res.KeyID)
+	k, err := e.db.GetRegisterKey(scope.System(context.Background()), res.KeyID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,7 +127,7 @@ func TestScannerCreatesAndKeeps(t *testing.T) {
 	if again.Outcome != Kept || again.KeyID != res.KeyID {
 		t.Fatalf("second run = %+v, want kept %s", again, res.KeyID)
 	}
-	_, total, err := e.db.ListRegisterKeys(context.Background(), store.RegisterKeyFilter{}, store.Page{Limit: 10})
+	_, total, err := e.db.ListRegisterKeys(scope.System(context.Background()), store.RegisterKeyFilter{}, store.Page{Limit: 10})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -142,13 +143,13 @@ func TestScannerReplacesUnusable(t *testing.T) {
 	}{
 		{"exhausted", func(t *testing.T, e *env, id string) {
 			for range 2 {
-				if _, err := e.db.ConsumeRegisterKey(context.Background(), id, time.Now()); err != nil {
+				if _, err := e.db.ConsumeRegisterKey(scope.System(context.Background()), id, time.Now()); err != nil {
 					t.Fatal(err)
 				}
 			}
 		}},
 		{"revoked", func(t *testing.T, e *env, id string) {
-			if err := e.db.RevokeRegisterKey(context.Background(), id, time.Now()); err != nil {
+			if err := e.db.RevokeRegisterKey(scope.System(context.Background()), id, time.Now()); err != nil {
 				t.Fatal(err)
 			}
 		}},
@@ -202,7 +203,7 @@ func TestScannerKeepsKeyOfEnrolledScanner(t *testing.T) {
 	o := e.opts()
 	o.MaxUses = 1
 	first := e.run(t, o)
-	ctx := context.Background()
+	ctx := scope.System(context.Background())
 	if _, err := e.db.ConsumeRegisterKey(ctx, first.KeyID, time.Now()); err != nil {
 		t.Fatal(err)
 	}
@@ -229,12 +230,12 @@ func TestScannerKeepsKeyOfEnrolledScanner(t *testing.T) {
 
 func (e *env) setData(t *testing.T, data map[string][]byte) {
 	t.Helper()
-	s, err := e.kube.CoreV1().Secrets(testNS).Get(context.Background(), testSecret, metav1.GetOptions{})
+	s, err := e.kube.CoreV1().Secrets(testNS).Get(scope.System(context.Background()), testSecret, metav1.GetOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	s.Data = data
-	if _, err := e.kube.CoreV1().Secrets(testNS).Update(context.Background(), s, metav1.UpdateOptions{}); err != nil {
+	if _, err := e.kube.CoreV1().Secrets(testNS).Update(scope.System(context.Background()), s, metav1.UpdateOptions{}); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -260,7 +261,7 @@ func TestScannerWaitsForPKI(t *testing.T) {
 	done := make(chan Result, 1)
 	errc := make(chan error, 1)
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		ctx, cancel := context.WithTimeout(scope.System(context.Background()), 30*time.Second)
 		defer cancel()
 		res, err := Scanner(ctx, e.opts())
 		if err != nil {
@@ -292,13 +293,13 @@ func TestScannerWaitsForPKI(t *testing.T) {
 
 func TestScannerTimesOutWithoutPKI(t *testing.T) {
 	e := newEnv(t)
-	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	ctx, cancel := context.WithTimeout(scope.System(context.Background()), 200*time.Millisecond)
 	defer cancel()
 	_, err := Scanner(ctx, e.opts())
 	if err == nil || !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("err = %v, want deadline exceeded", err)
 	}
-	if _, err := e.kube.CoreV1().Secrets(testNS).Get(context.Background(), testSecret, metav1.GetOptions{}); err == nil {
+	if _, err := e.kube.CoreV1().Secrets(testNS).Get(scope.System(context.Background()), testSecret, metav1.GetOptions{}); err == nil {
 		t.Error("secret written without PKI")
 	}
 }
@@ -309,12 +310,12 @@ func TestScannerRevokesKeyWhenSecretWriteFails(t *testing.T) {
 	e.kube.PrependReactor("create", "secrets", func(k8stesting.Action) (bool, runtime.Object, error) {
 		return true, nil, errors.New("forbidden")
 	})
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(scope.System(context.Background()), 30*time.Second)
 	defer cancel()
 	if _, err := Scanner(ctx, e.opts()); err == nil {
 		t.Fatal("no error")
 	}
-	keys, total, err := e.db.ListRegisterKeys(context.Background(), store.RegisterKeyFilter{}, store.Page{Limit: 10})
+	keys, total, err := e.db.ListRegisterKeys(scope.System(context.Background()), store.RegisterKeyFilter{}, store.Page{Limit: 10})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -324,7 +325,7 @@ func TestScannerRevokesKeyWhenSecretWriteFails(t *testing.T) {
 }
 
 func TestScannerOptions(t *testing.T) {
-	ctx := context.Background()
+	ctx := scope.System(context.Background())
 	if _, err := Scanner(ctx, Options{}); err == nil {
 		t.Error("empty options accepted")
 	}
@@ -349,7 +350,7 @@ func TestNodeAgentCreatesAndKeeps(t *testing.T) {
 	e := newEnv(t)
 	e.bootstrapPKI(t)
 	const nodeSecret = "node-agent-enrollment"
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(scope.System(context.Background()), 30*time.Second)
 	defer cancel()
 
 	scanner, err := Scanner(ctx, e.opts())

@@ -21,7 +21,8 @@ const (
 // Credential is a secret used for remote collection.
 type Credential struct {
 	ID       string
-	Name     string // unique
+	Name     string // unique within the scope
+	ScopeID  string
 	Kind     CredentialKind
 	Username string
 	// Secret is encrypted by the caller. Only GetCredentialWithSecret fills
@@ -77,6 +78,7 @@ type ScanRun struct {
 type ScanTarget struct {
 	ID           string
 	Name         string
+	ScopeID      string // set on create
 	Address      string
 	Port         int
 	CredentialID string
@@ -101,7 +103,8 @@ type ScanTarget struct {
 
 // ScanTargetFilter narrows ListScanTargets. Zero fields do not filter.
 type ScanTargetFilter struct {
-	Q string // case-insensitive substring of name or address
+	Q       string // case-insensitive substring of name or address
+	ScopeID string
 }
 
 // ScanTargets stores SSH scan targets.

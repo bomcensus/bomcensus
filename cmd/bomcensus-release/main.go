@@ -30,6 +30,7 @@ var commands = []command{
 	{"bundle", "build a signed release bundle from a binary directory", runBundle},
 	{"manifest-pub", "print the public key of a manifest key (PEM file or Cloud KMS)", runManifestPub},
 	{"print-ldflags", "print the -X linker flags that compile the trust into binaries", runPrintLDFlags},
+	{"check-official", "fail unless the manifest keys are the official release keys (official releases only)", runCheckOfficial},
 	{"verify", "verify release bundles against the trust compiled into this binary", runVerify},
 }
 

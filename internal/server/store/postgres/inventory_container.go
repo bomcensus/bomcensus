@@ -129,6 +129,9 @@ func (d *DB) SetContainerCoverage(ctx context.Context, assetID, name string, cov
 	if !ivValidID(assetID) {
 		return ivNotFound(op)
 	}
+	if err := d.ivScopeAsset(ctx, op, assetID); err != nil {
+		return err
+	}
 	tag, err := d.q.Exec(ctx, `UPDATE asset_containers SET coverage = $3, coverage_reason = $4
 		WHERE asset_id = $1 AND name = $2`, assetID, name, string(coverage), reason)
 	if err != nil {
@@ -287,22 +290,34 @@ const ivTagLive = `(it.gone_at IS NULL AND (
 		OR (it.source_kind = 'cluster' AND EXISTS (SELECT 1 FROM k8s_clusters k WHERE k.id = it.source_id))))`
 
 // ivImageFrom adds usage by current containers and the current and previous
-// tags to the images rows.
-const ivImageFrom = `FROM (SELECT i.*, COALESCE(u.assets, 0) AS assets, COALESCE(u.containers, 0) AS containers,
+// tags to the images rows, counting only containers and tag sources in the
+// scope.
+func ivImageFrom(sc sqlScope) string {
+	return `FROM (SELECT i.*, COALESCE(u.assets, 0) AS assets, COALESCE(u.containers, 0) AS containers,
 		COALESCE(u.instances, 0) AS instances, COALESCE(tg.tags, '{}') AS tags,
 		COALESCE(tg.prev_tags, '{}') AS prev_tags, COALESCE(tg.prev_seen, '{}') AS prev_seen
 		FROM images i LEFT JOIN (
 			SELECT ct.image_digest, count(DISTINCT ct.asset_id) AS assets, count(*) AS containers,
 				sum(ct.instances) AS instances
 			FROM asset_containers ct JOIN assets a ON a.id = ct.asset_id AND a.gone_at IS NULL
-			WHERE ct.gone_at IS NULL AND ct.image_digest <> ''
+			WHERE ct.gone_at IS NULL AND ct.image_digest <> '' AND ` + sc.col("a.scope_id") + `
 			GROUP BY ct.image_digest) u ON u.image_digest = i.digest
 		LEFT JOIN LATERAL (
 			SELECT array_agg(s.tag ORDER BY s.tag) FILTER (WHERE s.live) AS tags,
 				array_agg(s.tag ORDER BY s.last_seen DESC, s.tag) FILTER (WHERE NOT s.live) AS prev_tags,
 				array_agg(s.last_seen ORDER BY s.last_seen DESC, s.tag) FILTER (WHERE NOT s.live) AS prev_seen
 			FROM (SELECT it.tag, bool_or(` + ivTagLive + `) AS live, max(it.last_seen) AS last_seen
-				FROM image_tags it WHERE it.digest = i.digest GROUP BY it.tag) s) tg ON true) i`
+				FROM image_tags it WHERE it.digest = i.digest AND ` + ivTagIn(sc) + ` GROUP BY it.tag) s) tg ON true) i`
+}
+
+// ivTagIn is true for an image_tags row (alias it) recorded from a source
+// in the scope.
+func ivTagIn(sc sqlScope) string {
+	if c, ok := sc.fixed(); ok {
+		return c
+	}
+	return `CASE it.source_kind WHEN 'asset' THEN ` + sc.asset("it.source_id") + ` ELSE ` + sc.cluster("it.source_id") + ` END`
+}
 
 const ivImageCols = `i.digest, i.tags, i.prev_tags, i.prev_seen, i.os, i.arch, i.size, i.first_seen, i.last_seen,
 	i.content_collected_at, i.content_coverage, i.assets, i.containers, i.instances,
@@ -354,7 +369,11 @@ func (d *DB) ListImages(ctx context.Context, f store.ImageFilter, p store.Page) 
 	if err != nil {
 		return nil, 0, err
 	}
-	q := &ivQuery{}
+	q, sc, err := scoped(ctx, op)
+	if err != nil {
+		return nil, 0, err
+	}
+	q.and(sc.image("i.digest"))
 	if f.InUseOnly {
 		q.where("i.containers > 0")
 	}
@@ -369,7 +388,7 @@ func (d *DB) ListImages(ctx context.Context, f store.ImageFilter, p store.Page) 
 		q.where("(i.digest ILIKE %[1]s OR EXISTS (SELECT 1 FROM image_tags it WHERE it.digest = i.digest AND it.tag ILIKE %[1]s))", ivLike(f.Q))
 	}
 	var out []store.ImageRow
-	total, err := ivPage(ctx, d, op, q, ivImageCols, ivImageFrom+q.whereSQL(), order, p, func(rows pgx.Rows) error {
+	total, err := ivPage(ctx, d, op, q, ivImageCols, ivImageFrom(sc)+q.whereSQL(), order, p, func(rows pgx.Rows) error {
 		var r ivImageScan
 		if err := rows.Scan(ivImageDest(&r)...); err != nil {
 			return err
@@ -385,8 +404,12 @@ func (d *DB) GetImage(ctx context.Context, digest string) (store.ImageDetail, er
 	const op = "get image"
 	var out store.ImageDetail
 	var r ivImageScan
-	err := d.q.QueryRow(ctx, `SELECT `+ivImageCols+` `+ivImageFrom+` WHERE i.digest = $1`, digest).
-		Scan(ivImageDest(&r)...)
+	q, sc, err := scoped(ctx, op, digest)
+	if err != nil {
+		return out, err
+	}
+	err = d.q.QueryRow(ctx, `SELECT `+ivImageCols+` `+ivImageFrom(sc)+` WHERE i.digest = $1 AND `+sc.image("i.digest"),
+		q.args...).Scan(ivImageDest(&r)...)
 	if err != nil {
 		return out, ivErr(op, err)
 	}
@@ -395,8 +418,8 @@ func (d *DB) GetImage(ctx context.Context, digest string) (store.ImageDetail, er
 		SELECT `+ivAssetRowCols+`, `+ivContainerCols+`
 		FROM asset_containers ct JOIN assets a ON a.id = ct.asset_id
 		LEFT JOIN k8s_clusters k ON k.id = a.cluster_id
-		WHERE ct.image_digest = $1 AND ct.gone_at IS NULL AND a.gone_at IS NULL
-		ORDER BY a.name, a.id, ct.name`, digest)
+		WHERE ct.image_digest = $1 AND ct.gone_at IS NULL AND a.gone_at IS NULL AND `+sc.col("a.scope_id")+`
+		ORDER BY a.name, a.id, ct.name`, q.args...)
 	if err != nil {
 		return out, ivErr(op, err)
 	}

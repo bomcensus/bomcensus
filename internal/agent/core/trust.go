@@ -14,14 +14,16 @@ import (
 	"time"
 
 	"github.com/bomcensus/bomcensus/internal/agent/state"
-	"github.com/bomcensus/bomcensus/internal/gen/agentapi"
+
+	"github.com/bomcensus/bomcensus/agentproto"
+	"github.com/bomcensus/bomcensus/agentproto/dto"
 	"github.com/bomcensus/bomcensus/internal/pki"
 )
 
 // bundleFromAPI converts and validates a trust bundle of the protocol.
 // The bundle format of internal/pki has a single Agent CA; the first entry
 // of agent_cas is used.
-func bundleFromAPI(tb agentapi.TrustBundle) (*pki.TrustBundle, error) {
+func bundleFromAPI(tb dto.TrustBundle) (*pki.TrustBundle, error) {
 	if tb.Serial < 0 {
 		return nil, errors.New("trust bundle: negative serial")
 	}
@@ -74,7 +76,7 @@ func checkAgentCert(certDER, caDER []byte, key ed25519.PrivateKey, agentID strin
 // acceptResult validates an approved enrollment result for key and stores
 // identity, trust bundle and enrollment (in that order, so the enrollment
 // record is written last).
-func acceptResult(st *state.Dir, enr *state.Enrollment, key ed25519.PrivateKey, res agentapi.EnrollResult) (*state.Identity, *pki.TrustBundle, error) {
+func acceptResult(st *state.Dir, enr *state.Enrollment, key ed25519.PrivateKey, res dto.EnrollResult) (*state.Identity, *pki.TrustBundle, error) {
 	if res.AgentId != enr.AgentID {
 		return nil, nil, fmt.Errorf("enrollment result is for %q, not %q", res.AgentId, enr.AgentID)
 	}
@@ -109,15 +111,15 @@ func (r *Runtime) waitApproved(ctx context.Context) error {
 	var backoff time.Duration
 	for {
 		wait := r.opts.PendingInterval
-		resp, err := r.client.GetEnrollResultWithResponse(ctx)
-		var res agentapi.EnrollResult
+		var res dto.EnrollResult
+		got, err := r.ch.GetEnrollResult(ctx)
 		if err == nil {
-			err = DecodeResponse(resp.HTTPResponse, resp.Body, http.StatusOK, &res)
+			res = *got
 		}
 		if err == nil {
 			backoff = 0
 			switch res.Status {
-			case agentapi.EnrollStatusApproved:
+			case dto.EnrollStatusApproved:
 				enr := r.Enrollment()
 				id, tb, err := acceptResult(r.st, &enr, r.identity().Key, res)
 				if err != nil {
@@ -128,10 +130,10 @@ func (r *Runtime) waitApproved(ctx context.Context) error {
 				r.bundle = tb
 				r.mu.Unlock()
 				r.setIdentity(id)
-				r.lc.reset()
+				r.ch.Reset()
 				r.log.Info("enrollment approved", "agent_id", enr.AgentID)
 				return nil
-			case agentapi.EnrollStatusRejected:
+			case dto.EnrollStatusRejected:
 				return ErrNotApproved
 			}
 			if res.RetryAfterSeconds != nil && *res.RetryAfterSeconds > 0 {
@@ -164,7 +166,7 @@ func (r *Runtime) renewIfDue(ctx context.Context) error {
 	return r.RenewCert(ctx, false)
 }
 
-func (r *Runtime) handleRenew(ctx context.Context, d agentapi.Directive) error {
+func (r *Runtime) handleRenew(ctx context.Context, d dto.Directive) error {
 	rd, err := d.AsRenewCertDirective()
 	if err != nil {
 		return err
@@ -183,7 +185,7 @@ func (r *Runtime) RenewCert(ctx context.Context, newKey bool) error {
 		return err
 	}
 	key := r.identity().Key
-	var body agentapi.CertRenewRequest
+	var body dto.CertRenewRequest
 	if newKey {
 		k, err := pki.GenerateAgentKey()
 		if err != nil {
@@ -199,14 +201,13 @@ func (r *Runtime) RenewCert(ctx context.Context, newKey bool) error {
 		key = k
 		body.Csr = &csr
 	}
-	resp, err := r.client.RenewCertWithResponse(ctx, body)
-	var rc agentapi.RenewedCert
+	var rc dto.RenewedCert
+	got, err := r.ch.RenewCert(ctx, &body)
 	if err == nil {
-		err = DecodeResponse(resp.HTTPResponse, resp.Body, http.StatusOK, &rc)
+		rc = *got
 	}
 	if err != nil {
-		var ae *APIError
-		if newKey && errors.As(err, &ae) {
+		if _, ok := agentproto.AsError(err); newKey && ok {
 			// A signed refusal: the server did not switch keys.
 			_ = r.st.RemoveNextKey()
 		}
@@ -219,7 +220,7 @@ func (r *Runtime) RenewCert(ctx context.Context, newKey bool) error {
 	return nil
 }
 
-func (r *Runtime) adopt(key ed25519.PrivateKey, rc agentapi.RenewedCert) error {
+func (r *Runtime) adopt(key ed25519.PrivateKey, rc dto.RenewedCert) error {
 	cert, err := checkAgentCert(rc.Certificate, rc.AgentCa, key, r.AgentID())
 	if err != nil {
 		return fmt.Errorf("renewed certificate: %w", err)
@@ -250,14 +251,10 @@ func (r *Runtime) recoverNextKeyLocked(ctx context.Context) error {
 	if err != nil || nk == nil {
 		return err
 	}
-	c, err := r.clientWithKey(nk)
-	if err != nil {
-		return err
-	}
-	resp, err := c.RenewCertWithResponse(ctx, agentapi.CertRenewRequest{})
-	var rc agentapi.RenewedCert
+	var rc dto.RenewedCert
+	got, err := r.ch.RenewCert(withSigningKey(ctx, nk), &dto.CertRenewRequest{})
 	if err == nil {
-		err = DecodeResponse(resp.HTTPResponse, resp.Body, http.StatusOK, &rc)
+		rc = *got
 	}
 	switch {
 	case err == nil:
@@ -270,7 +267,7 @@ func (r *Runtime) recoverNextKeyLocked(ctx context.Context) error {
 	return err
 }
 
-func (r *Runtime) handleSyncTrustBundle(ctx context.Context, d agentapi.Directive) error {
+func (r *Runtime) handleSyncTrustBundle(ctx context.Context, d dto.Directive) error {
 	sd, err := d.AsSyncTrustBundleDirective()
 	if err != nil {
 		return err
@@ -284,15 +281,11 @@ func (r *Runtime) handleSyncTrustBundle(ctx context.Context, d agentapi.Directiv
 // SyncTrustBundle fetches the trust bundle and stores it when its serial
 // is higher than the current one.
 func (r *Runtime) SyncTrustBundle(ctx context.Context) error {
-	resp, err := r.client.GetTrustBundleWithResponse(ctx)
+	tb, err := r.ch.GetTrustBundle(ctx)
 	if err != nil {
 		return err
 	}
-	var tb agentapi.TrustBundle
-	if err := DecodeResponse(resp.HTTPResponse, resp.Body, http.StatusOK, &tb); err != nil {
-		return err
-	}
-	nb, err := bundleFromAPI(tb)
+	nb, err := bundleFromAPI(*tb)
 	if err != nil {
 		return err
 	}

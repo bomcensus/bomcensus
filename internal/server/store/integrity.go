@@ -136,7 +136,10 @@ type IntegritySummary struct {
 
 // IntegrityAllowRule hides findings with its key.
 type IntegrityAllowRule struct {
-	ID           string
+	ID string
+	// ScopeID is the data scope the rule applies in. Asset rules have the
+	// scope of their asset.
+	ScopeID      string
 	Scope        string
 	AssetID      string // scope asset
 	AssetName    string // read-only

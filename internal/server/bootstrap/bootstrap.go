@@ -32,6 +32,7 @@ import (
 	"github.com/bomcensus/bomcensus/internal/server/store"
 	"github.com/bomcensus/bomcensus/internal/server/store/postgres"
 	"github.com/bomcensus/bomcensus/internal/token"
+	"github.com/bomcensus/bomcensus/server/scope"
 )
 
 // Defaults of Options.
@@ -144,6 +145,9 @@ func ensure(ctx context.Context, o Options, spec kindSpec) (Result, error) {
 	if o.Store == nil || o.Box == nil || o.Kube == nil {
 		return Result{}, errors.New("bootstrap: store, secret box and Kubernetes client are required")
 	}
+	// Bootstrap acts for no principal. Node agent keys are created in the
+	// default scope.
+	ctx = scope.System(ctx)
 	if o.Namespace == "" || o.SecretName == "" {
 		return Result{}, errors.New("bootstrap: secret namespace and name are required")
 	}

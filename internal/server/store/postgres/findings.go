@@ -23,6 +23,9 @@ var _ store.Findings = (*DB)(nil)
 
 // DirtyFindingAssets implements store.Findings.
 func (d *DB) DirtyFindingAssets(ctx context.Context, limit int) ([]string, error) {
+	if err := requireAll(ctx, "dirty finding assets"); err != nil {
+		return nil, err
+	}
 	rows, err := d.q.Query(ctx, `
 		SELECT a.id::text FROM assets a
 		LEFT JOIN asset_findings_state s ON s.asset_id = a.id
@@ -64,6 +67,9 @@ func (d *DB) FindingInputs(ctx context.Context, assetID string) (store.FindingIn
 
 func (d *DB) findingInputs(ctx context.Context, assetID string) (store.FindingInputs, error) {
 	in := store.FindingInputs{ProcessCoverage: map[string]store.Coverage{}, HashComponents: map[string][]string{}}
+	if err := d.ivScopeAsset(ctx, "finding inputs", assetID); err != nil {
+		return in, err
+	}
 	var gone *time.Time
 	if err := d.q.QueryRow(ctx, `
 		SELECT a.kind, a.gone_at, a.last_seen, coalesce(s.vulns_version, 0)
@@ -310,6 +316,9 @@ func (d *DB) ApplyFindings(ctx context.Context, assetID string, rows []store.Fin
 	js, err := json.Marshal(out)
 	if err != nil {
 		return store.FindingsChange{}, fmt.Errorf("postgres: apply findings: %w", err)
+	}
+	if err := d.ivScopeAsset(ctx, "apply findings", assetID); err != nil {
+		return store.FindingsChange{}, err
 	}
 	now := mgNow()
 	var ch store.FindingsChange

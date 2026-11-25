@@ -20,7 +20,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
-	"github.com/bomcensus/bomcensus/internal/gen/agentapi"
+	"github.com/bomcensus/bomcensus/agentproto/dto"
 )
 
 // Workload kinds produced by owner resolution. Owners of other kinds (custom
@@ -622,37 +622,37 @@ func writableDirs(p *corev1.Pod, ct *corev1.Container) []string {
 }
 
 // Payload converts the inventory to the upload body of POST /k8s/inventory.
-func (inv *Inventory) Payload(clusterID, jobID string) agentapi.K8sInventory {
-	out := agentapi.K8sInventory{
+func (inv *Inventory) Payload(clusterID, jobID string) dto.K8sInventory {
+	out := dto.K8sInventory{
 		ClusterId:     clusterID,
 		CollectedAt:   inv.CollectedAt,
 		ServerVersion: inv.ServerVersion,
-		Namespaces:    []agentapi.K8sNamespace{},
-		Workloads:     []agentapi.K8sInventoryWorkload{},
-		Pods:          []agentapi.K8sInventoryPod{},
+		Namespaces:    []dto.K8sNamespace{},
+		Workloads:     []dto.K8sInventoryWorkload{},
+		Pods:          []dto.K8sInventoryPod{},
 	}
 	if jobID != "" {
 		out.JobId = &jobID
 	}
 	for _, n := range inv.Namespaces {
-		out.Namespaces = append(out.Namespaces, agentapi.K8sNamespace{Name: n.Name, Labels: mapPtr(n.Labels), Annotations: mapPtr(n.Annotations)})
+		out.Namespaces = append(out.Namespaces, dto.K8sNamespace{Name: n.Name, Labels: mapPtr(n.Labels), Annotations: mapPtr(n.Annotations)})
 	}
 	for _, w := range inv.Workloads {
-		out.Workloads = append(out.Workloads, agentapi.K8sInventoryWorkload{
+		out.Workloads = append(out.Workloads, dto.K8sInventoryWorkload{
 			Uid: strPtr(w.UID), Namespace: w.Namespace, Kind: w.Kind, Name: w.Name, Replicas: w.Replicas,
 			Labels: mapPtr(w.Labels), Annotations: mapPtr(w.Annotations), ExcludedBy: strPtr(w.ExcludedBy),
 		})
 	}
 	for _, p := range inv.Pods {
-		ap := agentapi.K8sInventoryPod{
+		ap := dto.K8sInventoryPod{
 			Uid: strPtr(p.UID), Namespace: p.Namespace, Name: p.Name,
 			WorkloadKind: p.WorkloadKind, WorkloadName: p.WorkloadName,
 			Node: p.Node, Phase: podPhase(p.Phase), StartedAt: timePtr(p.StartedAt),
-			Containers: []agentapi.K8sInventoryContainer{},
+			Containers: []dto.K8sInventoryContainer{},
 		}
 		for _, c := range p.Containers {
 			ready := c.Ready
-			ap.Containers = append(ap.Containers, agentapi.K8sInventoryContainer{
+			ap.Containers = append(ap.Containers, dto.K8sInventoryContainer{
 				Name: c.Name, ImageRef: c.ImageRef, ImageDigest: strPtr(c.ImageDigest),
 				Ready: &ready, StartedAt: timePtr(c.StartedAt),
 			})
@@ -662,12 +662,12 @@ func (inv *Inventory) Payload(clusterID, jobID string) agentapi.K8sInventory {
 	return out
 }
 
-func podPhase(p corev1.PodPhase) agentapi.K8sPodPhase {
-	switch ph := agentapi.K8sPodPhase(p); ph {
-	case agentapi.K8sPodPhaseRunning, agentapi.K8sPodPhasePending, agentapi.K8sPodPhaseSucceeded, agentapi.K8sPodPhaseFailed:
+func podPhase(p corev1.PodPhase) dto.K8sPodPhase {
+	switch ph := dto.K8sPodPhase(p); ph {
+	case dto.K8sPodPhaseRunning, dto.K8sPodPhasePending, dto.K8sPodPhaseSucceeded, dto.K8sPodPhaseFailed:
 		return ph
 	}
-	return agentapi.K8sPodPhaseUnknown
+	return dto.K8sPodPhaseUnknown
 }
 
 func strPtr(s string) *string {

@@ -180,7 +180,7 @@ With several server replicas, each listen target is dialed by the one replica th
 
 A TLS inspection device re-terminates TLS. The agent then sees the device's certificate and the agent's client certificate never reaches the server, so both the pinned trust anchor and mTLS fail. For this reason authentication is not left to TLS alone. **TLS provides confidentiality. Message signatures provide authentication and integrity.**
 
-Message signatures are always on, regardless of the TLS mode.
+Message signatures are always on, regardless of the TLS mode. This section describes the built-in HTTP channel; a channel built into your own agent and server ([EXTENDING.md](EXTENDING.md) §3) authenticates requests and answers in its own way.
 
 - Every request and response after enrollment is signed using HTTP Message Signatures (RFC 9421), restricted to a fixed subset, with the exceptions listed at the end of this section. A request signature covers the method, the path, the query, the body digest, the agent ID, a fresh nonce and, where present, the counter. A response signature covers the status, the body digest, the request's nonce and, where present, the counter. Bodies stay in clear, so an inspection device can still read them. The exact format is in [PROTOCOL.md](PROTOCOL.md) §3 to §5.
 - `Content-Digest` (SHA-256, RFC 9530) is always present, also for an empty body.

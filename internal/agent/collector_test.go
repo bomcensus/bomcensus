@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bomcensus/bomcensus/internal/gen/agentapi"
+	"github.com/bomcensus/bomcensus/agentproto/dto"
 	"github.com/bomcensus/bomcensus/internal/report"
 )
 
@@ -17,8 +17,8 @@ import (
 // the artifacts section right away, and that other changes do not.
 func TestSetConfigWalkPaths(t *testing.T) {
 	c := &collector{next: map[string]time.Time{}, manual: map[string]bool{}, wake: make(chan struct{}, 1)}
-	cfg := func(paths ...string) agentapi.AgentConfig {
-		var cfg agentapi.AgentConfig
+	cfg := func(paths ...string) dto.AgentConfig {
+		var cfg dto.AgentConfig
 		if paths != nil {
 			cfg.Policy.WalkPaths = &paths
 		}
@@ -26,7 +26,7 @@ func TestSetConfigWalkPaths(t *testing.T) {
 	}
 	ctx := context.Background()
 	steps := []struct {
-		cfg  agentapi.AgentConfig
+		cfg  dto.AgentConfig
 		want bool
 	}{
 		{cfg("/opt"), false}, // the first configuration is the one in use

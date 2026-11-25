@@ -16,6 +16,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"log/slog"
 	"net"
 	"net/http"
@@ -26,14 +27,15 @@ import (
 	"testing"
 	"time"
 
+	agentgen "github.com/bomcensus/bomcensus/agentproto/dto"
 	admingen "github.com/bomcensus/bomcensus/internal/gen/adminapi"
-	agentgen "github.com/bomcensus/bomcensus/internal/gen/agentapi"
 	"github.com/bomcensus/bomcensus/internal/pki"
-	"github.com/bomcensus/bomcensus/internal/server/auth"
-	"github.com/bomcensus/bomcensus/internal/server/config"
 	"github.com/bomcensus/bomcensus/internal/server/console"
+	"github.com/bomcensus/bomcensus/internal/server/session"
 	"github.com/bomcensus/bomcensus/internal/token"
 	"github.com/bomcensus/bomcensus/internal/version"
+	"github.com/bomcensus/bomcensus/server/config"
+	"github.com/bomcensus/bomcensus/server/scope"
 )
 
 const testPassword = "correct horse battery staple"
@@ -45,7 +47,7 @@ var (
 
 func adminHash(t *testing.T) string {
 	hashOnce.Do(func() {
-		h, err := auth.HashPassword(testPassword)
+		h, err := session.HashPassword(testPassword)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -127,12 +129,18 @@ func (offlineFeed) RoundTrip(*http.Request) (*http.Response, error) {
 
 // start is startServer for any goroutine: it reports instead of failing.
 func start(t *testing.T, cfg config.Config) (*testServer, error) {
-	return startWith(t, cfg, Options{})
+	return startWith(t, cfg, Options{Session: &Session{}, Console: consoleFS()})
+}
+
+// consoleFS is the console the server binary serves.
+func consoleFS() fs.FS {
+	f, _ := console.FS()
+	return f
 }
 
 // startWith is start with options; Ready and ShutdownTimeout are set here.
 func startWith(t *testing.T, cfg config.Config, opts Options) (*testServer, error) {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(scope.System(context.Background()))
 	s := &testServer{cancel: cancel, done: make(chan error, 1), log: &syncBuffer{}}
 	ready := make(chan Addrs, 1)
 	logger := slog.New(slog.NewTextHandler(s.log, &slog.HandlerOptions{Level: slog.LevelDebug}))
@@ -212,7 +220,7 @@ func (c *client) do(method, url string, body any, csrf bool) (int, []byte) {
 		req.Header.Set("Content-Type", "application/json")
 	}
 	if csrf {
-		req.Header.Set(auth.CSRFHeader, auth.CSRFHeaderValue)
+		req.Header.Set(session.CSRFHeader, session.CSRFHeaderValue)
 	}
 	resp, err := c.http.Do(req)
 	if err != nil {
@@ -239,7 +247,7 @@ func (c *client) expect(method, url string, body any, csrf bool, status int) []b
 func agentChain(t *testing.T, addr net.Addr) []*x509.Certificate {
 	t.Helper()
 	d := tls.Dialer{Config: &tls.Config{InsecureSkipVerify: true, ServerName: "localhost"}} //nolint:gosec // verified below with the pin
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(scope.System(context.Background()), 10*time.Second)
 	defer cancel()
 	conn, err := d.DialContext(ctx, "tcp", addr.String())
 	if err != nil {
@@ -380,7 +388,7 @@ func TestConcurrentStart(t *testing.T) {
 
 func TestRunRejectsBadMasterKey(t *testing.T) {
 	cfg := config.Config{DatabaseURL: "postgres://unused", MasterKey: "c2hvcnQ="}
-	err := Run(context.Background(), cfg, nil, Options{})
+	err := Run(scope.System(context.Background()), cfg, nil, Options{})
 	if err == nil || !strings.Contains(err.Error(), "master key") {
 		t.Fatalf("Run: %v", err)
 	}
@@ -481,7 +489,7 @@ func TestScanService(t *testing.T) {
 	if !cfg.EmbeddedScanner {
 		t.Fatal("embedded scanner is off by default")
 	}
-	s, err := startWith(t, cfg, Options{Scans: ScanService})
+	s, err := startWith(t, cfg, Options{Scans: ScanService, Session: &Session{}, Console: consoleFS()})
 	if err != nil {
 		t.Fatal(err)
 	}

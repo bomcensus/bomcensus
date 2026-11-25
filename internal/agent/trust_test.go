@@ -14,8 +14,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bomcensus/bomcensus/agentproto/dto"
 	"github.com/bomcensus/bomcensus/internal/agent/internal/fakeserver"
-	"github.com/bomcensus/bomcensus/internal/gen/agentapi"
 	"github.com/bomcensus/bomcensus/internal/pki"
 )
 
@@ -101,7 +101,7 @@ func TestTrustBundleSync(t *testing.T) {
 	}
 	// Announced through the configuration serial.
 	h.srv.SetBundle(2, next.Cert)
-	h.srv.SetConfig(func(c *agentapi.AgentConfig) { c.TrustBundleSerial = 2 })
+	h.srv.SetConfig(func(c *dto.AgentConfig) { c.TrustBundleSerial = 2 })
 	h.wait("bundle 2", func() bool { return lastPoll(h).TrustBundleSerial == 2 })
 
 	// Announced through a directive.
@@ -202,7 +202,7 @@ func TestListenMode(t *testing.T) {
 	h.wait("report over the reverse connection", func() bool { return len(h.srv.Reports()) >= 1 })
 	h.srv.Queue(map[string]any{"type": "collect", "id": "l1", "sections": []string{"host"}})
 	h.wait("directive over the reverse connection", func() bool { return len(h.srv.Reports()) >= 2 && h.srv.Acked("l1") })
-	if p := lastPoll(h); p.ConnectMode != agentapi.Listen || p.ObservedServerCert == nil {
+	if p := lastPoll(h); p.ConnectMode != dto.Listen || p.ObservedServerCert == nil {
 		t.Fatalf("poll status = %+v", p)
 	}
 	assertNoSecret(t, h)

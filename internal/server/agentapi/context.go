@@ -18,7 +18,6 @@ type ctxKey int
 
 const (
 	infoKey ctxKey = iota
-	agentKey
 	targetKey
 )
 
@@ -59,16 +58,6 @@ func (i *requestInfo) agent() (store.Agent, bool) {
 		return store.Agent{}, false
 	}
 	return *i.loaded, true
-}
-
-func withAgent(ctx context.Context, a store.Agent) context.Context {
-	return context.WithValue(ctx, agentKey, a)
-}
-
-// agentFrom returns the authenticated agent of a signed operation.
-func agentFrom(ctx context.Context) store.Agent {
-	a, _ := ctx.Value(agentKey).(store.Agent)
-	return a
 }
 
 func withReverseTarget(ctx context.Context, t *reverseTarget) context.Context {

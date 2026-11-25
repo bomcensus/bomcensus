@@ -16,10 +16,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bomcensus/bomcensus/internal/gen/agentapi"
+	"github.com/bomcensus/bomcensus/agentproto/dto"
 	"github.com/bomcensus/bomcensus/internal/report"
 	"github.com/bomcensus/bomcensus/internal/server/store"
 	"github.com/bomcensus/bomcensus/internal/server/store/postgres"
+	"github.com/bomcensus/bomcensus/server/scope"
 )
 
 var t0 = time.Date(2026, 11, 1, 10, 0, 0, 0, time.UTC)
@@ -131,7 +132,7 @@ type fixture struct {
 
 func newFixture(t *testing.T) *fixture {
 	db := newTestDB(t)
-	ctx := context.Background()
+	ctx := scope.System(context.Background())
 	pub := make([]byte, 32)
 	_, _ = rand.Read(pub)
 	_, err := db.CreateRegisterKey(ctx, store.RegisterKey{ID: "regkey00001", Name: "prod", PublicKey: pub,
@@ -464,22 +465,22 @@ func TestKubernetesInventoryAndContainerReports(t *testing.T) {
 		t.Fatalf("unknown pod: %v", err)
 	}
 
-	inv := agentapi.K8sInventory{ClusterId: cl.ID, CollectedAt: t0, ServerVersion: "v1.30.2",
-		Workloads: []agentapi.K8sInventoryWorkload{
+	inv := dto.K8sInventory{ClusterId: cl.ID, CollectedAt: t0, ServerVersion: "v1.30.2",
+		Workloads: []dto.K8sInventoryWorkload{
 			{Namespace: "shop", Kind: "Deployment", Name: "web", Replicas: 2},
 			{Namespace: "shop", Kind: "Deployment", Name: "api", Replicas: 1},
 			{Namespace: "kube-system", Kind: "DaemonSet", Name: "proxy", ExcludedBy: strp("namespace kube-system")},
 		},
-		Pods: []agentapi.K8sInventoryPod{
-			{Namespace: "shop", Name: "web-7d9f-abc12", Node: "n1", Phase: agentapi.K8sPodPhaseRunning, StartedAt: &t0,
+		Pods: []dto.K8sInventoryPod{
+			{Namespace: "shop", Name: "web-7d9f-abc12", Node: "n1", Phase: dto.K8sPodPhaseRunning, StartedAt: &t0,
 				WorkloadKind: "Deployment", WorkloadName: "web",
-				Containers: []agentapi.K8sInventoryContainer{{Name: "app", ImageRef: "shop/web:1", ImageDigest: strp("docker-pullable://shop/web@" + img1)}}},
-			{Namespace: "shop", Name: "web-7d9f-def34", Node: "n2", Phase: agentapi.K8sPodPhaseRunning, StartedAt: &t0,
+				Containers: []dto.K8sInventoryContainer{{Name: "app", ImageRef: "shop/web:1", ImageDigest: strp("docker-pullable://shop/web@" + img1)}}},
+			{Namespace: "shop", Name: "web-7d9f-def34", Node: "n2", Phase: dto.K8sPodPhaseRunning, StartedAt: &t0,
 				WorkloadKind: "Deployment", WorkloadName: "web",
-				Containers: []agentapi.K8sInventoryContainer{{Name: "app", ImageRef: "shop/web:1", ImageDigest: strp(img1)}}},
-			{Namespace: "shop", Name: "api-5c4b-xyz99", Node: "n1", Phase: agentapi.K8sPodPhaseRunning, StartedAt: &t0,
+				Containers: []dto.K8sInventoryContainer{{Name: "app", ImageRef: "shop/web:1", ImageDigest: strp(img1)}}},
+			{Namespace: "shop", Name: "api-5c4b-xyz99", Node: "n1", Phase: dto.K8sPodPhaseRunning, StartedAt: &t0,
 				WorkloadKind: "Deployment", WorkloadName: "api",
-				Containers: []agentapi.K8sInventoryContainer{{Name: "api", ImageRef: "shop/api:3", ImageDigest: strp(img2)}}},
+				Containers: []dto.K8sInventoryContainer{{Name: "api", ImageRef: "shop/api:3", ImageDigest: strp(img2)}}},
 		}}
 	other := f.newAgent(t, store.AgentKindScanner, "")
 	if err := f.svc.IngestK8sInventory(ctx, Sender{AgentID: other.ID, Kind: store.AgentKindScanner}, cl.ID, inv); !errors.Is(err, ErrForbidden) {
@@ -831,12 +832,12 @@ func TestKubernetesCoverageIsWhatIsKnown(t *testing.T) {
 			pods := []string{"web-1", "web-2", "web-3"}
 			sync := func(at time.Time) {
 				t.Helper()
-				inv := agentapi.K8sInventory{ClusterId: cl.ID, CollectedAt: at, ServerVersion: "v1.30.2",
-					Workloads: []agentapi.K8sInventoryWorkload{{Namespace: "shop", Kind: "Deployment", Name: "web", Replicas: 3}}}
+				inv := dto.K8sInventory{ClusterId: cl.ID, CollectedAt: at, ServerVersion: "v1.30.2",
+					Workloads: []dto.K8sInventoryWorkload{{Namespace: "shop", Kind: "Deployment", Name: "web", Replicas: 3}}}
 				for _, p := range pods {
-					inv.Pods = append(inv.Pods, agentapi.K8sInventoryPod{Namespace: "shop", Name: p, Node: "n1",
-						Phase: agentapi.K8sPodPhaseRunning, StartedAt: &t0, WorkloadKind: "Deployment", WorkloadName: "web",
-						Containers: []agentapi.K8sInventoryContainer{{Name: "app", ImageRef: "shop/web:1", ImageDigest: strp(img1)}}})
+					inv.Pods = append(inv.Pods, dto.K8sInventoryPod{Namespace: "shop", Name: p, Node: "n1",
+						Phase: dto.K8sPodPhaseRunning, StartedAt: &t0, WorkloadKind: "Deployment", WorkloadName: "web",
+						Containers: []dto.K8sInventoryContainer{{Name: "app", ImageRef: "shop/web:1", ImageDigest: strp(img1)}}})
 				}
 				must(t, f.svc.IngestK8sInventory(ctx, embedded, cl.ID, inv))
 			}

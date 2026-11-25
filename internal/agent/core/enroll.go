@@ -5,7 +5,6 @@
 package core
 
 import (
-	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/x509"
@@ -14,13 +13,12 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
-	"net/http"
 	"net/url"
 	"time"
 
+	"github.com/bomcensus/bomcensus/agentproto/dto"
 	"github.com/bomcensus/bomcensus/internal/agent/state"
 	"github.com/bomcensus/bomcensus/internal/enroll"
-	"github.com/bomcensus/bomcensus/internal/gen/agentapi"
 	"github.com/bomcensus/bomcensus/internal/link"
 	"github.com/bomcensus/bomcensus/internal/pki"
 	"github.com/bomcensus/bomcensus/internal/token"
@@ -45,6 +43,12 @@ type EnrollOptions struct {
 	ServerName string
 	// ConnectMode is ModeConnect (default) or ModeListen.
 	ConnectMode string
+	// Channel is a channel registered in Runtime.Channels; empty is the
+	// HTTP channel of ConnectMode. ServerURL and ServerName are then
+	// passed to the channel as given.
+	Channel string
+	// ChannelSettings are passed to Channel.
+	ChannelSettings map[string]string
 	// ListenAddress is the listen-mode address, for example ":7443".
 	ListenAddress string
 	// TLSMode is the connect-mode verification of the TLS server
@@ -53,10 +57,10 @@ type EnrollOptions struct {
 	// ExtraRoots are trusted besides the OS store in the system mode.
 	ExtraRoots []*x509.Certificate
 	// Host describes the host in the enrollment request.
-	Host agentapi.HostFacts
+	Host dto.HostFacts
 	// HostFunc, when set, replaces Host. It is called only for a new
 	// enrollment, not when one is resumed or already approved.
-	HostFunc func(context.Context) (agentapi.HostFacts, error)
+	HostFunc func(context.Context) (dto.HostFacts, error)
 	// HPKEPublicKey is the scanner's encryption public key.
 	HPKEPublicKey []byte
 
@@ -133,44 +137,33 @@ func Enroll(ctx context.Context, o EnrollOptions) (*state.Enrollment, error) {
 		handlers: map[string]DirectiveHandler{}, seen: map[string]struct{}{}}
 	r.opts.defaults()
 	r.ident = &state.Identity{Key: key}
-	lc, err := openLink(ctx, r.linkParams())
+	ch, owner, err := r.openChannel(ctx)
 	if err != nil {
 		return nil, err
 	}
-	closeLink := true
-	defer func() {
-		if closeLink {
-			lc.close()
-		}
-	}()
+	defer ch.Close()
 
-	startBody, err := json.Marshal(agentapi.EnrollStartRequest{
+	startBody, err := json.Marshal(dto.EnrollStartRequest{
 		KeyId:         tok.KeyID.String(),
 		AgentNonce:    randomBytes(32),
 		Csr:           csr,
-		Kind:          agentapi.AgentKind(o.Kind),
+		Kind:          dto.AgentKind(o.Kind),
 		Version:       o.Version,
 		Host:          o.Host,
-		ConnectMode:   agentapi.ConnectMode(enr.ConnectMode),
+		ConnectMode:   dto.ConnectMode(enr.ConnectMode),
 		ListenAddress: optional(enr.ListenAddress),
-		TlsMode:       agentapi.TlsMode(enr.TLSMode),
+		TlsMode:       dto.TlsMode(enr.TLSMode),
 		HpkePublicKey: optionalBytes(o.HPKEPublicKey),
 	})
 	if err != nil {
 		return nil, err
 	}
-	req, err := agentapi.NewEnrollStartRequestWithBody(lc.baseURL, "application/json", bytes.NewReader(startBody))
-	if err != nil {
-		return nil, err
-	}
-	status, hdr, startResp, err := doRaw(ctx, lc.base, req)
+	startMsg, err := ch.EnrollStart(ctx, startBody)
 	if err != nil {
 		return nil, fmt.Errorf("enroll start: %w", err)
 	}
-	if status != http.StatusOK {
-		return nil, fmt.Errorf("enroll start: %w", apiError(status, startResp))
-	}
-	var sess agentapi.EnrollSession
+	startResp := startMsg.Body
+	var sess dto.EnrollSession
 	if err := json.Unmarshal(startResp, &sess); err != nil {
 		return nil, fmt.Errorf("enroll start: decode: %w", err)
 	}
@@ -179,7 +172,7 @@ func Enroll(ctx context.Context, o EnrollOptions) (*state.Enrollment, error) {
 		return nil, fmt.Errorf("enroll start: %w", err)
 	}
 	tr := enroll.NewTranscript(startBody, startResp)
-	leaf, err := enroll.VerifyServerStart(chain, tok.CAHash, enr.ServerName, tr, hdr.Get(enroll.HeaderSignature))
+	leaf, err := enroll.VerifyServerStart(chain, tok.CAHash, enr.ServerName, tr, startMsg.Signature)
 	if err != nil {
 		return nil, err
 	}
@@ -188,25 +181,19 @@ func Enroll(ctx context.Context, o EnrollOptions) (*state.Enrollment, error) {
 	if err != nil {
 		return nil, err
 	}
-	finishBody, err := json.Marshal(agentapi.EnrollFinishRequest{SessionId: sess.SessionId, Signature: agentSig})
+	finishBody, err := json.Marshal(dto.EnrollFinishRequest{SessionId: sess.SessionId, Signature: agentSig})
 	if err != nil {
 		return nil, err
 	}
-	req, err = agentapi.NewEnrollFinishRequestWithBody(lc.baseURL, "application/json", bytes.NewReader(finishBody))
-	if err != nil {
-		return nil, err
-	}
-	status, hdr, finishResp, err := doRaw(ctx, lc.base, req)
+	finishMsg, err := ch.EnrollFinish(ctx, finishBody)
 	if err != nil {
 		return nil, fmt.Errorf("enroll finish: %w", err)
 	}
-	if status != http.StatusOK {
-		return nil, fmt.Errorf("enroll finish: %w", apiError(status, finishResp))
-	}
-	if err := enroll.VerifyResult(leaf, tr, finishResp, hdr.Get(enroll.HeaderSignature)); err != nil {
+	finishResp := finishMsg.Body
+	if err := enroll.VerifyResult(leaf, tr, finishResp, finishMsg.Signature); err != nil {
 		return nil, err
 	}
-	var res agentapi.EnrollResult
+	var res dto.EnrollResult
 	if err := json.Unmarshal(finishResp, &res); err != nil {
 		return nil, fmt.Errorf("enroll finish: decode: %w", err)
 	}
@@ -223,13 +210,13 @@ func Enroll(ctx context.Context, o EnrollOptions) (*state.Enrollment, error) {
 		return nil, err
 	}
 	switch res.Status {
-	case agentapi.EnrollStatusApproved:
+	case dto.EnrollStatusApproved:
 		if _, _, err := acceptResult(o.State, enr, key, res); err != nil {
 			return nil, err
 		}
 		o.Logger.Info("enrolled", "agent_id", enr.AgentID)
 		return enr, nil
-	case agentapi.EnrollStatusPending:
+	case dto.EnrollStatusPending:
 	default:
 		return nil, ErrNotApproved
 	}
@@ -250,7 +237,7 @@ func Enroll(ctx context.Context, o EnrollOptions) (*state.Enrollment, error) {
 	// listener opened above).
 	rt.keys = &serverKeys{}
 	rt.keys.add(leaf)
-	if err := rt.attach(lc); err != nil {
+	if err := rt.attach(ch, owner); err != nil {
 		return nil, err
 	}
 	if err := rt.waitApproved(ctx); err != nil {
@@ -266,12 +253,12 @@ func resumePending(ctx context.Context, opts Options) (*state.Enrollment, error)
 	if err != nil {
 		return nil, err
 	}
-	lc, err := openLink(ctx, rt.linkParams())
+	ch, owner, err := rt.openChannel(ctx)
 	if err != nil {
 		return nil, err
 	}
-	defer lc.close()
-	if err := rt.attach(lc); err != nil {
+	defer ch.Close()
+	if err := rt.attach(ch, owner); err != nil {
 		return nil, err
 	}
 	if err := rt.waitApproved(ctx); err != nil {
@@ -283,10 +270,12 @@ func resumePending(ctx context.Context, opts Options) (*state.Enrollment, error)
 
 func enrollmentParams(o EnrollOptions, pin [32]byte) (*state.Enrollment, error) {
 	enr := &state.Enrollment{
-		Kind:        string(o.Kind),
-		ConnectMode: o.ConnectMode,
-		ServerName:  o.ServerName,
-		TLSMode:     string(o.TLSMode),
+		Kind:            string(o.Kind),
+		ConnectMode:     o.ConnectMode,
+		ServerName:      o.ServerName,
+		TLSMode:         string(o.TLSMode),
+		Channel:         o.Channel,
+		ChannelSettings: o.ChannelSettings,
 	}
 	enr.SetPin(pin)
 	if enr.TLSMode == "" {
@@ -295,6 +284,10 @@ func enrollmentParams(o EnrollOptions, pin [32]byte) (*state.Enrollment, error) 
 	if _, err := link.ParseTLSMode(enr.TLSMode); err != nil {
 		return nil, err
 	}
+	if o.Channel != "" && !builtinChannel(o.Channel, &o.Runtime) {
+		return customChannelParams(o, enr)
+	}
+	enr.Channel = ""
 	switch o.ConnectMode {
 	case "", ModeConnect:
 		enr.ConnectMode = ModeConnect
@@ -320,6 +313,28 @@ func enrollmentParams(o EnrollOptions, pin [32]byte) (*state.Enrollment, error) 
 		enr.ListenAddress = o.ListenAddress
 	default:
 		return nil, fmt.Errorf("unknown connect mode %q", o.ConnectMode)
+	}
+	return enr, nil
+}
+
+// customChannelParams completes the enrollment of a registered channel,
+// which gets the server address and name as given.
+func customChannelParams(o EnrollOptions, enr *state.Enrollment) (*state.Enrollment, error) {
+	if _, err := o.Runtime.factory(o.Channel); err != nil {
+		return nil, err
+	}
+	if enr.ConnectMode == "" {
+		enr.ConnectMode = ModeConnect
+	}
+	if enr.ConnectMode != ModeConnect && enr.ConnectMode != ModeListen {
+		return nil, fmt.Errorf("unknown connect mode %q", enr.ConnectMode)
+	}
+	enr.ServerURL, enr.ListenAddress = o.ServerURL, o.ListenAddress
+	if enr.ServerName == "" {
+		enr.ServerName = serverNameOf(o.ServerURL)
+	}
+	if enr.ServerName == "" {
+		return nil, errors.New("the channel needs the server name (the name in the server certificates)")
 	}
 	return enr, nil
 }

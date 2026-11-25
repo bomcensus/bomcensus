@@ -73,7 +73,10 @@ type Agent struct {
 	IdentityKey   []byte // Ed25519 public key; unique
 	HPKEPublicKey []byte // scanners only
 	RegisterKeyID string
-	State         AgentState
+	// ScopeID is the data scope, copied from the register key at
+	// enrollment; empty for scanners, which are shared by every scope.
+	ScopeID string
+	State   AgentState
 
 	Version            string
 	OS                 string

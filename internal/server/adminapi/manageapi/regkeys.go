@@ -61,13 +61,14 @@ func registerKeyDTO(k store.RegisterKey, now time.Time) gen.RegisterKey {
 		State:           registerKeyState(k, now),
 		CreatedAt:       k.CreatedAt,
 		RevokedAt:       k.RevokedAt,
+		ScopeId:         optString(k.ScopeID),
 	}
 }
 
 // ListRegisterKeys implements listRegisterKeys.
 func (h *Handlers) ListRegisterKeys(ctx context.Context, req gen.ListRegisterKeysRequestObject) (gen.ListRegisterKeysResponseObject, error) {
 	p := req.Params
-	f := store.RegisterKeyFilter{Q: deref(p.Q), Target: store.AgentKind(deref(p.Target))}
+	f := store.RegisterKeyFilter{Q: deref(p.Q), Target: store.AgentKind(deref(p.Target)), ScopeID: deref(p.ScopeId)}
 	all, err := collectAll(func(pg store.Page) ([]store.RegisterKey, int, error) { return h.st.ListRegisterKeys(ctx, f, pg) })
 	if err != nil {
 		return nil, err
@@ -201,6 +202,16 @@ func (h *Handlers) CreateRegisterKey(ctx context.Context, req gen.CreateRegister
 		return nil, apierr.Invalid("defaultGroup is too long")
 	}
 	var err error
+	if k.Target == store.AgentKindScanner {
+		if b.ScopeId != nil {
+			return nil, apierr.Invalid("scanner keys have no scope")
+		}
+		if err := sharedWrite(ctx); err != nil {
+			return nil, err
+		}
+	} else if k.ScopeID, err = newScopeID(ctx, b.ScopeId); err != nil {
+		return nil, err
+	}
 	if k.AllowedCIDRs, err = parseCIDRs(deref(b.AllowedCidrs)); err != nil {
 		return nil, err
 	}
@@ -242,6 +253,11 @@ func (h *Handlers) RevokeRegisterKey(ctx context.Context, req gen.RevokeRegister
 	k, err := h.st.GetRegisterKey(ctx, req.Id)
 	if err != nil {
 		return nil, err
+	}
+	if k.Target == store.AgentKindScanner {
+		if err := sharedWrite(ctx); err != nil {
+			return nil, err
+		}
 	}
 	if k.RevokedAt != nil {
 		return nil, apierr.New(409, apierr.CodeInvalidState, "the register key is already revoked")

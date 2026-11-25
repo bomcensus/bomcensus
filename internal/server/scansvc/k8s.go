@@ -13,7 +13,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 
-	"github.com/bomcensus/bomcensus/internal/gen/agentapi"
+	"github.com/bomcensus/bomcensus/agentproto/dto"
 	"github.com/bomcensus/bomcensus/internal/scanner/kube"
 	"github.com/bomcensus/bomcensus/internal/scanner/runner"
 	"github.com/bomcensus/bomcensus/internal/server/store"
@@ -121,8 +121,8 @@ func nonNil(v []string) []string {
 	return slices.Clone(v)
 }
 
-func apiFilter(f store.K8sFilter) agentapi.K8sFilter {
-	return agentapi.K8sFilter{
+func apiFilter(f store.K8sFilter) dto.K8sFilter {
+	return dto.K8sFilter{
 		NamespaceInclude: nonNil(f.NSInclude), NamespaceExclude: nonNil(f.NSExclude),
 		LabelInclude: nonNil(f.LabelInclude), LabelExclude: nonNil(f.LabelExclude),
 		AnnotationInclude: nonNil(f.AnnotationInclude), AnnotationExclude: nonNil(f.AnnotationExclude),
@@ -201,8 +201,8 @@ func (s *Service) plan(ctx context.Context, inv *kube.Inventory, opts kube.PlanO
 }
 
 func (s *Service) dispatchSync(ctx context.Context, sc store.Agent, c store.K8sCluster, jobID string) error {
-	d := agentapi.K8sSyncDirective{
-		Type: agentapi.K8sSync, JobId: jobID, ClusterId: c.ID, Connection: agentapi.K8sConnection(c.Connection),
+	d := dto.K8sSyncDirective{
+		Type: dto.K8sSync, JobId: jobID, ClusterId: c.ID, Connection: dto.K8sConnection(c.Connection),
 		Filter: apiFilter(c.Filter), ExecEnabled: c.ExecEnabled,
 	}
 	if c.Connection == store.K8sKubeconfig {
@@ -216,7 +216,7 @@ func (s *Service) dispatchSync(ctx context.Context, sc store.Agent, c store.K8sC
 		}
 		d.Kubeconfig = &sealed
 	}
-	var body agentapi.Directive
+	var body dto.Directive
 	if err := body.FromK8sSyncDirective(d); err != nil {
 		return err
 	}
@@ -225,9 +225,9 @@ func (s *Service) dispatchSync(ctx context.Context, sc store.Agent, c store.K8sC
 
 func (s *Service) dispatchExec(ctx context.Context, sc store.Agent, c store.K8sCluster, targets []kube.ExecTarget) error {
 	jobID := newJobID(kindExec, c.ID)
-	d := agentapi.K8sExecDirective{
-		Type: agentapi.K8sExec, JobId: jobID, ClusterId: c.ID, Connection: agentapi.K8sConnection(c.Connection),
-		Policy: runner.PolicyToAPI(s.policy(ctx)), Targets: make([]agentapi.K8sExecTarget, 0, len(targets)),
+	d := dto.K8sExecDirective{
+		Type: dto.K8sExec, JobId: jobID, ClusterId: c.ID, Connection: dto.K8sConnection(c.Connection),
+		Policy: runner.PolicyToAPI(s.policy(ctx)), Targets: make([]dto.K8sExecTarget, 0, len(targets)),
 	}
 	if sc.HasFeature(store.FeatureGoSymbols) {
 		targets = s.withGoSymbols(ctx, c.ID, targets)
@@ -251,7 +251,7 @@ func (s *Service) dispatchExec(ctx context.Context, sc store.Agent, c store.K8sC
 		}
 		d.Kubeconfig = &sealed
 	}
-	var body agentapi.Directive
+	var body dto.Directive
 	if err := body.FromK8sExecDirective(d); err != nil {
 		return err
 	}
@@ -262,7 +262,7 @@ func (s *Service) dispatchExec(ctx context.Context, sc store.Agent, c store.K8sC
 // a cluster was stored. With exec enabled it plans the exec collection and
 // sends it to the cluster's scanner. Errors are worth logging only; the
 // inventory itself is stored.
-func (s *Service) InventoryIngested(ctx context.Context, clusterID string, inv agentapi.K8sInventory) error {
+func (s *Service) InventoryIngested(ctx context.Context, clusterID string, inv dto.K8sInventory) error {
 	c, err := s.st.GetCluster(ctx, clusterID)
 	if err != nil {
 		return fmt.Errorf("scansvc: cluster %s: %w", clusterID, err)
@@ -288,7 +288,7 @@ func (s *Service) InventoryIngested(ctx context.Context, clusterID string, inv a
 
 // InventoryFromAPI converts an uploaded inventory back for planning. A
 // container is running when it has a start time.
-func InventoryFromAPI(in agentapi.K8sInventory) *kube.Inventory {
+func InventoryFromAPI(in dto.K8sInventory) *kube.Inventory {
 	str := func(p *string) string {
 		if p == nil {
 			return ""

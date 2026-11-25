@@ -32,6 +32,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/bomcensus/bomcensus/agentproto/dto"
 	"github.com/bomcensus/bomcensus/internal/enroll"
 	"github.com/bomcensus/bomcensus/internal/gen/agentapi"
 	"github.com/bomcensus/bomcensus/internal/link"
@@ -106,14 +107,14 @@ type Server struct {
 	nextID       int
 	startBodies  [][]byte
 	finishBodies [][]byte
-	polls        []agentapi.PollRequest
+	polls        []dto.PollRequest
 	pollErrs     int
 	reports      []*report.Report
 	directives   []json.RawMessage
 	acked        map[string]bool
 	uploadFail   bool
 	pollFail     bool
-	config       agentapi.AgentConfig
+	config       dto.AgentConfig
 	bundleSerial int64
 	extraAnchors []*x509.Certificate
 	update       *Update
@@ -125,7 +126,7 @@ type Server struct {
 type session struct {
 	tr  enroll.Transcript
 	csr *x509.CertificateRequest
-	req agentapi.EnrollStartRequest
+	req dto.EnrollStartRequest
 }
 
 // New creates the PKI and the handler stack. Call Start to listen.
@@ -140,9 +141,9 @@ func New(t testing.TB, opts Options) *Server {
 		agents:   map[string]*Agent{},
 		acked:    map[string]bool{},
 		cond:     make(chan struct{}),
-		config: agentapi.AgentConfig{
-			SectionIntervals:           agentapi.SectionIntervals{Host: 3600, Packages: 3600, Artifacts: 3600, Processes: 3600, Containers: 3600},
-			Policy:                     agentapi.Policy{ExecVersion: true, CollectCmdline: true, ScanContainers: true},
+		config: dto.AgentConfig{
+			SectionIntervals:           dto.SectionIntervals{Host: 3600, Packages: 3600, Artifacts: 3600, Processes: 3600, Containers: 3600},
+			Policy:                     dto.Policy{ExecVersion: true, CollectCmdline: true, ScanContainers: true},
 			UpdateCheckIntervalMinutes: 60,
 			TrustBundleSerial:          1,
 		},
@@ -347,10 +348,10 @@ func (s *Server) Bodies() [][]byte {
 }
 
 // Polls returns the poll requests received.
-func (s *Server) Polls() []agentapi.PollRequest {
+func (s *Server) Polls() []dto.PollRequest {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return append([]agentapi.PollRequest(nil), s.polls...)
+	return append([]dto.PollRequest(nil), s.polls...)
 }
 
 // Reports returns the reports received.
@@ -375,7 +376,7 @@ func (s *Server) SetPollFail(v bool) {
 }
 
 // SetConfig replaces the configuration sent in poll responses.
-func (s *Server) SetConfig(f func(*agentapi.AgentConfig)) {
+func (s *Server) SetConfig(f func(*dto.AgentConfig)) {
 	s.mu.Lock()
 	f(&s.config)
 	s.changed()
@@ -468,7 +469,7 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 }
 
 func writeErr(w http.ResponseWriter, status int, code string) {
-	writeJSON(w, status, agentapi.Error{Code: code, Message: code})
+	writeJSON(w, status, dto.Error{Code: code, Message: code})
 }
 
 func randID() string {
@@ -493,8 +494,8 @@ func (s *Server) issue(a *Agent) {
 	a.Cert = cert
 }
 
-func (s *Server) bundle() agentapi.TrustBundle {
-	tb := agentapi.TrustBundle{Serial: s.bundleSerial, AgentCas: [][]byte{s.AgentCA.Cert.Raw}, Anchors: [][]byte{s.TLSCA.Cert.Raw}, IssuedAt: time.Now().UTC()}
+func (s *Server) bundle() dto.TrustBundle {
+	tb := dto.TrustBundle{Serial: s.bundleSerial, AgentCas: [][]byte{s.AgentCA.Cert.Raw}, Anchors: [][]byte{s.TLSCA.Cert.Raw}, IssuedAt: time.Now().UTC()}
 	for _, c := range s.extraAnchors {
 		tb.Anchors = append(tb.Anchors, c.Raw)
 	}
@@ -502,16 +503,16 @@ func (s *Server) bundle() agentapi.TrustBundle {
 }
 
 // result builds the enrollment result; s.mu is held.
-func (s *Server) result(a *Agent) agentapi.EnrollResult {
+func (s *Server) result(a *Agent) dto.EnrollResult {
 	if a.State != msgsig.StateApproved {
 		one := 1
-		return agentapi.EnrollResult{Status: agentapi.EnrollStatusPending, AgentId: a.ID, RetryAfterSeconds: &one}
+		return dto.EnrollResult{Status: dto.EnrollStatusPending, AgentId: a.ID, RetryAfterSeconds: &one}
 	}
 	if a.Cert == nil {
 		s.issue(a)
 	}
 	cert, ca, tb := a.Cert.Raw, s.AgentCA.Cert.Raw, s.bundle()
-	return agentapi.EnrollResult{Status: agentapi.EnrollStatusApproved, AgentId: a.ID, Certificate: &cert, AgentCa: &ca, TrustBundle: &tb}
+	return dto.EnrollResult{Status: dto.EnrollStatusApproved, AgentId: a.ID, Certificate: &cert, AgentCa: &ca, TrustBundle: &tb}
 }
 
 // ── handlers ───────────────────────────────────────────────────────────
@@ -520,7 +521,7 @@ var _ agentapi.ServerInterface = (*Server)(nil)
 
 func (s *Server) EnrollStart(w http.ResponseWriter, r *http.Request) {
 	body, _ := io.ReadAll(r.Body)
-	var req agentapi.EnrollStartRequest
+	var req dto.EnrollStartRequest
 	if err := json.Unmarshal(body, &req); err != nil || req.KeyId != s.Token.KeyID.String() {
 		writeErr(w, http.StatusForbidden, "enrollment_refused")
 		return
@@ -532,7 +533,7 @@ func (s *Server) EnrollStart(w http.ResponseWriter, r *http.Request) {
 	}
 	nonce := make([]byte, 32)
 	_, _ = rand.Read(nonce)
-	sess := agentapi.EnrollSession{SessionId: randID(), ServerNonce: nonce, ServerChain: [][]byte{s.Leaf.Raw, s.TLSCA.Cert.Raw}}
+	sess := dto.EnrollSession{SessionId: randID(), ServerNonce: nonce, ServerChain: [][]byte{s.Leaf.Raw, s.TLSCA.Cert.Raw}}
 	resp, _ := json.Marshal(sess)
 	tr := enroll.NewTranscript(body, resp)
 	sig, err := enroll.SignServerStart(s.LeafKey, tr)
@@ -548,7 +549,7 @@ func (s *Server) EnrollStart(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) EnrollFinish(w http.ResponseWriter, r *http.Request) {
 	body, _ := io.ReadAll(r.Body)
-	var req agentapi.EnrollFinishRequest
+	var req dto.EnrollFinishRequest
 	if err := json.Unmarshal(body, &req); err != nil {
 		writeErr(w, http.StatusBadRequest, "invalid_request")
 		return
@@ -568,7 +569,7 @@ func (s *Server) EnrollFinish(w http.ResponseWriter, r *http.Request) {
 		Pub:     sess.csr.PublicKey.(ed25519.PublicKey),
 		CSR:     sess.csr,
 		State:   msgsig.StateApproved,
-		Relaxed: sess.req.TlsMode != agentapi.Pinned,
+		Relaxed: sess.req.TlsMode != dto.Pinned,
 	}
 	if s.opts.ManualApproval {
 		a.State = msgsig.StatePending
@@ -595,7 +596,7 @@ func (s *Server) GetEnrollResult(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) RenewCert(w http.ResponseWriter, r *http.Request) {
-	var req agentapi.CertRenewRequest
+	var req dto.CertRenewRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeErr(w, http.StatusBadRequest, "invalid_request")
 		return
@@ -618,11 +619,11 @@ func (s *Server) RenewCert(w http.ResponseWriter, r *http.Request) {
 	}
 	s.issue(a)
 	a.Renewals++
-	writeJSON(w, http.StatusOK, agentapi.RenewedCert{Certificate: a.Cert.Raw, AgentCa: s.AgentCA.Cert.Raw, NotAfter: a.Cert.NotAfter})
+	writeJSON(w, http.StatusOK, dto.RenewedCert{Certificate: a.Cert.Raw, AgentCa: s.AgentCA.Cert.Raw, NotAfter: a.Cert.NotAfter})
 }
 
 func (s *Server) GetServerChain(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, agentapi.ServerChain{ChainPem: []string{
+	writeJSON(w, http.StatusOK, dto.ServerChain{ChainPem: []string{
 		string(pki.EncodeCertificatesPEM(s.Leaf)), string(pki.EncodeCertificatesPEM(s.TLSCA.Cert)),
 	}})
 }
@@ -634,7 +635,7 @@ func (s *Server) GetTrustBundle(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) Poll(w http.ResponseWriter, r *http.Request) {
-	var req agentapi.PollRequest
+	var req dto.PollRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		s.mu.Lock()
 		s.pollErrs++
@@ -671,9 +672,9 @@ func (s *Server) Poll(w http.ResponseWriter, r *http.Request) {
 	if a != nil && len(a.Counters) > 0 {
 		last = int64(a.Counters[len(a.Counters)-1])
 	}
-	res := agentapi.PollResult{Config: s.config, LastCounter: last, ServerTime: time.Now().UTC(), Directives: []agentapi.Directive{}}
+	res := dto.PollResult{Config: s.config, LastCounter: last, ServerTime: time.Now().UTC(), Directives: []dto.Directive{}}
 	for _, raw := range s.pendingDirectives() {
-		var d agentapi.Directive
+		var d dto.Directive
 		must(s.t, d.UnmarshalJSON(raw))
 		res.Directives = append(res.Directives, d)
 	}
@@ -695,7 +696,7 @@ func (s *Server) pendingDirectives() []json.RawMessage {
 	return out
 }
 
-func (s *Server) UploadReport(w http.ResponseWriter, r *http.Request, params agentapi.UploadReportParams) {
+func (s *Server) UploadReport(w http.ResponseWriter, r *http.Request, params dto.UploadReportParams) {
 	body, _ := io.ReadAll(r.Body)
 	s.mu.Lock()
 	fail := s.uploadFail
@@ -718,14 +719,14 @@ func (s *Server) UploadReport(w http.ResponseWriter, r *http.Request, params age
 	n := len(s.reports)
 	s.changed()
 	s.mu.Unlock()
-	writeJSON(w, http.StatusAccepted, agentapi.ReportAccepted{ReportId: fmt.Sprintf("report-%d", n)})
+	writeJSON(w, http.StatusAccepted, dto.ReportAccepted{ReportId: fmt.Sprintf("report-%d", n)})
 }
 
-func (s *Server) CheckUpdate(w http.ResponseWriter, r *http.Request, params agentapi.CheckUpdateParams) {
+func (s *Server) CheckUpdate(w http.ResponseWriter, r *http.Request, params dto.CheckUpdateParams) {
 	s.mu.Lock()
 	u := s.update
 	s.mu.Unlock()
-	res := agentapi.UpdateCheck{CheckIntervalMinutes: 60}
+	res := dto.UpdateCheck{CheckIntervalMinutes: 60}
 	if u != nil {
 		v := u.Version
 		size := int64(len(u.Bundle))
@@ -737,7 +738,7 @@ func (s *Server) CheckUpdate(w http.ResponseWriter, r *http.Request, params agen
 	writeJSON(w, http.StatusOK, res)
 }
 
-func (s *Server) DownloadUpdateBundle(w http.ResponseWriter, r *http.Request, version string, params agentapi.DownloadUpdateBundleParams) {
+func (s *Server) DownloadUpdateBundle(w http.ResponseWriter, r *http.Request, version string, params dto.DownloadUpdateBundleParams) {
 	s.mu.Lock()
 	u := s.update
 	s.mu.Unlock()
@@ -753,7 +754,7 @@ func (s *Server) UploadK8sInventory(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
-func (s *Server) DownloadProbe(w http.ResponseWriter, r *http.Request, os agentapi.TargetOs, arch agentapi.TargetArch) {
+func (s *Server) DownloadProbe(w http.ResponseWriter, r *http.Request, os dto.TargetOs, arch dto.TargetArch) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 

@@ -16,6 +16,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 
 	"github.com/bomcensus/bomcensus/internal/collect"
@@ -24,7 +25,35 @@ import (
 
 func TestMain(m *testing.M) {
 	MaybeRunExecHelper()
+	widenTestProcessMargin()
 	os.Exit(m.Run())
+}
+
+// testProcessMargin replaces defaultExecLimits.NProcMargin in tests that
+// do not run as root.
+const testProcessMargin = 4096
+
+// widenTestProcessMargin keeps the process limit from failing commands
+// for reasons outside the test. Without root the commands run as the test
+// user, and RLIMIT_NPROC counts every task of that user: under go test
+// ./... the other test binaries start threads between the count and the
+// command's start, often more than the production margin of 64, and the Go
+// runtime of the helper program then fails to create a thread. As root
+// the commands run as nobody, whose count is stable, and the production
+// margin is kept. The margin stays within the hard limit, which the
+// helper cannot raise.
+func widenTestProcessMargin() {
+	if os.Geteuid() == 0 {
+		return
+	}
+	margin := uint64(testProcessMargin)
+	var rl syscall.Rlimit
+	if err := syscall.Getrlimit(rlimitNPROC, &rl); err == nil {
+		if used := countTasks("/proc", os.Getuid()); used < rl.Max && rl.Max-used < 2*margin {
+			margin = (rl.Max - used) / 2
+		}
+	}
+	defaultExecLimits.NProcMargin = max(margin, defaultExecLimits.NProcMargin)
 }
 
 // helperSource is a small program used as a version command.

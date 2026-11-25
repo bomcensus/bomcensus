@@ -9,9 +9,9 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/bomcensus/bomcensus/internal/server/config"
 	"github.com/bomcensus/bomcensus/internal/server/job"
 	"github.com/bomcensus/bomcensus/internal/server/store/postgres"
+	"github.com/bomcensus/bomcensus/server/config"
 )
 
 // migrateLock is the advisory lock key that serializes store migrations of

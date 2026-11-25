@@ -159,6 +159,10 @@ export type IntegrityAllowRuleScope = 'asset' | 'fleet';
 
 export type IntegrityAllowRule = {
     id: string;
+    /**
+     * Data scope the rule applies in.
+     */
+    scopeId: string;
     scope: IntegrityAllowRuleScope;
     assetId?: string;
     assetName?: string;
@@ -182,6 +186,13 @@ export type IntegrityAllowRuleList = {
 };
 
 export type IntegrityAllowRuleCreate = {
+    /**
+     * Data scope the rule applies in. An asset rule takes the scope of its asset; otherwise it
+     * defaults to the only scope of the request, or `default` for a request that sees every scope.
+     * A scope outside the request is refused with `403`.
+     *
+     */
+    scopeId?: string;
     scope: IntegrityAllowRuleScope;
     /**
      * Scope `asset` only.
@@ -341,6 +352,10 @@ export type AssetContainer = {
 
 export type AssetSummary = {
     id: string;
+    /**
+     * Data scope, from the agent, scan target or cluster the asset comes from.
+     */
+    scopeId: string;
     name: string;
     kind: AssetKind;
     /**
@@ -375,6 +390,10 @@ export type AssetSummary = {
 
 export type Asset = {
     id: string;
+    /**
+     * Data scope, from the agent, scan target or cluster the asset comes from.
+     */
+    scopeId: string;
     name: string;
     kind: AssetKind;
     /**
@@ -773,6 +792,10 @@ export type K8sSyncStatus = 'never' | 'ok' | 'failed';
 
 export type K8sCluster = {
     id: string;
+    /**
+     * Data scope of the record.
+     */
+    scopeId: string;
     name: string;
     /**
      * Kubernetes server version from the last sync.
@@ -814,6 +837,13 @@ export type K8sCluster = {
  *
  */
 export type K8sClusterCreate = {
+    /**
+     * Data scope of the new record. Defaults to the only scope of the request, or `default`
+     * for a request that sees every scope. A scope outside the request is refused with `403`.
+     * The credential must be of the same scope.
+     *
+     */
+    scopeId?: string;
     name: string;
     connection: K8sConnection;
     credentialId?: string;
@@ -919,6 +949,10 @@ export type UpdateState = 'up_to_date' | 'pending' | 'updating' | 'rolled_back';
 
 export type Agent = {
     id: string;
+    /**
+     * Data scope, from the Register Key the agent enrolled with. Absent for scanners, which every scope sees.
+     */
+    scopeId?: string;
     kind: AgentKind;
     hostname: string;
     /**
@@ -1002,6 +1036,10 @@ export type ListenTargetState = 'connecting' | 'connected' | 'disconnected' | 'f
 export type ListenTarget = {
     id: string;
     /**
+     * Data scope, that of the Register Key when the target has one.
+     */
+    scopeId: string;
+    /**
      * `host:port` the server dials.
      */
     address: string;
@@ -1020,6 +1058,13 @@ export type ListenTarget = {
 };
 
 export type ListenTargetCreate = {
+    /**
+     * Data scope of the new record. Defaults to the only scope of the request, or `default`
+     * for a request that sees every scope. A scope outside the request is refused with `403`.
+     * Ignored when the target has a Register Key: it takes the key's scope.
+     *
+     */
+    scopeId?: string;
     address: string;
     registerKeyId?: string;
 };
@@ -1043,6 +1088,10 @@ export type RegisterKey = {
      * The key id (11 characters, unpadded base64url). Not secret.
      */
     id: string;
+    /**
+     * Data scope of the key and of the agents it enrolls. Absent for scanner keys, which every scope sees.
+     */
+    scopeId?: string;
     name: string;
     target: AgentKind;
     expiresAt?: string;
@@ -1065,6 +1114,13 @@ export type RegisterKey = {
 };
 
 export type RegisterKeyCreate = {
+    /**
+     * Data scope of the new record. Defaults to the only scope of the request, or `default`
+     * for a request that sees every scope. A scope outside the request is refused with `403`.
+     * Not allowed for scanner keys: they have no scope and need a request that sees every scope.
+     *
+     */
+    scopeId?: string;
     name: string;
     target: AgentKind;
     expiresAt?: string;
@@ -1143,6 +1199,10 @@ export type ScanRun = {
 
 export type ScanTarget = {
     id: string;
+    /**
+     * Data scope of the record.
+     */
+    scopeId: string;
     name: string;
     protocol: ScanProtocol;
     address: string;
@@ -1186,6 +1246,13 @@ export type ScanTarget = {
  *
  */
 export type ScanTargetCreate = {
+    /**
+     * Data scope of the new record. Defaults to the only scope of the request, or `default`
+     * for a request that sees every scope. A scope outside the request is refused with `403`.
+     * The credential must be of the same scope.
+     *
+     */
+    scopeId?: string;
     name: string;
     protocol?: ScanProtocol;
     address: string;
@@ -1272,6 +1339,10 @@ export type CredentialKind = 'ssh_key' | 'ssh_password' | 'kubeconfig';
 
 export type Credential = {
     id: string;
+    /**
+     * Data scope of the record.
+     */
+    scopeId: string;
     name: string;
     kind: CredentialKind;
     /**
@@ -1297,6 +1368,12 @@ export type Credential = {
  *
  */
 export type CredentialCreate = {
+    /**
+     * Data scope of the new record. Defaults to the only scope of the request, or `default`
+     * for a request that sees every scope. A scope outside the request is refused with `403`.
+     *
+     */
+    scopeId?: string;
     name: string;
     kind: CredentialKind;
     username?: string;
@@ -1946,6 +2023,13 @@ export type TriageScope = {
 };
 
 export type TriageRuleCreate = {
+    /**
+     * Data scope the rule applies in. An asset rule takes the scope of its asset; otherwise it
+     * defaults to the only scope of the request, or `default` for a request that sees every scope.
+     * A scope outside the request is refused with `403`.
+     *
+     */
+    scopeId?: string;
     vulnId: string;
     scope: TriageScope;
     justification: TriageJustification;
@@ -1958,6 +2042,10 @@ export type TriageRuleCreate = {
 
 export type TriageRule = {
     id: string;
+    /**
+     * Data scope the rule applies in.
+     */
+    scopeId: string;
     vulnId: string;
     scope: TriageScope;
     /**
@@ -2097,6 +2185,12 @@ export type VulnImageDetail = {
  *
  */
 export type CredentialCreateWritable = {
+    /**
+     * Data scope of the new record. Defaults to the only scope of the request, or `default`
+     * for a request that sees every scope. A scope outside the request is refused with `403`.
+     *
+     */
+    scopeId?: string;
     name: string;
     kind: CredentialKind;
     username?: string;
@@ -2141,6 +2235,11 @@ export type TlsEndpointUpdateWritable = {
      */
     clientPrivateKey?: string;
 };
+
+/**
+ * Keep the records of this data scope.
+ */
+export type QueryScopeId = string;
 
 /**
  * Free-text search, case-insensitive substring match.
@@ -2344,6 +2443,10 @@ export type ListAssetsData = {
          * Free-text search, case-insensitive substring match.
          */
         q?: string;
+        /**
+         * Keep the records of this data scope.
+         */
+        scopeId?: string;
         kind?: AssetKind;
         group?: string;
         tag?: string;
@@ -3016,6 +3119,10 @@ export type ListK8sClustersData = {
          * Free-text search, case-insensitive substring match.
          */
         q?: string;
+        /**
+         * Keep the records of this data scope.
+         */
+        scopeId?: string;
         sort?: 'name' | '-name' | 'version' | '-version' | 'connection' | '-connection' | 'execEnabled' | '-execEnabled' | 'workloadCount' | '-workloadCount' | 'lastSync' | '-lastSync';
         limit?: number;
         offset?: number;
@@ -3065,6 +3172,10 @@ export type CreateK8sClusterErrors = {
      * No valid session, or wrong credentials on login.
      */
     401: Error;
+    /**
+     * Not allowed, for example a data scope outside the request's.
+     */
+    403: Error;
     /**
      * The request conflicts with the current state.
      */
@@ -3593,6 +3704,10 @@ export type CreateListenTargetErrors = {
      */
     401: Error;
     /**
+     * Not allowed, for example a data scope outside the request's.
+     */
+    403: Error;
+    /**
      * The request conflicts with the current state.
      */
     409: Error;
@@ -3699,6 +3814,10 @@ export type ListRegisterKeysData = {
          * Free-text search, case-insensitive substring match.
          */
         q?: string;
+        /**
+         * Keep the records of this data scope.
+         */
+        scopeId?: string;
         target?: AgentKind;
         state?: RegisterKeyState;
         sort?: 'name' | '-name' | 'target' | '-target' | 'state' | '-state' | 'expiresAt' | '-expiresAt' | 'usedCount' | '-usedCount' | 'approval' | '-approval' | 'createdAt' | '-createdAt';
@@ -3750,6 +3869,10 @@ export type CreateRegisterKeyErrors = {
      * No valid session, or wrong credentials on login.
      */
     401: Error;
+    /**
+     * Not allowed, for example a data scope outside the request's.
+     */
+    403: Error;
     /**
      * Unexpected error.
      */
@@ -3995,6 +4118,10 @@ export type ListScanTargetsData = {
          * Free-text search, case-insensitive substring match.
          */
         q?: string;
+        /**
+         * Keep the records of this data scope.
+         */
+        scopeId?: string;
         scannerId?: string;
         credentialId?: string;
         lastResult?: ScanResult;
@@ -4047,6 +4174,10 @@ export type CreateScanTargetErrors = {
      * No valid session, or wrong credentials on login.
      */
     401: Error;
+    /**
+     * Not allowed, for example a data scope outside the request's.
+     */
+    403: Error;
     /**
      * The request conflicts with the current state.
      */
@@ -4331,6 +4462,10 @@ export type ListCredentialsData = {
          * Free-text search, case-insensitive substring match.
          */
         q?: string;
+        /**
+         * Keep the records of this data scope.
+         */
+        scopeId?: string;
         kind?: CredentialKind;
         sort?: 'name' | '-name' | 'kind' | '-kind' | 'username' | '-username' | 'usedBy' | '-usedBy' | 'createdAt' | '-createdAt';
         limit?: number;
@@ -4381,6 +4516,10 @@ export type CreateCredentialErrors = {
      * No valid session, or wrong credentials on login.
      */
     401: Error;
+    /**
+     * Not allowed, for example a data scope outside the request's.
+     */
+    403: Error;
     /**
      * The request conflicts with the current state.
      */
@@ -5352,6 +5491,10 @@ export type CreateTriageRuleErrors = {
      */
     401: Error;
     /**
+     * Not allowed, for example a data scope outside the request's.
+     */
+    403: Error;
+    /**
      * Unexpected error.
      */
     default: Error;
@@ -5671,6 +5814,10 @@ export type CreateIntegrityAllowRulesErrors = {
      * No valid session, or wrong credentials on login.
      */
     401: Error;
+    /**
+     * Not allowed, for example a data scope outside the request's.
+     */
+    403: Error;
     /**
      * The resource does not exist.
      */

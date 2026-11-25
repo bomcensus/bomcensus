@@ -33,13 +33,19 @@ const (
 // secret.
 type Enrollment struct {
 	Kind string `json:"kind"`
-	// ServerURL is the server address in connect mode (https://host:port).
+	// ServerURL is the server address (https://host:port in connect mode;
+	// any form the channel understands for other channels).
 	ServerURL string `json:"server_url,omitempty"`
 	// ServerName is the name the server certificates are checked against.
 	ServerName    string `json:"server_name"`
 	ConnectMode   string `json:"connect_mode"`
 	ListenAddress string `json:"listen_address,omitempty"`
-	TLSMode       string `json:"tls_mode"`
+	// Channel is the registered channel the agent uses; empty is the
+	// HTTP channel of ConnectMode.
+	Channel string `json:"channel,omitempty"`
+	// ChannelSettings are the settings of Channel.
+	ChannelSettings map[string]string `json:"channel_settings,omitempty"`
+	TLSMode         string            `json:"tls_mode"`
 	// Pin is the ca-hash of the enrollment string, unpadded base64url.
 	Pin        string    `json:"pin"`
 	AgentID    string    `json:"agent_id"`

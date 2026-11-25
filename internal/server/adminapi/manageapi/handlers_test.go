@@ -37,6 +37,7 @@ import (
 	"github.com/bomcensus/bomcensus/internal/sign"
 	"github.com/bomcensus/bomcensus/internal/sign/signtest"
 	"github.com/bomcensus/bomcensus/internal/token"
+	"github.com/bomcensus/bomcensus/server/scope"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -72,7 +73,7 @@ type env struct {
 
 func newEnv(t *testing.T, withRunner bool) *env {
 	t.Helper()
-	ctx := context.Background()
+	ctx := scope.System(context.Background())
 	db := newTestDB(t)
 	key := make([]byte, secret.KeySize)
 	_, _ = rand.Read(key)
@@ -105,7 +106,7 @@ func newEnv(t *testing.T, withRunner bool) *env {
 	if e.h, err = New(cfg); err != nil {
 		t.Fatal(err)
 	}
-	strict := gen.NewStrictHandlerWithOptions(server{Handlers: e.h}, nil, gen.StrictHTTPServerOptions{
+	strict := gen.NewStrictHandlerWithOptions(server{Handlers: e.h}, []gen.StrictMiddlewareFunc{testScope}, gen.StrictHTTPServerOptions{
 		RequestErrorHandlerFunc: func(w http.ResponseWriter, _ *http.Request, err error) {
 			apierr.Write(w, http.StatusBadRequest, gen.Error{Code: apierr.CodeInvalidArgument, Message: err.Error()})
 		},
@@ -118,6 +119,21 @@ func newEnv(t *testing.T, withRunner bool) *env {
 	e.srv = httptest.NewServer(gen.HandlerWithOptions(strict, gen.ChiServerOptions{BaseURL: "/api/v1"}))
 	t.Cleanup(e.srv.Close)
 	return e
+}
+
+// testScopeHeader sets the data scope of a test request (comma-separated
+// scope ids); without it the request sees every scope, as with the default
+// authorizer.
+const testScopeHeader = "X-Test-Scope"
+
+func testScope(f gen.StrictHandlerFunc, _ string) gen.StrictHandlerFunc {
+	return func(ctx context.Context, w http.ResponseWriter, r *http.Request, req any) (any, error) {
+		s := scope.All()
+		if v, ok := r.Header[testScopeHeader]; ok {
+			s = scope.Of(strings.Split(v[0], ",")...)
+		}
+		return f(scope.With(ctx, s), w, r, req)
+	}
 }
 
 type resp struct {
@@ -183,7 +199,7 @@ func ptr[T any](v T) *T { return &v }
 
 func TestRegisterKeys(t *testing.T) {
 	e := newEnv(t, false)
-	ctx := context.Background()
+	ctx := scope.System(context.Background())
 
 	for _, bad := range []gen.RegisterKeyCreate{
 		{Name: "", Target: gen.AgentKindAgent, Approval: gen.RegisterKeyApprovalAuto},
@@ -256,7 +272,7 @@ func TestRegisterKeys(t *testing.T) {
 
 func TestAgents(t *testing.T) {
 	e := newEnv(t, false)
-	ctx := context.Background()
+	ctx := scope.System(context.Background())
 	mk := func(host string, state store.AgentState, seen *time.Time, version string) store.Agent {
 		pub, _, _ := ed25519.GenerateKey(rand.Reader)
 		a, err := e.db.CreateAgent(ctx, store.Agent{Kind: store.AgentKindAgent, Hostname: host, IdentityKey: pub, State: state})
@@ -424,7 +440,7 @@ func sshPrivateKey(t *testing.T, passphrase string) (string, string) {
 
 func TestCredentialKeysAndRotation(t *testing.T) {
 	e := newEnv(t, false)
-	ctx := context.Background()
+	ctx := scope.System(context.Background())
 	key, fp := sshPrivateKey(t, "")
 	encKey, encFP := sshPrivateKey(t, "s3cret")
 
@@ -486,7 +502,7 @@ func TestCredentialKeysAndRotation(t *testing.T) {
 
 func TestCredentials(t *testing.T) {
 	e := newEnv(t, false)
-	ctx := context.Background()
+	ctx := scope.System(context.Background())
 	const password = "hunter2-very-secret"
 	const kubeconfig = "apiVersion: v1\nkind: Config\nusers: [{name: x, user: {token: kube-secret-token}}]\n"
 
@@ -593,7 +609,7 @@ func TestScanTargets(t *testing.T) {
 	}
 
 	// Update: absent fields kept, scanner set and cleared, host key reset.
-	sc, err := e.db.CreateAgent(context.Background(), store.Agent{Kind: store.AgentKindScanner, IdentityKey: []byte("scanner-key"), State: store.AgentApproved})
+	sc, err := e.db.CreateAgent(scope.System(context.Background()), store.Agent{Kind: store.AgentKindScanner, IdentityKey: []byte("scanner-key"), State: store.AgentApproved})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -642,7 +658,7 @@ func releaseBundle(t *testing.T, tr *signtest.Trust, version string, tamper bool
 	}
 	mb, sig := tr.SignManifest(t, m)
 	var buf bytes.Buffer
-	if err := release.Write(context.Background(), &buf, mb, sig, files); err != nil {
+	if err := release.Write(scope.System(context.Background()), &buf, mb, sig, files); err != nil {
 		t.Fatal(err)
 	}
 	b := buf.Bytes()
@@ -714,7 +730,7 @@ func TestReleases(t *testing.T) {
 
 func TestTLS(t *testing.T) {
 	e := newEnv(t, false)
-	ctx := context.Background()
+	ctx := scope.System(context.Background())
 	st := decode[gen.TlsState](t, e.do("GET", "/settings/tls", nil))
 	anchor, _ := e.pki.AnchorHash()
 	if st.Web.Mode != gen.TlsCertModeAuto || st.Agent.Mode != gen.TlsCertModeAuto || st.AnchorSpkiHash != pkisvc.SPKIString(anchor) ||

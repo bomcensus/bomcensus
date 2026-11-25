@@ -1,6 +1,6 @@
 # Agent protocol: signatures and sealed secrets
 
-This document specifies the bytes that are signed on the agent protocol (`api/openapi/agent.yaml`, base path `/agent/v1`) and how secrets in scanner directives are sealed (§9). JSON bodies are defined by the OpenAPI document; this document does not depend on them. Security rationale: `docs/SECURITY.md` §4.3 and §4.6.
+This document specifies the bytes that are signed on the agent protocol (`api/openapi/agent.yaml`, base path `/agent/v1`) and how secrets in scanner directives are sealed (§9). JSON bodies are defined by the OpenAPI document; this document does not depend on them. Security rationale: `docs/SECURITY.md` §4.3 and §4.6. It covers the built-in HTTP channel; channels of your own carry the same operations and authenticate them in their own way (`docs/EXTENDING.md` §3), while the enrollment signatures (§2) and sealed secrets (§9) are the same on every channel.
 
 Notation: `‖` is byte concatenation, `H(x)` is SHA-256, `b64url` is unpadded base64url (RFC 4648 §5), `b64` is standard base64 with padding (RFC 4648 §4). All text is ASCII.
 

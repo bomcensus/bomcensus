@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bomcensus/bomcensus/internal/gen/agentapi"
+	"github.com/bomcensus/bomcensus/agentproto/dto"
 	"github.com/bomcensus/bomcensus/internal/server/store"
 )
 
@@ -51,9 +51,9 @@ func TestWaitNotify(t *testing.T) {
 }
 
 func TestPayloadRoundTrip(t *testing.T) {
-	var d agentapi.Directive
+	var d dto.Directive
 	full := true
-	if err := d.FromCollectDirective(agentapi.CollectDirective{Id: "ignored", Sections: []agentapi.SectionName{"host"}, Full: &full}); err != nil {
+	if err := d.FromCollectDirective(dto.CollectDirective{Id: "ignored", Sections: []dto.SectionName{"host"}, Full: &full}); err != nil {
 		t.Fatal(err)
 	}
 	p, err := Payload(d)
@@ -69,7 +69,7 @@ func TestPayloadRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	c, err := out.AsCollectDirective()
-	if err != nil || c.Id != "d-1" || c.Type != agentapi.Collect || len(c.Sections) != 1 || c.Full == nil || !*c.Full {
+	if err != nil || c.Id != "d-1" || c.Type != dto.Collect || len(c.Sections) != 1 || c.Full == nil || !*c.Full {
 		t.Fatalf("deliverable %+v %v", c, err)
 	}
 }

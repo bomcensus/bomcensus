@@ -13,7 +13,7 @@ import (
 	"slices"
 	"time"
 
-	"github.com/bomcensus/bomcensus/internal/gen/agentapi"
+	"github.com/bomcensus/bomcensus/agentproto/dto"
 	"github.com/bomcensus/bomcensus/internal/report"
 	"github.com/bomcensus/bomcensus/internal/report/reportapi"
 	"github.com/bomcensus/bomcensus/internal/server/dispatch"
@@ -198,8 +198,8 @@ func (c *SymbolChecker) deliver(ctx context.Context, agentID string, q report.Go
 	if c.dispatch == nil {
 		return nil
 	}
-	var body agentapi.Directive
-	if err := body.FromGoSymbolsDirective(agentapi.GoSymbolsDirective{Type: agentapi.GoSymbols, Query: reportapi.APIGoSymbolQuery(q)}); err != nil {
+	var body dto.Directive
+	if err := body.FromGoSymbolsDirective(dto.GoSymbolsDirective{Type: dto.GoSymbols, Query: reportapi.APIGoSymbolQuery(q)}); err != nil {
 		return fmt.Errorf("vulnsvc: build go symbols directive: %w", err)
 	}
 	if _, err := c.dispatch.Enqueue(ctx, agentID, dispatch.Directive{Body: body, DedupeKey: "go_symbols", TTL: SymbolQueryTTL}); err != nil {

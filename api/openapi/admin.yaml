@@ -179,6 +179,7 @@ paths:
       description: "`q` matches name, address, cluster and namespace, OS name and version, tags and container image references."
       parameters:
         - $ref: "#/components/parameters/QueryQ"
+        - $ref: "#/components/parameters/QueryScopeId"
         - name: kind
           in: query
           schema:
@@ -756,6 +757,7 @@ paths:
       summary: List Kubernetes clusters
       parameters:
         - $ref: "#/components/parameters/QueryQ"
+        - $ref: "#/components/parameters/QueryScopeId"
         - name: sort
           in: query
           schema:
@@ -798,6 +800,8 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "409":
           $ref: "#/components/responses/Conflict"
         default:
@@ -1174,6 +1178,8 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "409":
           $ref: "#/components/responses/Conflict"
         default:
@@ -1236,6 +1242,7 @@ paths:
       description: Never returns secrets or enrollment strings. `q` matches name and key id.
       parameters:
         - $ref: "#/components/parameters/QueryQ"
+        - $ref: "#/components/parameters/QueryScopeId"
         - name: target
           in: query
           schema:
@@ -1294,6 +1301,8 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         default:
           $ref: "#/components/responses/UnexpectedError"
 
@@ -1461,6 +1470,7 @@ paths:
       description: "`q` matches name and address."
       parameters:
         - $ref: "#/components/parameters/QueryQ"
+        - $ref: "#/components/parameters/QueryScopeId"
         - name: scannerId
           in: query
           schema:
@@ -1515,6 +1525,8 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "409":
           $ref: "#/components/responses/Conflict"
         default:
@@ -1687,6 +1699,7 @@ paths:
       description: Secrets are write-only and never returned. `q` matches name and username.
       parameters:
         - $ref: "#/components/parameters/QueryQ"
+        - $ref: "#/components/parameters/QueryScopeId"
         - name: kind
           in: query
           schema:
@@ -1733,6 +1746,8 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "409":
           $ref: "#/components/responses/Conflict"
         default:
@@ -2388,6 +2403,8 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         default:
           $ref: "#/components/responses/UnexpectedError"
 
@@ -2649,6 +2666,8 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
         default:
@@ -2719,6 +2738,13 @@ components:
       name: bomcensus_session
 
   parameters:
+    QueryScopeId:
+      name: scopeId
+      in: query
+      description: Keep the records of this data scope.
+      schema:
+        type: string
+        maxLength: 128
     QueryQ:
       name: q
       in: query
@@ -2797,6 +2823,12 @@ components:
             $ref: "#/components/schemas/Error"
     Unauthorized:
       description: No valid session, or wrong credentials on login.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Forbidden:
+      description: Not allowed, for example a data scope outside the request's.
       content:
         application/json:
           schema:
@@ -3059,9 +3091,12 @@ components:
       enum: [asset, fleet]
     IntegrityAllowRule:
       type: object
-      required: [id, scope, path, status, note, createdBy, createdAt, hidden]
+      required: [id, scopeId, scope, path, status, note, createdBy, createdAt, hidden]
       properties:
         id:
+          type: string
+        scopeId:
+          description: Data scope the rule applies in.
           type: string
         scope:
           $ref: "#/components/schemas/IntegrityAllowRuleScope"
@@ -3104,6 +3139,12 @@ components:
       type: object
       required: [scope, path, status, note]
       properties:
+        scopeId:
+          description: |
+            Data scope the rule applies in. An asset rule takes the scope of its asset; otherwise it
+            defaults to the only scope of the request, or `default` for a request that sees every scope.
+            A scope outside the request is refused with `403`.
+          type: string
         scope:
           $ref: "#/components/schemas/IntegrityAllowRuleScope"
         assetIds:
@@ -3329,9 +3370,12 @@ components:
           format: date-time
     AssetSummary:
       type: object
-      required: [id, name, kind, group, tags, method, coverage, containerCount, firstSeen, lastSeen]
+      required: [id, scopeId, name, kind, group, tags, method, coverage, containerCount, firstSeen, lastSeen]
       properties:
         id:
+          type: string
+        scopeId:
+          description: Data scope, from the agent, scan target or cluster the asset comes from.
           type: string
         name:
           type: string
@@ -3387,9 +3431,12 @@ components:
           format: date-time
     Asset:
       type: object
-      required: [id, name, kind, group, tags, method, coverage, sections, containers, firstSeen, lastSeen]
+      required: [id, scopeId, name, kind, group, tags, method, coverage, sections, containers, firstSeen, lastSeen]
       properties:
         id:
+          type: string
+        scopeId:
+          description: Data scope, from the agent, scan target or cluster the asset comes from.
           type: string
         name:
           type: string
@@ -4000,9 +4047,12 @@ components:
       enum: [never, ok, failed]
     K8sCluster:
       type: object
-      required: [id, name, connection, execEnabled, filter, syncStatus, workloadCount, excludedCount, createdAt]
+      required: [id, scopeId, name, connection, execEnabled, filter, syncStatus, workloadCount, excludedCount, createdAt]
       properties:
         id:
+          type: string
+        scopeId:
+          description: Data scope of the record.
           type: string
         name:
           type: string
@@ -4047,6 +4097,12 @@ components:
       type: object
       required: [name, connection]
       properties:
+        scopeId:
+          description: |
+            Data scope of the new record. Defaults to the only scope of the request, or `default`
+            for a request that sees every scope. A scope outside the request is refused with `403`.
+            The credential must be of the same scope.
+          type: string
         name:
           type: string
           minLength: 1
@@ -4218,6 +4274,9 @@ components:
       properties:
         id:
           type: string
+        scopeId:
+          description: Data scope, from the Register Key the agent enrolled with. Absent for scanners, which every scope sees.
+          type: string
         kind:
           $ref: "#/components/schemas/AgentKind"
         hostname:
@@ -4319,9 +4378,12 @@ components:
       enum: [connecting, connected, disconnected, failed]
     ListenTarget:
       type: object
-      required: [id, address, state, createdAt]
+      required: [id, scopeId, address, state, createdAt]
       properties:
         id:
+          type: string
+        scopeId:
+          description: Data scope, that of the Register Key when the target has one.
           type: string
         address:
           description: "`host:port` the server dials."
@@ -4346,6 +4408,12 @@ components:
       type: object
       required: [address]
       properties:
+        scopeId:
+          description: |
+            Data scope of the new record. Defaults to the only scope of the request, or `default`
+            for a request that sees every scope. A scope outside the request is refused with `403`.
+            Ignored when the target has a Register Key: it takes the key's scope.
+          type: string
         address:
           type: string
           minLength: 1
@@ -4392,6 +4460,9 @@ components:
         id:
           description: The key id (11 characters, unpadded base64url). Not secret.
           type: string
+        scopeId:
+          description: Data scope of the key and of the agents it enrolls. Absent for scanner keys, which every scope sees.
+          type: string
         name:
           type: string
         target:
@@ -4431,6 +4502,12 @@ components:
       type: object
       required: [name, target, approval]
       properties:
+        scopeId:
+          description: |
+            Data scope of the new record. Defaults to the only scope of the request, or `default`
+            for a request that sees every scope. A scope outside the request is refused with `403`.
+            Not allowed for scanner keys: they have no scope and need a request that sees every scope.
+          type: string
         name:
           type: string
           minLength: 1
@@ -4564,9 +4641,12 @@ components:
           type: integer
     ScanTarget:
       type: object
-      required: [id, name, protocol, address, port, credentialId, sudo, hostKeyPinned, intervalMinutes, createdAt, detectDirIds, integrity, integrityEnabled]
+      required: [id, scopeId, name, protocol, address, port, credentialId, sudo, hostKeyPinned, intervalMinutes, createdAt, detectDirIds, integrity, integrityEnabled]
       properties:
         id:
+          type: string
+        scopeId:
+          description: Data scope of the record.
           type: string
         name:
           type: string
@@ -4618,6 +4698,12 @@ components:
       type: object
       required: [name, address, credentialId]
       properties:
+        scopeId:
+          description: |
+            Data scope of the new record. Defaults to the only scope of the request, or `default`
+            for a request that sees every scope. A scope outside the request is refused with `403`.
+            The credential must be of the same scope.
+          type: string
         name:
           type: string
           minLength: 1
@@ -4765,9 +4851,12 @@ components:
       enum: [ssh_key, ssh_password, kubeconfig]
     Credential:
       type: object
-      required: [id, name, kind, usedBy, createdAt]
+      required: [id, scopeId, name, kind, usedBy, createdAt]
       properties:
         id:
+          type: string
+        scopeId:
+          description: Data scope of the record.
           type: string
         name:
           type: string
@@ -4794,6 +4883,11 @@ components:
       type: object
       required: [name, kind]
       properties:
+        scopeId:
+          description: |
+            Data scope of the new record. Defaults to the only scope of the request, or `default`
+            for a request that sees every scope. A scope outside the request is refused with `403`.
+          type: string
         name:
           type: string
           minLength: 1
@@ -5797,6 +5891,12 @@ components:
       type: object
       required: [vulnId, scope, justification]
       properties:
+        scopeId:
+          description: |
+            Data scope the rule applies in. An asset rule takes the scope of its asset; otherwise it
+            defaults to the only scope of the request, or `default` for a request that sees every scope.
+            A scope outside the request is refused with `403`.
+          type: string
         vulnId:
           type: string
           minLength: 1
@@ -5814,9 +5914,12 @@ components:
           format: date-time
     TriageRule:
       type: object
-      required: [id, vulnId, scope, status, justification, createdBy, createdAt, active]
+      required: [id, scopeId, vulnId, scope, status, justification, createdBy, createdAt, active]
       properties:
         id:
+          type: string
+        scopeId:
+          description: Data scope the rule applies in.
           type: string
         vulnId:
           type: string

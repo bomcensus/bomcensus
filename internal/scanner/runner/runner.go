@@ -23,7 +23,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/bomcensus/bomcensus/internal/gen/agentapi"
+	"github.com/bomcensus/bomcensus/agentproto/dto"
 	"github.com/bomcensus/bomcensus/internal/report"
 	"github.com/bomcensus/bomcensus/internal/scanner/kube"
 	"github.com/bomcensus/bomcensus/internal/scanner/ssh"
@@ -36,7 +36,7 @@ type Sink interface {
 	// is queued for a later upload is not an error.
 	SubmitReport(ctx context.Context, encoded []byte, jobID string) error
 	// SubmitInventory hands over the inventory of a cluster.
-	SubmitInventory(ctx context.Context, inv agentapi.K8sInventory) error
+	SubmitInventory(ctx context.Context, inv dto.K8sInventory) error
 	// SubmitResult hands over the outcome of the job, after its reports.
 	SubmitResult(ctx context.Context, jobID string, res Result) error
 }
@@ -48,7 +48,7 @@ type ProbeSource func(ctx context.Context, os, arch string) ([]byte, error)
 // Result is the outcome of a job in its wire form. For scan_ssh it carries
 // the host key the target presented, in full (HostKey) and as fingerprint.
 type Result struct {
-	agentapi.ScanJobResult
+	dto.ScanJobResult
 }
 
 // Reason codes start the message of a failed or partial result
@@ -170,17 +170,17 @@ func (d Deps) kubeConfig(kubeconfig []byte) kube.Config {
 
 // newResult starts a result.
 func newResult(started time.Time) Result {
-	return Result{ScanJobResult: agentapi.ScanJobResult{StartedAt: started.UTC(), Status: agentapi.ScanJobStatusOk}}
+	return Result{ScanJobResult: dto.ScanJobResult{StartedAt: started.UTC(), Status: dto.ScanJobStatusOk}}
 }
 
 func (r *Result) fail(reason, detail string) {
-	r.Status = agentapi.ScanJobStatusFailed
+	r.Status = dto.ScanJobStatusFailed
 	r.setMessage(Message(reason, detail))
 }
 
 func (r *Result) partial(reason, detail string) {
-	if r.Status == agentapi.ScanJobStatusOk {
-		r.Status = agentapi.ScanJobStatusPartial
+	if r.Status == dto.ScanJobStatusOk {
+		r.Status = dto.ScanJobStatusPartial
 	}
 	r.setMessage(Message(reason, detail))
 }
@@ -223,7 +223,7 @@ func encodeReport(r *report.Report) ([]byte, error) {
 }
 
 // PolicyFromAPI converts the policy of a directive.
-func PolicyFromAPI(p agentapi.Policy) report.Policy {
+func PolicyFromAPI(p dto.Policy) report.Policy {
 	out := report.Policy{ExecVersion: p.ExecVersion, CollectCmdline: p.CollectCmdline, ScanContainers: p.ScanContainers}
 	if p.ExcludePaths != nil {
 		out.ExcludePaths = append([]string(nil), (*p.ExcludePaths)...)
@@ -241,8 +241,8 @@ func PolicyFromAPI(p agentapi.Policy) report.Policy {
 }
 
 // PolicyToAPI converts a policy to its directive form.
-func PolicyToAPI(p report.Policy) agentapi.Policy {
-	out := agentapi.Policy{ExecVersion: p.ExecVersion, CollectCmdline: p.CollectCmdline, ScanContainers: p.ScanContainers}
+func PolicyToAPI(p report.Policy) dto.Policy {
+	out := dto.Policy{ExecVersion: p.ExecVersion, CollectCmdline: p.CollectCmdline, ScanContainers: p.ScanContainers}
 	if len(p.ExcludePaths) > 0 {
 		ex := append([]string(nil), p.ExcludePaths...)
 		out.ExcludePaths = &ex

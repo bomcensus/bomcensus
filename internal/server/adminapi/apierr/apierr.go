@@ -15,6 +15,7 @@ import (
 
 	gen "github.com/bomcensus/bomcensus/internal/gen/adminapi"
 	"github.com/bomcensus/bomcensus/internal/server/store"
+	"github.com/bomcensus/bomcensus/server/scope"
 )
 
 // Stable error codes.
@@ -95,8 +96,9 @@ func (e *Error) Wrap(err error) *Error {
 
 // From returns the status and body for err. Store errors map as follows:
 // ErrNotFound 404, ErrInvalid 400, ErrConflict, ErrInUse and ErrInvalidState
-// 409. A request body over its limit is 413. Anything else is 500 with a
-// generic message.
+// 409. Data scope errors: scope.ErrOutside 403, scope.ErrInvalidID 400;
+// scope.ErrNone (a missing scope, a bug) is 500. A request body over its
+// limit is 413. Anything else is 500 with a generic message.
 func From(err error) (int, gen.Error) {
 	var e *Error
 	if errors.As(err, &e) {
@@ -106,6 +108,10 @@ func From(err error) (int, gen.Error) {
 	switch {
 	case errors.As(err, &tooLarge):
 		return http.StatusRequestEntityTooLarge, gen.Error{Code: CodeTooLarge, Message: "request body too large"}
+	case errors.Is(err, scope.ErrOutside):
+		return http.StatusForbidden, gen.Error{Code: CodeForbidden, Message: "outside the data scope of the request"}
+	case errors.Is(err, scope.ErrInvalidID):
+		return http.StatusBadRequest, gen.Error{Code: CodeInvalidArgument, Message: "invalid scope id"}
 	case errors.Is(err, store.ErrNotFound):
 		return http.StatusNotFound, gen.Error{Code: CodeNotFound, Message: "not found"}
 	case errors.Is(err, store.ErrInvalid):

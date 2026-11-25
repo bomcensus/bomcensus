@@ -222,6 +222,9 @@ func (d *DB) ReplaceProcesses(ctx context.Context, scope store.ProcessScope, sna
 
 // DeleteProcessEventsBefore implements store.InventoryRetention.
 func (d *DB) DeleteProcessEventsBefore(ctx context.Context, t time.Time) (int64, error) {
+	if err := requireAll(ctx, "delete process events"); err != nil {
+		return 0, err
+	}
 	tag, err := d.q.Exec(ctx, `DELETE FROM process_events WHERE at < $1`, t.UTC())
 	if err != nil {
 		return 0, ivErr("delete process events", err)
@@ -288,7 +291,11 @@ func (d *DB) ListProcesses(ctx context.Context, f store.ProcessFilter, p store.P
 	if err != nil {
 		return nil, 0, err
 	}
-	q := &ivQuery{}
+	q, sc, err := scoped(ctx, op)
+	if err != nil {
+		return nil, 0, err
+	}
+	q.and(sc.col("a.scope_id"))
 	q.where("a.gone_at IS NULL")
 	if f.AssetID != "" {
 		if !ivValidID(f.AssetID) {
@@ -354,7 +361,11 @@ func (d *DB) ListListenPorts(ctx context.Context, f store.ListenPortFilter, p st
 	if err != nil {
 		return nil, 0, err
 	}
-	q := &ivQuery{}
+	q, sc, err := scoped(ctx, op)
+	if err != nil {
+		return nil, 0, err
+	}
+	q.and(sc.col("a.scope_id"))
 	q.where("a.gone_at IS NULL")
 	if f.AssetID != "" {
 		if !ivValidID(f.AssetID) {

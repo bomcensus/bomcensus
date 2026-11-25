@@ -11,7 +11,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/labels"
 
-	"github.com/bomcensus/bomcensus/internal/gen/agentapi"
+	"github.com/bomcensus/bomcensus/agentproto/dto"
 )
 
 // Filter selects the workloads of a cluster (ARCH 4.3).
@@ -37,7 +37,7 @@ type Filter struct {
 }
 
 // FilterFromAPI converts the directive filter.
-func FilterFromAPI(f agentapi.K8sFilter) Filter {
+func FilterFromAPI(f dto.K8sFilter) Filter {
 	return Filter{
 		NamespaceInclude:  f.NamespaceInclude,
 		NamespaceExclude:  f.NamespaceExclude,

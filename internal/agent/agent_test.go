@@ -18,9 +18,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bomcensus/bomcensus/agentproto/dto"
 	"github.com/bomcensus/bomcensus/internal/agent/internal/fakeserver"
 	"github.com/bomcensus/bomcensus/internal/agent/state"
-	"github.com/bomcensus/bomcensus/internal/gen/agentapi"
 	"github.com/bomcensus/bomcensus/internal/pki"
 	"github.com/bomcensus/bomcensus/internal/report"
 )
@@ -228,10 +228,10 @@ func sectionsOf(r *report.Report) map[string]*report.SectionMeta {
 	return out
 }
 
-func lastPoll(h *harness) agentapi.PollRequest {
+func lastPoll(h *harness) dto.PollRequest {
 	p := h.srv.Polls()
 	if len(p) == 0 {
-		return agentapi.PollRequest{}
+		return dto.PollRequest{}
 	}
 	return p[len(p)-1]
 }
@@ -305,7 +305,7 @@ func TestCollectUploadAndDirectives(t *testing.T) {
 	if strings.Contains(lines[2], "known_digests\":{\"host\"") {
 		t.Fatal("full collection sent known digests")
 	}
-	if p := lastPoll(h); p.Privilege.Level != agentapi.NonRoot || p.Version != "1.0.0" || p.ConnectMode != agentapi.Connect || p.TlsMode != agentapi.Pinned {
+	if p := lastPoll(h); p.Privilege.Level != dto.NonRoot || p.Version != "1.0.0" || p.ConnectMode != dto.Connect || p.TlsMode != dto.Pinned {
 		t.Fatalf("poll status = %+v", p)
 	}
 	if p := lastPoll(h); p.ObservedServerCert == nil || p.ObservedServerCert.Sha256 != hexFingerprint(h.srv.Leaf) {

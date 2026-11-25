@@ -21,8 +21,11 @@ import (
 
 	gen "github.com/bomcensus/bomcensus/internal/gen/adminapi"
 	"github.com/bomcensus/bomcensus/internal/server/adminapi/inventoryapi"
-	"github.com/bomcensus/bomcensus/internal/server/auth"
+	"github.com/bomcensus/bomcensus/internal/server/session"
 	"github.com/bomcensus/bomcensus/internal/server/store"
+	"github.com/bomcensus/bomcensus/server/auth"
+	"github.com/bomcensus/bomcensus/server/authz"
+	"github.com/bomcensus/bomcensus/server/scope"
 )
 
 type memSessions struct {
@@ -63,9 +66,9 @@ type adminOnly struct{}
 
 func (adminOnly) Authenticate(_ context.Context, u, p string) (auth.Principal, error) {
 	if u == "admin" && p == "secret" {
-		return auth.Principal{ID: "env:admin", Name: "admin"}, nil
+		return auth.User{UserID: "env:admin", UserName: "admin"}, nil
 	}
-	return auth.Principal{}, auth.ErrInvalidCredentials
+	return nil, auth.ErrInvalidCredentials
 }
 
 type stub struct{ gen.StrictServerInterface }
@@ -78,8 +81,18 @@ type testAPI struct {
 }
 
 // GetAsset returns the error named by the id.
-func (testAPI) GetAsset(_ context.Context, req gen.GetAssetRequestObject) (gen.GetAssetResponseObject, error) {
+func (testAPI) GetAsset(ctx context.Context, req gen.GetAssetRequestObject) (gen.GetAssetResponseObject, error) {
 	switch req.Id {
+	case "scope":
+		// The name reports the scope the handler sees.
+		name := "none"
+		if s, ok := scope.From(ctx); ok {
+			name = strings.Join(s.IDs(), ",")
+			if s.IsAll() {
+				name = "all"
+			}
+		}
+		return gen.GetAsset200JSONResponse{Id: req.Id, Name: name, Tags: []string{}, Sections: []gen.SectionCoverage{}, Containers: []gen.AssetContainer{}}, nil
 	case "missing":
 		return nil, fmt.Errorf("postgres: get asset: %w", store.ErrNotFound)
 	case "invalid":
@@ -124,13 +137,20 @@ var testConsole = fstest.MapFS{
 
 func newTestRouter(t *testing.T, mod func(*Options)) http.Handler {
 	t.Helper()
-	svc := auth.NewService(auth.Config{Provider: adminOnly{}, Sessions: &memSessions{m: map[string]store.Session{}}})
+	svc := session.NewService(session.Config{Provider: adminOnly{}, Sessions: &memSessions{m: map[string]store.Session{}}})
 	h := inventoryapi.New(inventoryapi.Config{Auth: svc})
-	o := Options{Handlers: testAPI{Handlers: h}, Auth: svc, Console: testConsole}
+	o := Options{Handlers: testAPI{Handlers: h}, Session: svc, Console: testConsole}
 	if mod != nil {
 		mod(&o)
 	}
-	return NewRouter(o)
+	if o.Session == nil {
+		o.Handlers = testAPI{Handlers: inventoryapi.New(inventoryapi.Config{})}
+	}
+	r, err := NewRouter(o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return r
 }
 
 type call struct {
@@ -149,7 +169,7 @@ func do(h http.Handler, c call) *httptest.ResponseRecorder {
 		r.Header.Set("Content-Type", "application/json")
 	}
 	if c.method != http.MethodGet && c.method != http.MethodHead {
-		r.Header.Set(auth.CSRFHeader, auth.CSRFHeaderValue)
+		r.Header.Set(session.CSRFHeader, session.CSRFHeaderValue)
 	}
 	for k, v := range c.headers {
 		r.Header.Set(k, v)
@@ -181,7 +201,7 @@ func login(t *testing.T, h http.Handler) *http.Cookie {
 		t.Fatalf("login: %d %s", w.Code, w.Body)
 	}
 	cs := w.Result().Cookies()
-	if len(cs) != 1 || cs[0].Name != auth.CookieName || !cs[0].HttpOnly || cs[0].SameSite != http.SameSiteStrictMode {
+	if len(cs) != 1 || cs[0].Name != session.CookieName || !cs[0].HttpOnly || cs[0].SameSite != http.SameSiteStrictMode {
 		t.Fatalf("login cookie: %+v", cs)
 	}
 	return cs[0]
@@ -194,7 +214,7 @@ func TestAuthRequired(t *testing.T) {
 		{method: http.MethodGet, path: "/api/v1/auth/me"},
 		{method: http.MethodGet, path: "/api/v1/assets/x"},
 		{method: http.MethodPost, path: "/api/v1/auth/logout"},
-		{method: http.MethodGet, path: "/api/v1/meta", cookie: &http.Cookie{Name: auth.CookieName, Value: strings.Repeat("A", 43)}},
+		{method: http.MethodGet, path: "/api/v1/meta", cookie: &http.Cookie{Name: session.CookieName, Value: strings.Repeat("A", 43)}},
 	} {
 		w := do(h, c)
 		if w.Code != http.StatusUnauthorized || errCode(t, w) != "unauthenticated" {
@@ -250,7 +270,7 @@ func TestLoginThrottle(t *testing.T) {
 func TestCSRFRejected(t *testing.T) {
 	h := newTestRouter(t, nil)
 	w := do(h, call{method: http.MethodPost, path: "/api/v1/auth/login", body: `{"username":"admin","password":"secret"}`,
-		headers: map[string]string{auth.CSRFHeader: ""}})
+		headers: map[string]string{session.CSRFHeader: ""}})
 	if w.Code != http.StatusForbidden || errCode(t, w) != "forbidden" {
 		t.Fatalf("missing header: %d %s", w.Code, w.Body)
 	}
@@ -379,10 +399,94 @@ func TestBodyLimit(t *testing.T) {
 	r := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", io.MultiReader(strings.NewReader(big)))
 	r.ContentLength = -1
 	r.Header.Set("Content-Type", "application/json")
-	r.Header.Set(auth.CSRFHeader, auth.CSRFHeaderValue)
+	r.Header.Set(session.CSRFHeader, session.CSRFHeaderValue)
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, r)
 	if rec.Code != http.StatusRequestEntityTooLarge {
 		t.Fatalf("streamed body: %d %s", rec.Code, rec.Body)
+	}
+}
+
+// headerAuth is a customer middleware: X-User names the principal.
+func headerAuth(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if u := r.Header.Get("X-User"); u != "" {
+			r = r.WithContext(auth.WithPrincipal(r.Context(), tenantUser{auth.User{UserID: "hdr:" + u, UserName: u}, "t-" + u}))
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// tenantUser is a customer principal type.
+type tenantUser struct {
+	auth.User
+	tenant string
+}
+
+func TestCustomAuthentication(t *testing.T) {
+	var got authz.Request
+	h := newTestRouter(t, func(o *Options) {
+		o.Session = nil
+		o.Middleware = []func(http.Handler) http.Handler{headerAuth}
+		o.Authorizer = authz.AuthorizerFunc(func(_ context.Context, p auth.Principal, req authz.Request) (authz.Decision, error) {
+			got = req
+			tu, ok := p.(tenantUser)
+			if !ok {
+				return authz.Decision{}, fmt.Errorf("principal type %T: %w", p, authz.ErrForbidden)
+			}
+			if req.Operation == authz.OpCollectAsset && tu.UserName != "admin" {
+				return authz.Decision{}, authz.ErrForbidden
+			}
+			return authz.Decision{Scope: scope.Of(tu.tenant)}, nil
+		})
+	})
+
+	// The login is disabled without a session service.
+	w := do(h, call{method: http.MethodPost, path: "/api/v1/auth/login", body: `{"username":"admin","password":"secret"}`})
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("login without sessions: %d %s", w.Code, w.Body)
+	}
+	if w := do(h, call{method: http.MethodGet, path: "/api/v1/assets/scope"}); w.Code != http.StatusUnauthorized {
+		t.Fatalf("no principal: %d", w.Code)
+	}
+
+	w = do(h, call{method: http.MethodGet, path: "/api/v1/assets/scope", headers: map[string]string{"X-User": "bob"}})
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"name":"t-bob"`) {
+		t.Fatalf("scoped get: %d %s", w.Code, w.Body)
+	}
+	if got.Operation != authz.OpGetAsset || got.Params["id"] != "scope" || got.Method != http.MethodGet || got.Path != "/api/v1/assets/scope" {
+		t.Fatalf("authorizer request %+v", got)
+	}
+	w = do(h, call{method: http.MethodGet, path: "/api/v1/auth/me", headers: map[string]string{"X-User": "bob"}})
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"hdr:bob"`) {
+		t.Fatalf("me: %d %s", w.Code, w.Body)
+	}
+
+	// Header authenticated requests carry no ambient credentials: no CSRF
+	// header is needed.
+	w = do(h, call{method: http.MethodPost, path: "/api/v1/assets/x/collect", headers: map[string]string{"X-User": "bob", session.CSRFHeader: ""}})
+	if w.Code != http.StatusForbidden || errCode(t, w) != "forbidden" {
+		t.Fatalf("denied operation: %d %s", w.Code, w.Body)
+	}
+}
+
+func TestSessionScopeAndMounts(t *testing.T) {
+	mounted := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = io.WriteString(w, "callback "+r.URL.Path) })
+	h := newTestRouter(t, func(o *Options) {
+		o.Mounts = map[string]http.Handler{"/oidc": mounted}
+	})
+	cookie := login(t, h)
+	w := do(h, call{method: http.MethodGet, path: "/api/v1/assets/scope", cookie: cookie})
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"name":"all"`) {
+		t.Fatalf("default authorizer scope: %d %s", w.Code, w.Body)
+	}
+	w = do(h, call{method: http.MethodGet, path: "/oidc/callback"})
+	if w.Code != http.StatusOK || w.Body.String() != "callback /oidc/callback" || w.Header().Get("X-Frame-Options") != "DENY" {
+		t.Fatalf("mount: %d %q", w.Code, w.Body)
+	}
+	for _, bad := range []string{"/api/v1/x", "/api", "/", "oidc"} {
+		if _, err := NewRouter(Options{Mounts: map[string]http.Handler{bad: mounted}}); err == nil {
+			t.Errorf("mount %q accepted", bad)
+		}
 	}
 }

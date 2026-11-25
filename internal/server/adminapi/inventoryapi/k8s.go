@@ -43,6 +43,7 @@ func (h *Handlers) ListK8sClusters(ctx context.Context, req gen.ListK8sClustersR
 	if f.Q, err = query(prm.Q); err != nil {
 		return nil, err
 	}
+	f.ScopeID = deref(prm.ScopeId)
 	if f.Sort, err = sortKey(prm.Sort, map[string]string{
 		"name": "name", "version": "version", "connection": "connection", "execEnabled": "exec_enabled",
 		"workloadCount": "workloads", "lastSync": "last_sync",
@@ -80,7 +81,12 @@ func (h *Handlers) CreateK8sCluster(ctx context.Context, req gen.CreateK8sCluste
 	if b.Filter != nil {
 		cfg.Filter = k8sFilterIn(*b.Filter)
 	}
-	cfg, err := h.validateCluster(ctx, cfg)
+	scopeID, err := newScopeID(ctx, b.ScopeId)
+	if err != nil {
+		return nil, err
+	}
+	cfg.ScopeID = scopeID
+	cfg, err = h.validateCluster(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}

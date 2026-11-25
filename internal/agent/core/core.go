@@ -3,8 +3,9 @@
 // Additional terms apply. See LICENSING.md.
 
 // Package core is the part of the host agent that the scanner shares:
-// enrollment, the connection to the server in both connection modes,
-// message signatures, the long-poll loop with directive dispatch, periodic
+// enrollment, the connection to the server through a channel (the HTTP
+// channel in both connection modes, or one registered in Options.Channels),
+// the long-poll loop with directive dispatch, periodic
 // tasks, certificate renewal, trust bundle synchronization and the report
 // upload spool.
 //
@@ -28,10 +29,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/bomcensus/bomcensus/agentproto"
+	"github.com/bomcensus/bomcensus/agentproto/dto"
 	"github.com/bomcensus/bomcensus/internal/agent/state"
-	"github.com/bomcensus/bomcensus/internal/gen/agentapi"
 	"github.com/bomcensus/bomcensus/internal/link"
-	"github.com/bomcensus/bomcensus/internal/msgsig"
 	"github.com/bomcensus/bomcensus/internal/pki"
 )
 
@@ -52,7 +53,7 @@ const (
 // DirectiveHandler handles one directive. Handlers run one after another on
 // the poll loop, so long work must be handed to another goroutine. The
 // directive is acknowledged after the handler returns, whatever the result.
-type DirectiveHandler func(ctx context.Context, d agentapi.Directive) error
+type DirectiveHandler func(ctx context.Context, d dto.Directive) error
 
 // Task is a periodic job.
 type Task struct {
@@ -69,7 +70,7 @@ type Task struct {
 }
 
 // StatusFunc adds component specific status to a poll request.
-type StatusFunc func(ctx context.Context, req *agentapi.PollRequest)
+type StatusFunc func(ctx context.Context, req *dto.PollRequest)
 
 // Options configures a Runtime. Zero durations select the defaults.
 type Options struct {
@@ -110,6 +111,9 @@ type Options struct {
 	OnListening func(net.Addr)
 	// Connect tunes the connect-mode HTTP transport.
 	Connect link.ConnectOptions
+	// Channels are further channels by name, chosen at enrollment
+	// (EnrollOptions.Channel).
+	Channels map[string]agentproto.ChannelFactory
 	// Now is the clock (default time.Now).
 	Now func() time.Time
 }
@@ -149,9 +153,7 @@ type Runtime struct {
 	spool   *state.Spool
 	keys    *serverKeys
 
-	lc     *linkConn
-	client *agentapi.ClientWithResponses
-	httpc  *http.Client
+	ch agentproto.Channel
 
 	mu       sync.RWMutex
 	enr      state.Enrollment
@@ -159,7 +161,7 @@ type Runtime struct {
 	tlsCert  *tls.Certificate
 	tempCert *tls.Certificate
 	bundle   *pki.TrustBundle
-	config   *agentapi.AgentConfig
+	config   *dto.AgentConfig
 	extra    []*x509.Certificate
 	// revoked is the record of earlier runs that ended with agent_revoked.
 	// While it is set, connect mode presents no client certificate: the
@@ -171,7 +173,7 @@ type Runtime struct {
 	handlers    map[string]DirectiveHandler
 	tasks       []Task
 	statusFuncs []StatusFunc
-	configFuncs []func(context.Context, agentapi.AgentConfig)
+	configFuncs []func(context.Context, dto.AgentConfig)
 	pollFuncs   []func(context.Context)
 	uploadFuncs []func(context.Context, ReportMeta)
 
@@ -256,7 +258,7 @@ func New(opts Options) (*Runtime, error) {
 		seen:     map[string]struct{}{},
 	}
 	r.setIdentity(ident)
-	var cfg agentapi.AgentConfig
+	var cfg dto.AgentConfig
 	if ok, err := st.LoadServerConfig(&cfg); err != nil {
 		r.log.Warn("ignoring stored server configuration", "error", err)
 	} else if ok {
@@ -279,7 +281,7 @@ func (r *Runtime) OnStatus(f StatusFunc) { r.statusFuncs = append(r.statusFuncs,
 
 // OnConfig registers a function called with the server configuration at
 // start (when one is stored) and whenever it changes.
-func (r *Runtime) OnConfig(f func(context.Context, agentapi.AgentConfig)) {
+func (r *Runtime) OnConfig(f func(context.Context, dto.AgentConfig)) {
 	r.configFuncs = append(r.configFuncs, f)
 }
 
@@ -313,11 +315,11 @@ func (r *Runtime) Enrollment() state.Enrollment {
 func (r *Runtime) AgentID() string { return r.Enrollment().AgentID }
 
 // Config returns the last configuration received from the server.
-func (r *Runtime) Config() (agentapi.AgentConfig, bool) {
+func (r *Runtime) Config() (dto.AgentConfig, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	if r.config == nil {
-		return agentapi.AgentConfig{}, false
+		return dto.AgentConfig{}, false
 	}
 	return *r.config, true
 }
@@ -336,32 +338,29 @@ func (r *Runtime) TrustBundle() *pki.TrustBundle {
 	return r.bundle
 }
 
-// Client returns the signed API client. It is valid during Run.
-func (r *Runtime) Client() *agentapi.ClientWithResponses { return r.client }
-
-// HTTPClient returns the signed HTTP client used by Client, for streamed
-// downloads. It is valid during Run.
-func (r *Runtime) HTTPClient() *http.Client { return r.httpc }
-
-// BaseURL returns the URL prefix of the protocol, ending in "/". It is
-// valid during Run.
-func (r *Runtime) BaseURL() string { return r.lc.baseURL }
+// API returns the operations of the agent protocol over the open
+// channel. It is valid during Run.
+func (r *Runtime) API() agentproto.API { return r.ch }
 
 // ObservedIssuer returns the certificate that signed the server certificate
 // seen in the last handshake, or nil.
 func (r *Runtime) ObservedIssuer() *x509.Certificate {
-	if r.lc == nil {
+	po, ok := r.ch.(agentproto.PeerObserving)
+	if !ok {
 		return nil
 	}
-	return r.lc.observed.Issuer()
+	_, _, issuer, _ := po.ObservedServer()
+	return issuer
 }
 
 // ObservedServer returns the server certificate seen in the last handshake.
 func (r *Runtime) ObservedServer() (fingerprint [32]byte, leaf *x509.Certificate, ok bool) {
-	if r.lc == nil {
+	po, ok := r.ch.(agentproto.PeerObserving)
+	if !ok {
 		return fingerprint, nil, false
 	}
-	return r.lc.observed.Last()
+	fingerprint, leaf, _, ok = po.ObservedServer()
+	return fingerprint, leaf, ok
 }
 
 // Stop ends Run, which returns err after shutting down.
@@ -420,80 +419,43 @@ func (r *Runtime) listenerCert() (*tls.Certificate, error) {
 	return r.tempCert, nil
 }
 
-func (r *Runtime) linkParams() linkParams {
-	r.mu.RLock()
-	enr := r.enr
-	extra := r.extra
-	r.mu.RUnlock()
-	mode, _ := link.ParseTLSMode(enr.TLSMode)
-	p := linkParams{
-		mode:        enr.ConnectMode,
-		serverURL:   enr.ServerURL,
-		serverName:  enr.ServerName,
-		tlsMode:     mode,
-		verify:      serverVerifier(r.pin, enr.ServerName, r.currentBundle),
-		extraRoots:  extra,
-		cert:        r.clientCert,
-		listenAddr:  enr.ListenAddress,
-		onListening: r.opts.OnListening,
-		connect:     r.opts.Connect,
-		logger:      r.log,
-	}
-	if enr.ConnectMode == ModeListen {
-		p.cert = r.listenerCert
-	}
-	return p
-}
-
-// attach sets up the signed clients on lc.
-func (r *Runtime) attach(lc *linkConn) error {
-	r.lc = lc
+// attach sets up the runtime on an open channel, which then
+// authenticates its calls with this runtime's identity.
+func (r *Runtime) attach(ch agentproto.Channel, owner *channelOwner) error {
+	r.ch = ch
+	owner.r.Store(r)
 	serverName := r.Enrollment().ServerName
 	verify := serverVerifier(r.pin, serverName, r.currentBundle)
 	if r.keys == nil {
 		r.keys = &serverKeys{}
 	}
 	r.keys.fetch = func(ctx context.Context) ([]*x509.Certificate, error) {
-		return fetchServerChain(ctx, lc.base, lc.baseURL)
+		return fetchServerChain(ctx, ch)
 	}
 	r.keys.verify = func(chain []*x509.Certificate) error {
 		return verify(chain, x509.ExtKeyUsageServerAuth)
 	}
-	r.httpc = &http.Client{Transport: &signer{r: r}}
-	c, err := agentapi.NewClientWithResponses(lc.baseURL, agentapi.WithHTTPClient(r.httpc))
-	if err != nil {
-		return err
-	}
-	r.client = c
 	return nil
 }
 
-// signer signs with the identity current at the time of each request.
-type signer struct {
-	r   *Runtime
-	key ed25519.PrivateKey
+type signKeyCtx struct{}
+
+// withSigningKey makes the calls of ctx authenticate with key instead of
+// the identity key.
+func withSigningKey(ctx context.Context, key ed25519.PrivateKey) context.Context {
+	return context.WithValue(ctx, signKeyCtx{}, key)
 }
 
-func (s *signer) RoundTrip(req *http.Request) (*http.Response, error) {
-	key := s.key
+// channelIdentity is ChannelParams.Identity: the identity current at the
+// time of each call.
+func (r *Runtime) channelIdentity(ctx context.Context) agentproto.Identity {
+	key, _ := ctx.Value(signKeyCtx{}).(ed25519.PrivateKey)
 	if key == nil {
-		key = s.r.identity().Key
+		if id := r.identity(); id != nil {
+			key = id.Key
+		}
 	}
-	t := &msgsig.Transport{
-		Base:       s.r.lc.base,
-		AgentID:    s.r.AgentID(),
-		Key:        key,
-		Counter:    s.r.counter,
-		ServerKeys: s.r.keys,
-		Exempt:     exemptPaths,
-		Now:        s.r.opts.Now,
-	}
-	return t.RoundTrip(req)
-}
-
-// clientWithKey returns a client signing with key instead of the identity.
-func (r *Runtime) clientWithKey(key ed25519.PrivateKey) (*agentapi.ClientWithResponses, error) {
-	return agentapi.NewClientWithResponses(r.lc.baseURL, agentapi.WithHTTPClient(&http.Client{Transport: &signer{r: r, key: key}}))
+	return agentproto.Identity{AgentID: r.AgentID(), Key: key}
 }
 
 // Run connects to the server and runs the poll loop, the built-in tasks and
@@ -521,17 +483,17 @@ func (r *Runtime) Run(ctx context.Context) error {
 		}
 	}
 
-	if r.lc == nil {
-		lc, err := openLink(rctx, r.linkParams())
+	if r.ch == nil {
+		ch, owner, err := r.openChannel(rctx)
 		if err != nil {
 			return err
 		}
-		if err := r.attach(lc); err != nil {
-			lc.close()
+		if err := r.attach(ch, owner); err != nil {
+			_ = ch.Close()
 			return err
 		}
 	}
-	defer r.lc.close()
+	defer r.ch.Close()
 
 	return r.runResult(ctx, rctx, r.run(rctx))
 }
@@ -563,10 +525,10 @@ func (r *Runtime) revocation() *state.Revocation {
 }
 
 // isRevoked reports whether err is a verified agent_revoked answer. An
-// APIError is only built from responses whose signature verified.
+// agentproto.Error is only built from answers the channel authenticated.
 func isRevoked(err error) bool {
-	var ae *APIError
-	return errors.As(err, &ae) && ae.Status == http.StatusForbidden && ae.Code == msgsig.CodeAgentRevoked
+	ae, ok := agentproto.AsError(err)
+	return ok && ae.Status == http.StatusForbidden && ae.Code == agentproto.CodeAgentRevoked
 }
 
 // revokedByServer records the revocation and stops the runtime with
@@ -604,8 +566,8 @@ func (r *Runtime) clearRevoked() {
 	if err := r.st.ClearRevocation(); err != nil {
 		r.log.Warn("remove revocation record", "error", err)
 	}
-	if r.lc != nil && r.lc.reset != nil {
-		r.lc.reset()
+	if r.ch != nil {
+		r.ch.Reset()
 	}
 }
 

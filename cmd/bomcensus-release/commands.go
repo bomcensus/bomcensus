@@ -12,6 +12,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -379,5 +380,40 @@ func runVerify(ctx context.Context, args []string, stdout io.Writer) error {
 		}
 		fmt.Fprintf(stdout, "%s: version %s, platforms %s: OK\n", path, b.Version(), strings.Join(ps, " "))
 	}
+	return nil
+}
+
+// runCheckOfficial fails unless every manifest*.pub of --keys is an
+// official release key (internal/sign/official.go). The release script runs
+// it so that an official release always carries its key in that list,
+// which builds with their own channels check against.
+func runCheckOfficial(_ context.Context, args []string, stdout io.Writer) error {
+	fs := newFlagSet("check-official", "--keys DIR")
+	dir := fs.String("keys", "", "key directory with manifest*.pub")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *dir == "" || fs.NArg() != 0 {
+		fs.Usage()
+		return errors.New("check-official: --keys is required")
+	}
+	pubFiles, err := filepath.Glob(filepath.Join(*dir, "manifest*.pub"))
+	if err != nil {
+		return err
+	}
+	if len(pubFiles) == 0 {
+		return fmt.Errorf("check-official: no manifest*.pub in %s", *dir)
+	}
+	for _, f := range pubFiles {
+		k, err := readManifestPublicKey(f)
+		if err != nil {
+			return err
+		}
+		if !sign.IsOfficialKey(k) {
+			return fmt.Errorf("check-official: %s (%s) is not listed in internal/sign/official.go",
+				filepath.Base(f), base64.StdEncoding.EncodeToString(k))
+		}
+	}
+	fmt.Fprintln(stdout, "all manifest keys are official")
 	return nil
 }

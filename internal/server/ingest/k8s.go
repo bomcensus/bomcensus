@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bomcensus/bomcensus/internal/gen/agentapi"
+	"github.com/bomcensus/bomcensus/agentproto/dto"
 	"github.com/bomcensus/bomcensus/internal/report"
 	"github.com/bomcensus/bomcensus/internal/server/normalize"
 	"github.com/bomcensus/bomcensus/internal/server/store"
@@ -401,7 +401,7 @@ func findPod(ctx context.Context, st store.Store, clusterID, namespace, podName 
 // IngestK8sInventory replaces the stored inventory of a cluster. Only the
 // cluster's scanner may send it. An inventory collected before the last
 // stored sync is ignored.
-func (s *Service) IngestK8sInventory(ctx context.Context, sender Sender, clusterID string, inv agentapi.K8sInventory) error {
+func (s *Service) IngestK8sInventory(ctx context.Context, sender Sender, clusterID string, inv dto.K8sInventory) error {
 	if inv.ClusterId != "" && inv.ClusterId != clusterID {
 		return newErr(ErrInvalid, "inventory of cluster %q sent for %q", inv.ClusterId, clusterID)
 	}
@@ -443,7 +443,7 @@ func (s *Service) IngestK8sInventory(ctx context.Context, sender Sender, cluster
 
 // k8sInventory converts the scanner payload. Pods are grouped under their
 // workload; a pod whose workload is missing from the payload gets one.
-func k8sInventory(inv agentapi.K8sInventory, at time.Time) (store.K8sInventory, []store.ImageObservation, error) {
+func k8sInventory(inv dto.K8sInventory, at time.Time) (store.K8sInventory, []store.ImageObservation, error) {
 	type wkey struct{ ns, kind, name string }
 	out := store.K8sInventory{Version: inv.ServerVersion, At: at}
 	index := map[wkey]int{}

@@ -24,7 +24,7 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 	k8stesting "k8s.io/client-go/testing"
 
-	"github.com/bomcensus/bomcensus/internal/gen/agentapi"
+	"github.com/bomcensus/bomcensus/agentproto/dto"
 )
 
 func TestNormalizeDigest(t *testing.T) {
@@ -244,7 +244,7 @@ func TestSyncOwnerResolution(t *testing.T) {
 		t.Errorf("payload %+v", pl)
 	}
 	for _, p := range pl.Pods {
-		if p.Phase != agentapi.K8sPodPhaseRunning || len(p.Containers) != 1 || p.Containers[0].ImageDigest == nil {
+		if p.Phase != dto.K8sPodPhaseRunning || len(p.Containers) != 1 || p.Containers[0].ImageDigest == nil {
 			t.Errorf("payload pod %+v", p)
 		}
 	}

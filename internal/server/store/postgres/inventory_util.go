@@ -57,23 +57,33 @@ func (d *DB) ivLock(ctx context.Context, key string) error {
 }
 
 // ivLockAsset locks the asset row against concurrent replace operations and
-// fails with ErrNotFound when it does not exist.
+// fails with ErrNotFound when it does not exist in the scope of ctx.
 func (d *DB) ivLockAsset(ctx context.Context, op, assetID string) error {
+	q, sc, err := scoped(ctx, op, assetID)
+	if err != nil {
+		return err
+	}
 	if !ivValidID(assetID) {
 		return ivNotFound(op)
 	}
 	var one int
-	err := d.q.QueryRow(ctx, `SELECT 1 FROM assets WHERE id = $1 FOR NO KEY UPDATE`, assetID).Scan(&one)
+	err = d.q.QueryRow(ctx, `SELECT 1 FROM assets WHERE id = $1 AND `+sc.col("scope_id")+` FOR NO KEY UPDATE`,
+		q.args...).Scan(&one)
 	return ivErr(op, err)
 }
 
 // ivLockCluster is ivLockAsset for a cluster row.
 func (d *DB) ivLockCluster(ctx context.Context, op, clusterID string) error {
+	q, sc, err := scoped(ctx, op, clusterID)
+	if err != nil {
+		return err
+	}
 	if !ivValidID(clusterID) {
 		return ivNotFound(op)
 	}
 	var one int
-	err := d.q.QueryRow(ctx, `SELECT 1 FROM k8s_clusters WHERE id = $1 FOR NO KEY UPDATE`, clusterID).Scan(&one)
+	err = d.q.QueryRow(ctx, `SELECT 1 FROM k8s_clusters WHERE id = $1 AND `+sc.col("scope_id")+` FOR NO KEY UPDATE`,
+		q.args...).Scan(&one)
 	return ivErr(op, err)
 }
 
@@ -217,6 +227,11 @@ func (q *ivQuery) where(cond string, args ...any) {
 		ph[i] = q.arg(a)
 	}
 	q.conds = append(q.conds, fmt.Sprintf(cond, ph...))
+}
+
+// and adds a condition that has no parameters of its own.
+func (q *ivQuery) and(cond string) {
+	q.conds = append(q.conds, cond)
 }
 
 func (q *ivQuery) whereSQL() string {

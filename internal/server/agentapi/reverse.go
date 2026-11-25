@@ -18,7 +18,7 @@ import (
 	"sync"
 	"time"
 
-	gen "github.com/bomcensus/bomcensus/internal/gen/agentapi"
+	"github.com/bomcensus/bomcensus/agentproto/dto"
 	"github.com/bomcensus/bomcensus/internal/link"
 	"github.com/bomcensus/bomcensus/internal/server/store"
 )
@@ -354,8 +354,8 @@ func (t *reverseTarget) checkStart(body []byte) error {
 // enroll/finish response was written, so the agent is redialed with the
 // certificate it just received.
 func (t *reverseTarget) maybeReconnect(w http.ResponseWriter, resp []byte) {
-	var res gen.EnrollResult
-	if json.Unmarshal(resp, &res) != nil || res.Status != gen.EnrollStatusApproved {
+	var res dto.EnrollResult
+	if json.Unmarshal(resp, &res) != nil || res.Status != dto.EnrollStatusApproved {
 		return
 	}
 	_ = http.NewResponseController(w).Flush()

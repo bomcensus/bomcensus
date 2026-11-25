@@ -26,7 +26,7 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 
-	"github.com/bomcensus/bomcensus/internal/gen/agentapi"
+	"github.com/bomcensus/bomcensus/agentproto/dto"
 	"github.com/bomcensus/bomcensus/internal/report"
 	"github.com/bomcensus/bomcensus/internal/sign/signtest"
 )
@@ -231,26 +231,26 @@ func TestLive(t *testing.T) {
 	for pod, r := range results {
 		switch {
 		case pod == "bb":
-			if r.Outcome.Coverage != agentapi.CoverageFull || r.Report == nil || r.Outcome.Dir != "/tmp" {
+			if r.Outcome.Coverage != dto.CoverageFull || r.Report == nil || r.Outcome.Dir != "/tmp" {
 				t.Errorf("bb: %+v", r.Outcome)
 			} else if s := r.Report.Subject.K8s; s.Namespace != ns || s.Pod != "bb" || s.Container != "main" || s.ImageDigest != byPod["bb"].ImageDigest || s.ClusterID != "live" {
 				t.Errorf("bb subject %+v", s)
 			}
 		case strings.HasPrefix(pod, "alp-"):
 			switch r.Outcome.Coverage {
-			case agentapi.CoverageFull:
+			case dto.CoverageFull:
 				alpFull++
-			case agentapi.CoverageProcessOnly:
+			case dto.CoverageProcessOnly:
 				alpProc++
 			default:
 				t.Errorf("%s: %+v", pod, r.Outcome)
 			}
 		case pod == "nosh":
-			if r.Outcome.Coverage != agentapi.CoverageUnsupported || r.Outcome.Reason != "no shell in image" || r.Err != nil {
+			if r.Outcome.Coverage != dto.CoverageUnsupported || r.Outcome.Reason != "no shell in image" || r.Err != nil {
 				t.Errorf("nosh: %+v %v", r.Outcome, r.Err)
 			}
 		case pod == "ro":
-			if r.Outcome.Coverage != agentapi.CoverageFailed || !strings.HasPrefix(r.Outcome.Reason, "read-only root file system") {
+			if r.Outcome.Coverage != dto.CoverageFailed || !strings.HasPrefix(r.Outcome.Reason, "read-only root file system") {
 				t.Errorf("ro: %+v", r.Outcome)
 			}
 		case pod == "ro-shm":
@@ -293,7 +293,7 @@ func TestLive(t *testing.T) {
 		d.Policy.ExcludePaths = []string{"fake:sleep=120"}
 		d.Timeout = 8 * time.Second
 		_, o, err := CollectContainer(ctx, c, byPod["bb"], d)
-		if err != nil || o.Coverage != agentapi.CoverageFailed || !strings.HasPrefix(o.Reason, "timeout") {
+		if err != nil || o.Coverage != dto.CoverageFailed || !strings.HasPrefix(o.Reason, "timeout") {
 			t.Fatalf("outcome %+v err %v", o, err)
 		}
 		var l string
@@ -309,7 +309,7 @@ func TestLive(t *testing.T) {
 			t.Fatal(err)
 		}
 		_, o, err := CollectContainer(ctx, lc, byPod["bb"], deps)
-		if err != nil || o.Coverage != agentapi.CoverageFailed || o.Reason != "exec forbidden by RBAC" {
+		if err != nil || o.Coverage != dto.CoverageFailed || o.Reason != "exec forbidden by RBAC" {
 			t.Fatalf("outcome %+v err %v", o, err)
 		}
 	})

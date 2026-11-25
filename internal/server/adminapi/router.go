@@ -9,6 +9,7 @@ package adminapi
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io/fs"
 	"log/slog"
 	"net/http"
@@ -21,8 +22,10 @@ import (
 
 	gen "github.com/bomcensus/bomcensus/internal/gen/adminapi"
 	"github.com/bomcensus/bomcensus/internal/server/adminapi/apierr"
-	"github.com/bomcensus/bomcensus/internal/server/auth"
-	"github.com/bomcensus/bomcensus/internal/server/auth/authz"
+	"github.com/bomcensus/bomcensus/internal/server/session"
+	"github.com/bomcensus/bomcensus/server/auth"
+	"github.com/bomcensus/bomcensus/server/authz"
+	"github.com/bomcensus/bomcensus/server/scope"
 )
 
 // BasePath is where the API is mounted.
@@ -37,12 +40,31 @@ const (
 // uploadPath is the release upload, the only route with the larger limit.
 const uploadPath = BasePath + "/releases"
 
+// loginPath is the built-in login, checked for CSRF without a session.
+const loginPath = BasePath + "/auth/login"
+
 // Options configures NewRouter.
 type Options struct {
 	// Handlers implements every operation.
 	Handlers gen.StrictServerInterface
-	Auth     *auth.Service
-	Logger   *slog.Logger
+	// Session is the built-in cookie login. Nil disables cookie sessions;
+	// requests are then authenticated by Middleware alone.
+	Session *session.Service
+	// TrustProxy makes the client address and TLS state of requests
+	// (auth.RequestInfo) come from X-Forwarded-For and X-Forwarded-Proto.
+	TrustProxy bool
+	// Middleware runs on every API request after the session cookie was
+	// resolved and before authorization. An authenticating middleware puts
+	// the principal into the context with auth.WithPrincipal.
+	Middleware []func(http.Handler) http.Handler
+	// Authorizer decides every operation that needs a principal. Nil is
+	// authz.AllowAll.
+	Authorizer authz.Authorizer
+	// Mounts are extra handlers by path prefix outside BasePath (for
+	// example an OIDC callback). They get the security headers, request
+	// logging and panic recovery, nothing else.
+	Mounts map[string]http.Handler
+	Logger *slog.Logger
 	// Console is the built console (index.html, 200.html, _nuxt/...). Nil
 	// serves no console.
 	Console fs.FS
@@ -54,10 +76,19 @@ type Options struct {
 
 // NewRouter returns the handler of the console listener.
 //
-// Every operation except login requires a session. The check, together with
-// authz.Check, is done in one place: a strict-handler middleware that sees the
-// operation name.
-func NewRouter(o Options) http.Handler {
+// Every operation except the public ones (authz.IsPublic) requires a
+// principal. That check and the Authorizer run in one place: a strict-handler
+// middleware that sees the operation name. The scope of the decision is put
+// into the context of the handler.
+func NewRouter(o Options) (http.Handler, error) {
+	if o.Authorizer == nil {
+		o.Authorizer = authz.AllowAll
+	}
+	for prefix := range o.Mounts {
+		if !strings.HasPrefix(prefix, "/") || prefix == "/" || prefix == "/api" || strings.HasPrefix(prefix, "/api/") {
+			return nil, fmt.Errorf("adminapi: mount %q: must be a path below / outside /api", prefix)
+		}
+	}
 	if o.Logger == nil {
 		o.Logger = slog.New(slog.DiscardHandler)
 	}
@@ -71,8 +102,15 @@ func NewRouter(o Options) http.Handler {
 
 	r := chi.NewRouter()
 	r.Use(securityHeaders, rt.logRequests, rt.recoverPanics)
+	for prefix, h := range o.Mounts {
+		r.Mount(prefix, h)
+	}
 	r.Route(BasePath, func(api chi.Router) {
-		api.Use(noStore, rt.limitBody, rt.resolveSession, rt.checkCSRF)
+		api.Use(noStore, rt.limitBody, rt.requestInfo)
+		if o.Session != nil {
+			api.Use(rt.resolveSession)
+		}
+		api.Use(o.Middleware...)
 		api.NotFound(func(w http.ResponseWriter, r *http.Request) {
 			apierr.Write(w, http.StatusNotFound, gen.Error{Code: apierr.CodeNotFound, Message: "no such endpoint"})
 		})
@@ -80,7 +118,7 @@ func NewRouter(o Options) http.Handler {
 			apierr.Write(w, http.StatusMethodNotAllowed, gen.Error{Code: apierr.CodeMethod, Message: "method not allowed"})
 		})
 		strict := gen.NewStrictHandlerWithOptions(o.Handlers,
-			[]gen.StrictMiddlewareFunc{authorize},
+			[]gen.StrictMiddlewareFunc{rt.authorize},
 			gen.StrictHTTPServerOptions{
 				RequestErrorHandlerFunc:  rt.requestError,
 				ResponseErrorHandlerFunc: rt.responseError,
@@ -93,7 +131,7 @@ func NewRouter(o Options) http.Handler {
 	console := &consoleHandler{fsys: o.Console}
 	r.NotFound(console.ServeHTTP)
 	r.MethodNotAllowed(console.ServeHTTP)
-	return r
+	return r, nil
 }
 
 type router struct {
@@ -101,23 +139,48 @@ type router struct {
 	log  *slog.Logger
 }
 
-// authorize requires a principal for every operation but login and passes
-// the operation through authz.Check.
-func authorize(f gen.StrictHandlerFunc, operationID string) gen.StrictHandlerFunc {
-	if operationID == "Login" {
-		return f
+// authorize requires a principal for every operation but the public ones,
+// asks the Authorizer and puts the decided scope into the context. Public
+// operations run with the empty scope.
+func (rt *router) authorize(f gen.StrictHandlerFunc, operationID string) gen.StrictHandlerFunc {
+	if authz.IsPublic(operationID) {
+		return func(ctx context.Context, w http.ResponseWriter, r *http.Request, req any) (any, error) {
+			return f(scope.With(ctx, scope.Of()), w, r, req)
+		}
 	}
 	return func(ctx context.Context, w http.ResponseWriter, r *http.Request, req any) (any, error) {
-		switch err := authz.Check(ctx, operationID, r.URL.Path); {
-		case errors.Is(err, authz.ErrUnauthenticated):
+		p, ok := auth.FromContext(ctx)
+		if !ok {
 			return nil, apierr.Unauthenticated("login required")
+		}
+		d, err := rt.opts.Authorizer.Authorize(ctx, p, authz.Request{
+			Operation: operationID,
+			Method:    r.Method,
+			Path:      r.URL.Path,
+			Params:    urlParams(r),
+		})
+		switch {
 		case errors.Is(err, authz.ErrForbidden):
+			rt.log.WarnContext(ctx, "request denied", "operation", operationID, "principal", p.ID(), "error", err)
 			return nil, apierr.Forbidden("not allowed")
 		case err != nil:
-			return nil, err
+			return nil, fmt.Errorf("authorize %s: %w", operationID, err)
 		}
-		return f(ctx, w, r, req)
+		return f(scope.With(ctx, d.Scope), w, r, req)
 	}
+}
+
+// urlParams returns the path parameters chi matched for r.
+func urlParams(r *http.Request) map[string]string {
+	rc := chi.RouteContext(r.Context())
+	if rc == nil || len(rc.URLParams.Keys) == 0 {
+		return nil
+	}
+	m := make(map[string]string, len(rc.URLParams.Keys))
+	for i, k := range rc.URLParams.Keys {
+		m[k] = rc.URLParams.Values[i]
+	}
+	return m
 }
 
 // requestError renders a body that could not be decoded.
@@ -162,21 +225,32 @@ func (rt *router) limitBody(next http.Handler) http.Handler {
 	})
 }
 
+// requestInfo records the client address and transport security.
+func (rt *router) requestInfo(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx := auth.WithRequestInfo(r.Context(), session.RequestInfo(r, rt.opts.TrustProxy))
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+// resolveSession authenticates the session cookie. Requests authenticated
+// that way, and the login request, must pass the CSRF check; requests
+// authenticated by other means (Middleware) do not carry ambient
+// credentials and are not checked.
 func (rt *router) resolveSession(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ctx, err := rt.opts.Auth.Resolve(r)
+		ctx, err := rt.opts.Session.Resolve(r)
 		if err != nil {
 			rt.log.ErrorContext(r.Context(), "session lookup failed", "error", err)
 			apierr.Render(w, err)
 			return
 		}
-		next.ServeHTTP(w, r.WithContext(ctx))
-	})
-}
-
-func (rt *router) checkCSRF(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if err := rt.opts.Auth.CheckCSRF(r); err != nil {
+		r = r.WithContext(ctx)
+		if !session.Authenticated(ctx) && r.URL.Path != loginPath {
+			next.ServeHTTP(w, r)
+			return
+		}
+		if err := rt.opts.Session.CheckCSRF(r); err != nil {
 			rt.log.WarnContext(r.Context(), "request rejected", "method", r.Method, "path", r.URL.Path,
 				"client", auth.RequestInfoFrom(r.Context()).ClientAddr, "reason", err.Error())
 			apierr.Write(w, http.StatusForbidden, gen.Error{Code: apierr.CodeForbidden, Message: "cross-site request rejected"})

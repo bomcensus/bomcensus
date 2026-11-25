@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bomcensus/bomcensus/internal/gen/agentapi"
+	"github.com/bomcensus/bomcensus/agentproto/dto"
 	"github.com/bomcensus/bomcensus/internal/report"
 	"github.com/bomcensus/bomcensus/internal/scanner/kube"
 )
@@ -131,7 +131,7 @@ func runK8sExec(ctx context.Context, job K8sExecJob, d Deps, res *Result, log *s
 		res.fail(ReasonInvalidJob, "job id and cluster are required")
 		return
 	}
-	targets := []agentapi.ExecTargetResult{}
+	targets := []dto.ExecTargetResult{}
 	res.Targets = &targets
 	if len(job.Targets) == 0 {
 		return
@@ -156,7 +156,7 @@ func runK8sExec(ctx context.Context, job K8sExecJob, d Deps, res *Result, log *s
 		defer func() {
 			if v := recover(); v != nil {
 				r, err = nil, recovered(log, job.JobID, v)
-				o = kube.ContainerOutcome{Coverage: agentapi.CoverageFailed, Reason: ReasonInternal, ExitCode: -1}
+				o = kube.ContainerOutcome{Coverage: dto.CoverageFailed, Reason: ReasonInternal, ExitCode: -1}
 			}
 		}()
 		return d.kubeCollect(ctx, c, t, kd)
@@ -175,9 +175,9 @@ func runK8sExec(ctx context.Context, job K8sExecJob, d Deps, res *Result, log *s
 			tr.Reason = &reason
 		}
 		switch tr.Status {
-		case agentapi.ScanJobStatusOk:
+		case dto.ScanJobStatusOk:
 			ok++
-		case agentapi.ScanJobStatusFailed:
+		case dto.ScanJobStatusFailed:
 			failed++
 		}
 		targets = append(targets, tr)
@@ -214,6 +214,6 @@ func submitContainer(ctx context.Context, d Deps, job K8sExecJob, r kube.Result)
 	return d.Sink.SubmitReport(sctx, enc, job.JobID)
 }
 
-func failedTarget(t kube.ExecTarget, reason string) agentapi.ExecTargetResult {
-	return kube.ContainerOutcome{Coverage: agentapi.CoverageFailed, Reason: reason, ExitCode: -1}.Result(t, "")
+func failedTarget(t kube.ExecTarget, reason string) dto.ExecTargetResult {
+	return kube.ContainerOutcome{Coverage: dto.CoverageFailed, Reason: reason, ExitCode: -1}.Result(t, "")
 }

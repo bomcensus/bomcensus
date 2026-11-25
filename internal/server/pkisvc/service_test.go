@@ -23,6 +23,7 @@ import (
 	"github.com/bomcensus/bomcensus/internal/server/secret"
 	"github.com/bomcensus/bomcensus/internal/server/store"
 	"github.com/bomcensus/bomcensus/internal/server/store/postgres"
+	"github.com/bomcensus/bomcensus/server/scope"
 )
 
 type clock struct {
@@ -85,7 +86,7 @@ func (e *env) service(t *testing.T, mutate func(*Config)) *Service {
 func (e *env) bootstrap(t *testing.T) *Service {
 	t.Helper()
 	s := e.service(t, nil)
-	if err := s.Bootstrap(context.Background()); err != nil {
+	if err := s.Bootstrap(scope.System(context.Background())); err != nil {
 		t.Fatal(err)
 	}
 	return s
@@ -104,7 +105,7 @@ func leafOf(t *testing.T, get func() (*tlsCert, error)) *x509.Certificate {
 
 func TestBootstrapConcurrent(t *testing.T) {
 	e := newEnv(t)
-	ctx := context.Background()
+	ctx := scope.System(context.Background())
 	const n = 4
 	svcs := make([]*Service, n)
 	for i := range svcs {
@@ -214,7 +215,7 @@ func TestLeafNamesAndUsage(t *testing.T) {
 
 func TestLeafRenewal(t *testing.T) {
 	e := newEnv(t)
-	ctx := context.Background()
+	ctx := scope.System(context.Background())
 	s := e.bootstrap(t)
 	web := leafOf(t, s.WebCertificate)
 	agent := leafOf(t, s.AgentServerCertificate)
@@ -303,7 +304,7 @@ func (c *testCA) issue(t *testing.T, name string, notAfter time.Time, usages ...
 
 func TestWebManualAndBack(t *testing.T) {
 	e := newEnv(t)
-	ctx := context.Background()
+	ctx := scope.System(context.Background())
 	s := e.bootstrap(t)
 	corp := newTestCA(t, "Corp Root")
 	year := time.Now().Add(365 * 24 * time.Hour)
@@ -356,7 +357,7 @@ func TestWebManualAndBack(t *testing.T) {
 
 func TestWebOff(t *testing.T) {
 	e := newEnv(t)
-	ctx := context.Background()
+	ctx := scope.System(context.Background())
 	s := e.service(t, func(c *Config) { c.WebTLS = false })
 	if err := s.Bootstrap(ctx); err != nil {
 		t.Fatal(err)
@@ -380,7 +381,7 @@ func TestWebOff(t *testing.T) {
 // "manual" certificates under the current anchor.
 func internalCA(t *testing.T, s *Service) *testCA {
 	t.Helper()
-	ca, err := s.loadCA(context.Background(), s.st, store.PKIAgentTLSCA)
+	ca, err := s.loadCA(scope.System(context.Background()), s.st, store.PKIAgentTLSCA)
 	if err != nil || ca == nil {
 		t.Fatalf("agent TLS CA: %v", err)
 	}
@@ -389,7 +390,7 @@ func internalCA(t *testing.T, s *Service) *testCA {
 
 func TestAgentManual(t *testing.T) {
 	e := newEnv(t)
-	ctx := context.Background()
+	ctx := scope.System(context.Background())
 	s := e.bootstrap(t)
 	year := time.Now().Add(365 * 24 * time.Hour)
 	h, _ := s.AnchorHash()
@@ -448,7 +449,7 @@ func TestAgentManual(t *testing.T) {
 
 func TestAnchorChangeInternal(t *testing.T) {
 	e := newEnv(t)
-	ctx := context.Background()
+	ctx := scope.System(context.Background())
 	s := e.bootstrap(t)
 	old, _ := s.AnchorHash()
 	b0, _ := s.TrustBundle()
@@ -517,7 +518,7 @@ func TestAnchorChangeInternal(t *testing.T) {
 
 func TestAnchorChangeManual(t *testing.T) {
 	e := newEnv(t)
-	ctx := context.Background()
+	ctx := scope.System(context.Background())
 	s := e.bootstrap(t)
 	old, _ := s.AnchorHash()
 	corp := newTestCA(t, "Corp Root")
@@ -585,7 +586,7 @@ func TestAnchorChangeManual(t *testing.T) {
 
 func TestAgentCertificates(t *testing.T) {
 	e := newEnv(t)
-	ctx := context.Background()
+	ctx := scope.System(context.Background())
 	s := e.bootstrap(t)
 	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
 	agent, err := e.db.CreateAgent(ctx, store.Agent{Kind: store.AgentKindAgent, Hostname: "h1", IdentityKey: pub, State: store.AgentApproved})

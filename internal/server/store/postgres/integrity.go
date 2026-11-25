@@ -95,6 +95,9 @@ func (d *DB) RecordIntegrityChunk(ctx context.Context, c store.IntegrityChunk) e
 	if err != nil {
 		return fmt.Errorf("postgres: record integrity chunk: %w", err)
 	}
+	if err := d.ivScopeAsset(ctx, "record integrity chunk", c.AssetID); err != nil {
+		return err
+	}
 	return d.mgInTx(ctx, func(tx *DB) error {
 		var passID, coverage, reason string
 		err := tx.q.QueryRow(ctx, `
@@ -184,6 +187,9 @@ func mgScanIntegrityPass(r mgRow) (store.IntegrityPass, error) {
 
 // LastIntegrityPass implements store.Integrity.
 func (d *DB) LastIntegrityPass(ctx context.Context, assetID string) (store.IntegrityPass, error) {
+	if err := d.ivScopeAsset(ctx, "last integrity pass", assetID); err != nil {
+		return store.IntegrityPass{}, err
+	}
 	p, err := mgScanIntegrityPass(d.q.QueryRow(ctx, `SELECT `+mgIntegrityPassColumns+` FROM integrity_passes
 		WHERE asset_id = $1 ORDER BY last_chunk_at DESC, id DESC LIMIT 1`, assetID))
 	if err != nil {
@@ -194,6 +200,9 @@ func (d *DB) LastIntegrityPass(ctx context.Context, assetID string) (store.Integ
 
 // LastCompletedIntegrityPass implements store.Integrity.
 func (d *DB) LastCompletedIntegrityPass(ctx context.Context, assetID string) (store.IntegrityPass, error) {
+	if err := d.ivScopeAsset(ctx, "last completed integrity pass", assetID); err != nil {
+		return store.IntegrityPass{}, err
+	}
 	p, err := mgScanIntegrityPass(d.q.QueryRow(ctx, `SELECT `+mgIntegrityPassColumns+` FROM integrity_passes
 		WHERE asset_id = $1 AND completed_at IS NOT NULL ORDER BY completed_at DESC, id DESC LIMIT 1`, assetID))
 	if err != nil {
@@ -202,25 +211,28 @@ func (d *DB) LastCompletedIntegrityPass(ctx context.Context, assetID string) (st
 	return p, nil
 }
 
-// mgIntegrityAllowedBy is the first active rule hiding finding f.
+// mgIntegrityAllowedBy is the first active rule hiding finding f of asset
+// a: a rule of the asset or one for every asset of its data scope.
 const mgIntegrityAllowedBy = `(SELECT r.id::text FROM integrity_allow_rules r
 	WHERE r.revoked_at IS NULL AND r.path = f.path AND r.status = f.status AND r.actual_sha256 = f.actual_sha256
-	  AND (r.scope = 'fleet' OR r.asset_id = f.asset_id)
+	  AND r.scope_id = a.scope_id AND (r.scope = 'fleet' OR r.asset_id = f.asset_id)
 	ORDER BY r.created_at, r.id LIMIT 1)`
 
-// mgIntegrityVisible selects the open findings of current assets with the
-// filter $1 status, $2 asset id, $3 q, $4 path, $5 sha256 (NULL: any),
-// with their asset's name and method and the rule hiding them.
-const mgIntegrityVisible = `
+// mgIntegrityVisible selects the open findings of current assets in the
+// scope with the filter $1 status, $2 asset id, $3 q, $4 path, $5 sha256
+// (NULL: any), with their asset's name and method and the rule hiding them.
+func mgIntegrityVisible(sc sqlScope) string {
+	return `
 	SELECT f.*, a.name AS asset_name, a.method AS asset_method, ` + mgIntegrityAllowedBy + ` AS allowed_by
 	FROM integrity_findings f JOIN assets a ON a.id = f.asset_id AND a.gone_at IS NULL
-	WHERE f.resolved_at IS NULL
+	WHERE f.resolved_at IS NULL AND ` + sc.col("a.scope_id") + `
 	  AND ($1 = '' OR f.status = $1)
 	  AND ($2 = '' OR f.asset_id::text = $2)
 	  AND ($3 = '' OR strpos(lower(f.path), lower($3)) > 0 OR strpos(lower(f.package), lower($3)) > 0
 	       OR strpos(lower(a.name), lower($3)) > 0)
 	  AND ($4 = '' OR f.path = $4)
 	  AND ($5::text IS NULL OR f.actual_sha256 = $5)`
+}
 
 func integrityFilterArgs(f store.IntegrityFilter) []any {
 	var sha any
@@ -232,10 +244,14 @@ func integrityFilterArgs(f store.IntegrityFilter) []any {
 
 // ListIntegrityGroups implements store.Integrity.
 func (d *DB) ListIntegrityGroups(ctx context.Context, f store.IntegrityFilter, p store.Page) ([]store.IntegrityGroup, int, error) {
+	const op = "list integrity groups"
 	p = p.Normalize()
-	args := append(integrityFilterArgs(f), p.Limit, p.Offset)
+	q, sc, err := scoped(ctx, op, append(integrityFilterArgs(f), p.Limit, p.Offset)...)
+	if err != nil {
+		return nil, 0, err
+	}
 	rows, err := d.q.Query(ctx, `
-		WITH v AS (`+mgIntegrityVisible+`)
+		WITH v AS (`+mgIntegrityVisible(sc)+`)
 		SELECT path, status, actual_sha256,
 			(array_agg(pkg_type ORDER BY last_seen DESC, id))[1], (array_agg(package ORDER BY last_seen DESC, id))[1],
 			(array_agg(version ORDER BY last_seen DESC, id))[1], (array_agg(algo ORDER BY last_seen DESC, id))[1],
@@ -246,7 +262,7 @@ func (d *DB) ListIntegrityGroups(ctx context.Context, f store.IntegrityFilter, p
 		FROM v WHERE $6 OR allowed_by IS NULL
 		GROUP BY path, status, actual_sha256
 		ORDER BY 10 DESC, path, status, actual_sha256
-		LIMIT $7 OFFSET $8`, args...)
+		LIMIT $7 OFFSET $8`, q.args...)
 	if err != nil {
 		return nil, 0, mgErr("list integrity groups", err)
 	}
@@ -266,9 +282,10 @@ func (d *DB) ListIntegrityGroups(ctx context.Context, f store.IntegrityFilter, p
 		return nil, 0, mgErr("list integrity groups", err)
 	}
 	if len(out) == 0 && p.Offset > 0 {
-		if err := d.q.QueryRow(ctx, `WITH v AS (`+mgIntegrityVisible+`)
+		q, sc, _ := scoped(ctx, op, integrityFilterArgs(f)...)
+		if err := d.q.QueryRow(ctx, `WITH v AS (`+mgIntegrityVisible(sc)+`)
 			SELECT count(*) FROM (SELECT 1 FROM v WHERE $6 OR allowed_by IS NULL GROUP BY path, status, actual_sha256) g`,
-			integrityFilterArgs(f)...).Scan(&total); err != nil {
+			q.args...).Scan(&total); err != nil {
 			return nil, 0, mgErr("list integrity groups", err)
 		}
 	}
@@ -277,16 +294,20 @@ func (d *DB) ListIntegrityGroups(ctx context.Context, f store.IntegrityFilter, p
 
 // ListIntegrityFindings implements store.Integrity.
 func (d *DB) ListIntegrityFindings(ctx context.Context, f store.IntegrityFilter, p store.Page) ([]store.IntegrityFinding, int, error) {
+	const op = "list integrity findings"
 	p = p.Normalize()
-	args := append(integrityFilterArgs(f), p.Limit, p.Offset)
+	q, sc, err := scoped(ctx, op, append(integrityFilterArgs(f), p.Limit, p.Offset)...)
+	if err != nil {
+		return nil, 0, err
+	}
 	rows, err := d.q.Query(ctx, `
-		WITH v AS (`+mgIntegrityVisible+`)
+		WITH v AS (`+mgIntegrityVisible(sc)+`)
 		SELECT id::text, asset_id::text, asset_name, asset_method, path, status, pkg_type, package, version, arch,
 			algo, expected, actual, actual_sha256, coalesce(size, 0), mtime, ctime, first_seen, last_seen,
 			coalesce(allowed_by, ''), count(*) OVER ()
 		FROM v WHERE $6 OR allowed_by IS NULL
 		ORDER BY asset_name, asset_id, path, status
-		LIMIT $7 OFFSET $8`, args...)
+		LIMIT $7 OFFSET $8`, q.args...)
 	if err != nil {
 		return nil, 0, mgErr("list integrity findings", err)
 	}
@@ -308,8 +329,9 @@ func (d *DB) ListIntegrityFindings(ctx context.Context, f store.IntegrityFilter,
 		return nil, 0, mgErr("list integrity findings", err)
 	}
 	if len(out) == 0 && p.Offset > 0 {
-		if err := d.q.QueryRow(ctx, `WITH v AS (`+mgIntegrityVisible+`)
-			SELECT count(*) FROM v WHERE $6 OR allowed_by IS NULL`, integrityFilterArgs(f)...).Scan(&total); err != nil {
+		q, sc, _ := scoped(ctx, op, integrityFilterArgs(f)...)
+		if err := d.q.QueryRow(ctx, `WITH v AS (`+mgIntegrityVisible(sc)+`)
+			SELECT count(*) FROM v WHERE $6 OR allowed_by IS NULL`, q.args...).Scan(&total); err != nil {
 			return nil, 0, mgErr("list integrity findings", err)
 		}
 	}
@@ -319,18 +341,22 @@ func (d *DB) ListIntegrityFindings(ctx context.Context, f store.IntegrityFilter,
 // IntegritySummary implements store.Integrity.
 func (d *DB) IntegritySummary(ctx context.Context, completedAfter time.Time) (store.IntegritySummary, error) {
 	var s store.IntegritySummary
-	args := append(integrityFilterArgs(store.IntegrityFilter{}), completedAfter.UTC())
-	err := d.q.QueryRow(ctx, `
-		WITH v AS (`+mgIntegrityVisible+`), shown AS (SELECT * FROM v WHERE $6 OR allowed_by IS NULL)
+	q, sc, err := scoped(ctx, "integrity summary", append(integrityFilterArgs(store.IntegrityFilter{}), completedAfter.UTC())...)
+	if err != nil {
+		return s, err
+	}
+	in := sc.col("a.scope_id")
+	err = d.q.QueryRow(ctx, `
+		WITH v AS (`+mgIntegrityVisible(sc)+`), shown AS (SELECT * FROM v WHERE $6 OR allowed_by IS NULL)
 		SELECT
 			(SELECT count(*) FROM (SELECT 1 FROM shown GROUP BY path, status, actual_sha256) g),
 			(SELECT count(DISTINCT asset_id) FROM shown),
-			(SELECT count(*) FROM integrity_allow_rules WHERE revoked_at IS NULL),
+			(SELECT count(*) FROM integrity_allow_rules r WHERE r.revoked_at IS NULL AND `+sc.col("r.scope_id")+`),
 			(SELECT count(DISTINCT p.asset_id) FROM integrity_passes p
-				JOIN assets a ON a.id = p.asset_id AND a.gone_at IS NULL),
+				JOIN assets a ON a.id = p.asset_id AND a.gone_at IS NULL WHERE `+in+`),
 			(SELECT count(DISTINCT p.asset_id) FROM integrity_passes p
-				JOIN assets a ON a.id = p.asset_id AND a.gone_at IS NULL WHERE p.completed_at >= $7)`,
-		args...).Scan(&s.Groups, &s.Assets, &s.Rules, &s.Tracked, &s.Completed)
+				JOIN assets a ON a.id = p.asset_id AND a.gone_at IS NULL WHERE p.completed_at >= $7 AND `+in+`)`,
+		q.args...).Scan(&s.Groups, &s.Assets, &s.Rules, &s.Tracked, &s.Completed)
 	if err != nil {
 		return s, mgErr("integrity summary", err)
 	}
@@ -378,6 +404,11 @@ func (d *DB) CreateIntegrityAllowRule(ctx context.Context, r store.IntegrityAllo
 	if r.Note == "" || len(r.Note) > 1000 {
 		return invalid("note must be 1 to 1000 bytes")
 	}
+	scopeID, err := d.mgRuleScope(ctx, "create integrity allow rule", r.Scope == store.IntegrityScopeAsset, r.AssetID, r.ScopeID)
+	if err != nil {
+		return store.IntegrityAllowRule{}, err
+	}
+	r.ScopeID = scopeID
 	id, err := mgNewID()
 	if err != nil {
 		return store.IntegrityAllowRule{}, err
@@ -385,9 +416,11 @@ func (d *DB) CreateIntegrityAllowRule(ctx context.Context, r store.IntegrityAllo
 	r.ID = id
 	r.CreatedAt = mgOrNow(r.CreatedAt)
 	if _, err := d.q.Exec(ctx, `
-		INSERT INTO integrity_allow_rules (id, scope, asset_id, path, status, actual_sha256, note, created_by, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-		r.ID, r.Scope, mgText(r.AssetID), r.Path, r.Status, r.ActualSHA256, r.Note, r.CreatedBy, r.CreatedAt); err != nil {
+		INSERT INTO integrity_allow_rules (id, scope, asset_id, path, status, actual_sha256, note, created_by, created_at,
+			scope_id)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+		r.ID, r.Scope, mgText(r.AssetID), r.Path, r.Status, r.ActualSHA256, r.Note, r.CreatedBy, r.CreatedAt,
+		r.ScopeID); err != nil {
 		return store.IntegrityAllowRule{}, mgErr("create integrity allow rule", err)
 	}
 	return r, nil
@@ -396,18 +429,24 @@ func (d *DB) CreateIntegrityAllowRule(ctx context.Context, r store.IntegrityAllo
 // ListIntegrityAllowRules implements store.Integrity.
 func (d *DB) ListIntegrityAllowRules(ctx context.Context, includeRevoked bool, p store.Page) ([]store.IntegrityAllowRule, int, error) {
 	p = p.Normalize()
+	const op = "list integrity allow rules"
+	q, sc, err := scoped(ctx, op, includeRevoked, p.Limit, p.Offset)
+	if err != nil {
+		return nil, 0, err
+	}
 	rows, err := d.q.Query(ctx, `
 		SELECT r.id::text, r.scope, coalesce(r.asset_id::text, ''), coalesce(a.name, ''), r.path, r.status,
 			r.actual_sha256, r.note, r.created_by, r.created_at, r.revoked_by, r.revoked_at,
 			CASE WHEN r.revoked_at IS NOT NULL THEN 0 ELSE (SELECT count(*) FROM integrity_findings f
 				JOIN assets fa ON fa.id = f.asset_id AND fa.gone_at IS NULL
 				WHERE f.resolved_at IS NULL AND f.path = r.path AND f.status = r.status
-				  AND f.actual_sha256 = r.actual_sha256 AND (r.scope = 'fleet' OR f.asset_id = r.asset_id)) END,
-			count(*) OVER ()
+				  AND f.actual_sha256 = r.actual_sha256 AND fa.scope_id = r.scope_id
+				  AND (r.scope = 'fleet' OR f.asset_id = r.asset_id)) END,
+			count(*) OVER (), r.scope_id
 		FROM integrity_allow_rules r LEFT JOIN assets a ON a.id = r.asset_id
-		WHERE $1 OR r.revoked_at IS NULL
+		WHERE ($1 OR r.revoked_at IS NULL) AND `+sc.col("r.scope_id")+`
 		ORDER BY r.created_at DESC, r.id DESC
-		LIMIT $2 OFFSET $3`, includeRevoked, p.Limit, p.Offset)
+		LIMIT $2 OFFSET $3`, q.args...)
 	if err != nil {
 		return nil, 0, mgErr("list integrity allow rules", err)
 	}
@@ -417,7 +456,7 @@ func (d *DB) ListIntegrityAllowRules(ctx context.Context, includeRevoked bool, p
 	for rows.Next() {
 		var r store.IntegrityAllowRule
 		if err := rows.Scan(&r.ID, &r.Scope, &r.AssetID, &r.AssetName, &r.Path, &r.Status, &r.ActualSHA256,
-			&r.Note, &r.CreatedBy, &r.CreatedAt, &r.RevokedBy, &r.RevokedAt, &r.Hidden, &total); err != nil {
+			&r.Note, &r.CreatedBy, &r.CreatedAt, &r.RevokedBy, &r.RevokedAt, &r.Hidden, &total, &r.ScopeID); err != nil {
 			return nil, 0, mgErr("list integrity allow rules", err)
 		}
 		r.CreatedAt, r.RevokedAt = r.CreatedAt.UTC(), mgUTCPtr(r.RevokedAt)
@@ -427,8 +466,9 @@ func (d *DB) ListIntegrityAllowRules(ctx context.Context, includeRevoked bool, p
 		return nil, 0, mgErr("list integrity allow rules", err)
 	}
 	if len(out) == 0 && p.Offset > 0 {
-		if err := d.q.QueryRow(ctx, `SELECT count(*) FROM integrity_allow_rules WHERE $1 OR revoked_at IS NULL`,
-			includeRevoked).Scan(&total); err != nil {
+		q, sc, _ := scoped(ctx, op, includeRevoked)
+		if err := d.q.QueryRow(ctx, `SELECT count(*) FROM integrity_allow_rules r WHERE ($1 OR r.revoked_at IS NULL) AND `+
+			sc.col("r.scope_id"), q.args...).Scan(&total); err != nil {
 			return nil, 0, mgErr("list integrity allow rules", err)
 		}
 	}
@@ -437,8 +477,12 @@ func (d *DB) ListIntegrityAllowRules(ctx context.Context, includeRevoked bool, p
 
 // RevokeIntegrityAllowRule implements store.Integrity.
 func (d *DB) RevokeIntegrityAllowRule(ctx context.Context, id, by string, at time.Time) error {
+	q, sc, err := scoped(ctx, "revoke integrity allow rule", id, by, mgOrNow(at))
+	if err != nil {
+		return err
+	}
 	tag, err := d.q.Exec(ctx, `UPDATE integrity_allow_rules SET revoked_at = $3, revoked_by = $2
-		WHERE id = $1 AND revoked_at IS NULL`, id, by, mgOrNow(at))
+		WHERE id = $1 AND revoked_at IS NULL AND `+sc.col("scope_id"), q.args...)
 	return mgExactlyOne("revoke integrity allow rule", tag, err)
 }
 
@@ -447,8 +491,7 @@ func (d *DB) SetAgentIntegrity(ctx context.Context, id, mode string) error {
 	if !validIntegrityMode(mode) {
 		return fmt.Errorf("postgres: set agent integrity: %w", store.ErrInvalid)
 	}
-	tag, err := d.q.Exec(ctx, `UPDATE agents SET integrity = $2 WHERE id = $1`, id, mode)
-	return mgExactlyOne("set agent integrity", tag, err)
+	return d.mgUpdateAgent(ctx, "set agent integrity", `integrity = $2`, id, mode)
 }
 
 // SetScanTargetIntegrity implements store.Integrity.
@@ -456,6 +499,5 @@ func (d *DB) SetScanTargetIntegrity(ctx context.Context, id, mode string) error 
 	if !validIntegrityMode(mode) {
 		return fmt.Errorf("postgres: set scan target integrity: %w", store.ErrInvalid)
 	}
-	tag, err := d.q.Exec(ctx, `UPDATE scan_targets SET integrity = $2 WHERE id = $1`, id, mode)
-	return mgExactlyOne("set scan target integrity", tag, err)
+	return d.mgUpdateScanTarget(ctx, "set scan target integrity", `integrity = $2`, id, mode)
 }

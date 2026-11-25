@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/bomcensus/bomcensus/internal/server/store"
+	"github.com/bomcensus/bomcensus/server/scope"
 )
 
 var mgT0 = time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC)
@@ -31,7 +32,7 @@ func mgTestKey(t *testing.T, db *DB, id string, mutate func(*store.RegisterKey))
 	if mutate != nil {
 		mutate(&k)
 	}
-	out, err := db.CreateRegisterKey(context.Background(), k)
+	out, err := db.CreateRegisterKey(scope.System(context.Background()), k)
 	if err != nil {
 		t.Fatalf("create register key: %v", err)
 	}
@@ -40,7 +41,7 @@ func mgTestKey(t *testing.T, db *DB, id string, mutate func(*store.RegisterKey))
 
 func TestManageRegisterKeyRoundTrip(t *testing.T) {
 	db := newTestDB(t)
-	ctx := context.Background()
+	ctx := scope.System(context.Background())
 	exp := mgT0.Add(24 * time.Hour)
 	k := mgTestKey(t, db, "AAAAAAAAAAA", func(k *store.RegisterKey) {
 		k.ExpiresAt = &exp
@@ -107,7 +108,7 @@ func TestManageRegisterKeyRoundTrip(t *testing.T) {
 
 func TestManageRegisterKeyConsumeReasons(t *testing.T) {
 	db := newTestDB(t)
-	ctx := context.Background()
+	ctx := scope.System(context.Background())
 	exp := mgT0.Add(time.Hour)
 	mgTestKey(t, db, "expired0000", func(k *store.RegisterKey) { k.ExpiresAt = &exp })
 	mgTestKey(t, db, "revoked0000", nil)
@@ -142,7 +143,7 @@ func TestManageRegisterKeyConsumeReasons(t *testing.T) {
 
 func TestManageRegisterKeyConsumeConcurrent(t *testing.T) {
 	db := newTestDB(t)
-	ctx := context.Background()
+	ctx := scope.System(context.Background())
 	const workers, maxUses = 40, 7
 	mgTestKey(t, db, "concurrent0", func(k *store.RegisterKey) { k.MaxUses = maxUses })
 
@@ -185,7 +186,7 @@ func TestManageRegisterKeyConsumeConcurrent(t *testing.T) {
 
 func TestManageRegisterKeyConsumeRollsBack(t *testing.T) {
 	db := newTestDB(t)
-	ctx := context.Background()
+	ctx := scope.System(context.Background())
 	mgTestKey(t, db, "rollback000", func(k *store.RegisterKey) { k.MaxUses = 1 })
 	failed := fmt.Errorf("enrollment failed")
 	err := db.mgInTx(ctx, func(tx *DB) error {
@@ -204,7 +205,7 @@ func TestManageRegisterKeyConsumeRollsBack(t *testing.T) {
 
 func TestManageEnrollSessionTakeOnce(t *testing.T) {
 	db := newTestDB(t)
-	ctx := context.Background()
+	ctx := scope.System(context.Background())
 	s, err := db.CreateEnrollSession(ctx, store.EnrollSession{State: []byte("state"), ExpiresAt: mgT0.Add(time.Minute)})
 	if err != nil {
 		t.Fatal(err)
@@ -259,7 +260,7 @@ func TestManageEnrollSessionTakeOnce(t *testing.T) {
 
 func TestManageSessions(t *testing.T) {
 	db := newTestDB(t)
-	ctx := context.Background()
+	ctx := scope.System(context.Background())
 	s, err := db.CreateSession(ctx, "admin", "Admin", mgT0.Add(time.Hour))
 	if err != nil {
 		t.Fatal(err)

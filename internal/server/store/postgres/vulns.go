@@ -295,10 +295,15 @@ func (d *DB) ResetMatches(ctx context.Context, serverID string) error {
 	return mgErr("reset matches", err)
 }
 
-// CountMatches implements store.Vulns.
+// CountMatches implements store.Vulns. It counts the components visible in
+// the scope of ctx.
 func (d *DB) CountMatches(ctx context.Context, e store.MatchEpoch) (store.MatchCounts, error) {
 	var c store.MatchCounts
-	err := d.q.QueryRow(ctx, `
+	q, sc, err := scoped(ctx, "count matches", e.ServerID, e.Revision, e.Rules)
+	if err != nil {
+		return c, err
+	}
+	err = d.q.QueryRow(ctx, `
 		SELECT count(*) FILTER (WHERE m.status = 'checked'),
 			count(*) FILTER (WHERE m.status = 'unsupported'),
 			count(*) FILTER (WHERE m.status = 'invalid'),
@@ -306,8 +311,7 @@ func (d *DB) CountMatches(ctx context.Context, e store.MatchEpoch) (store.MatchC
 			count(*) FILTER (WHERE m.status = 'checked' AND EXISTS (SELECT 1 FROM component_vulns v WHERE v.component_id = c.id))
 		FROM components c
 		LEFT JOIN component_matches m ON `+vuMatchedIn+`
-		WHERE `+vuLive,
-		e.ServerID, e.Revision, e.Rules).Scan(&c.Checked, &c.Unsupported, &c.Invalid, &c.Pending, &c.Vulnerable)
+		WHERE `+vuLive+` AND `+sc.component("c.id"), q.args...).Scan(&c.Checked, &c.Unsupported, &c.Invalid, &c.Pending, &c.Vulnerable)
 	return c, mgErr("count matches", err)
 }
 

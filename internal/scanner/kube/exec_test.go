@@ -28,7 +28,7 @@ import (
 	k8stesting "k8s.io/client-go/testing"
 	utilexec "k8s.io/client-go/util/exec"
 
-	"github.com/bomcensus/bomcensus/internal/gen/agentapi"
+	"github.com/bomcensus/bomcensus/agentproto/dto"
 	"github.com/bomcensus/bomcensus/internal/report"
 	"github.com/bomcensus/bomcensus/internal/sign/signtest"
 )
@@ -135,7 +135,7 @@ func (e *execEnv) assertClean(t *testing.T) {
 func TestCollectFull(t *testing.T) {
 	e := newExecEnv(t)
 	r, o, err := e.run(t)
-	if err != nil || r == nil || o.Coverage != agentapi.CoverageFull {
+	if err != nil || r == nil || o.Coverage != dto.CoverageFull {
 		t.Fatalf("report %v outcome %+v err %v", r != nil, o, err)
 	}
 	wantSubject := report.K8sSubject{ClusterID: "c1", Namespace: "app", Pod: "web-1", Container: "main", ImageRef: "alpine:3.20", ImageDigest: testDigest}
@@ -165,7 +165,7 @@ func TestCollectProcessOnly(t *testing.T) {
 	e := newExecEnv(t)
 	e.tgt.Sections = ProcessSections
 	r, o, err := e.run(t)
-	if err != nil || o.Coverage != agentapi.CoverageProcessOnly || r.Processes == nil || r.Packages != nil {
+	if err != nil || o.Coverage != dto.CoverageProcessOnly || r.Processes == nil || r.Packages != nil {
 		t.Fatalf("outcome %+v err %v", o, err)
 	}
 }
@@ -174,7 +174,7 @@ func TestCollectPartial(t *testing.T) {
 	e := newExecEnv(t)
 	e.deps.Policy.ExcludePaths = []string{"fake:partial"}
 	_, o, err := e.run(t)
-	if err != nil || o.Coverage != agentapi.CoveragePartial || !strings.Contains(o.Reason, "packages: partial") {
+	if err != nil || o.Coverage != dto.CoveragePartial || !strings.Contains(o.Reason, "packages: partial") {
 		t.Fatalf("outcome %+v err %v", o, err)
 	}
 }
@@ -194,7 +194,7 @@ func TestCollectUnsignedProbe(t *testing.T) {
 	e := newExecEnv(t)
 	e.probe.data = fakeProbeELF(t, runtime.GOARCH)
 	r, o, err := e.run(t)
-	if err == nil || r != nil || o.Coverage != agentapi.CoverageFailed || o.Reason != "probe signature verification failed" {
+	if err == nil || r != nil || o.Coverage != dto.CoverageFailed || o.Reason != "probe signature verification failed" {
 		t.Fatalf("outcome %+v err %v", o, err)
 	}
 	if _, n := e.ex.counts(); n != 0 {
@@ -207,7 +207,7 @@ func TestCollectNoProbe(t *testing.T) {
 	e := newExecEnv(t)
 	e.probe.data = nil
 	_, o, err := e.run(t)
-	if err == nil || o.Coverage != agentapi.CoverageFailed {
+	if err == nil || o.Coverage != dto.CoverageFailed {
 		t.Fatalf("outcome %+v err %v", o, err)
 	}
 	if calls, _ := e.ex.counts(); calls != 0 {
@@ -219,7 +219,7 @@ func TestCollectNoShell(t *testing.T) {
 	e := newExecEnv(t)
 	e.ex.shell = []string{"/nonexistent/sh"}
 	_, o, err := e.run(t)
-	if err != nil || o.Coverage != agentapi.CoverageUnsupported || o.Reason != "no shell in image" {
+	if err != nil || o.Coverage != dto.CoverageUnsupported || o.Reason != "no shell in image" {
 		t.Fatalf("outcome %+v err %v", o, err)
 	}
 }
@@ -229,7 +229,7 @@ func TestCollectNotRunning(t *testing.T) {
 	p.Status.ContainerStatuses[0].State = corev1.ContainerState{Waiting: &corev1.ContainerStateWaiting{Reason: "CrashLoopBackOff"}}
 	e := newExecEnv(t, p, execNode(runtime.GOARCH))
 	_, o, err := e.run(t)
-	if err != nil || o.Coverage != agentapi.CoverageFailed || o.Reason != "container not running" {
+	if err != nil || o.Coverage != dto.CoverageFailed || o.Reason != "container not running" {
 		t.Fatalf("outcome %+v err %v", o, err)
 	}
 	if calls, _ := e.ex.counts(); calls != 0 {
@@ -246,7 +246,7 @@ func TestCollectReadOnlyRoot(t *testing.T) {
 	os.Chmod(e.dir, 0o555)
 	t.Cleanup(func() { os.Chmod(e.dir, 0o755) })
 	_, o, err := e.run(t)
-	if err != nil || o.Coverage != agentapi.CoverageFailed || !strings.HasPrefix(o.Reason, "read-only root file system") {
+	if err != nil || o.Coverage != dto.CoverageFailed || !strings.HasPrefix(o.Reason, "read-only root file system") {
 		t.Fatalf("outcome %+v err %v", o, err)
 	}
 }
@@ -257,7 +257,7 @@ func TestCollectTimeoutCleansUp(t *testing.T) {
 	e.deps.Timeout = 3 * time.Second
 	start := time.Now()
 	r, o, err := e.run(t)
-	if err != nil || r != nil || o.Coverage != agentapi.CoverageFailed || !strings.HasPrefix(o.Reason, "timeout") {
+	if err != nil || r != nil || o.Coverage != dto.CoverageFailed || !strings.HasPrefix(o.Reason, "timeout") {
 		t.Fatalf("outcome %+v err %v", o, err)
 	}
 	if d := time.Since(start); d > 20*time.Second {
@@ -273,7 +273,7 @@ func TestCollectProbeExit(t *testing.T) {
 	e := newExecEnv(t)
 	e.deps.Policy.ExcludePaths = []string{"fake:exit=3"}
 	_, o, err := e.run(t)
-	if err != nil || o.Coverage != agentapi.CoverageFailed || o.ExitCode != 3 || !strings.Contains(o.Reason, "exit code 3: fakeprobe: exiting as asked") {
+	if err != nil || o.Coverage != dto.CoverageFailed || o.ExitCode != 3 || !strings.Contains(o.Reason, "exit code 3: fakeprobe: exiting as asked") {
 		t.Fatalf("outcome %+v err %v", o, err)
 	}
 	e.assertClean(t)
@@ -291,7 +291,7 @@ func TestCollectBadOutput(t *testing.T) {
 			e.deps.MaxReportBytes = 1 << 20
 			e.deps.Policy.ExcludePaths = []string{c.behavior}
 			_, o, err := e.run(t)
-			if err != nil || o.Coverage != agentapi.CoverageFailed || !strings.HasPrefix(o.Reason, c.reason) {
+			if err != nil || o.Coverage != dto.CoverageFailed || !strings.HasPrefix(o.Reason, c.reason) {
 				t.Fatalf("outcome %+v err %v", o, err)
 			}
 			e.assertClean(t)
@@ -305,7 +305,7 @@ func TestCollectPodForbidden(t *testing.T) {
 		return true, nil, apierrors.NewForbidden(schema.GroupResource{Resource: "pods"}, "web-1", errors.New("denied"))
 	})
 	_, o, err := e.run(t)
-	if err != nil || o.Coverage != agentapi.CoverageFailed || !strings.Contains(o.Reason, "forbidden") {
+	if err != nil || o.Coverage != dto.CoverageFailed || !strings.Contains(o.Reason, "forbidden") {
 		t.Fatalf("outcome %+v err %v", o, err)
 	}
 }
@@ -316,7 +316,7 @@ func TestCollectCanceled(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	_, o, err := CollectContainer(ctx, e.c, e.tgt, e.deps)
-	if !errors.Is(err, context.DeadlineExceeded) || o.Coverage != agentapi.CoverageFailed {
+	if !errors.Is(err, context.DeadlineExceeded) || o.Coverage != dto.CoverageFailed {
 		t.Fatalf("outcome %+v err %v", o, err)
 	}
 	e.assertClean(t)
@@ -325,17 +325,17 @@ func TestCollectCanceled(t *testing.T) {
 func TestClassifyStartError(t *testing.T) {
 	for _, c := range []struct {
 		err  error
-		cov  agentapi.Coverage
+		cov  dto.Coverage
 		want string
 	}{
-		{errors.New(`OCI runtime exec failed: exec failed: unable to start container process: exec: "sh": executable file not found in $PATH: unknown`), agentapi.CoverageUnsupported, "no shell in image"},
-		{utilexec.CodeExitError{Err: errors.New("command terminated with exit code 127"), Code: 127}, agentapi.CoverageUnsupported, "no shell in image"},
-		{utilexec.CodeExitError{Err: errors.New("command terminated with exit code 126"), Code: 126}, agentapi.CoverageUnsupported, "no shell in image"},
-		{apierrors.NewForbidden(schema.GroupResource{Resource: "pods/exec"}, "x", errors.New("no")), agentapi.CoverageFailed, "exec forbidden by RBAC"},
-		{errors.New(`pods "x" is forbidden: User "y" cannot create resource "pods/exec"`), agentapi.CoverageFailed, "exec forbidden by RBAC"},
-		{errors.New(`container not found ("main")`), agentapi.CoverageFailed, "container not running"},
-		{errors.New("cannot exec in a stopped state: unknown, container is not running"), agentapi.CoverageFailed, "container not running"},
-		{fmt.Errorf("dial: %w", errors.New("connection refused")), agentapi.CoverageFailed, "exec failed: dial: connection refused"},
+		{errors.New(`OCI runtime exec failed: exec failed: unable to start container process: exec: "sh": executable file not found in $PATH: unknown`), dto.CoverageUnsupported, "no shell in image"},
+		{utilexec.CodeExitError{Err: errors.New("command terminated with exit code 127"), Code: 127}, dto.CoverageUnsupported, "no shell in image"},
+		{utilexec.CodeExitError{Err: errors.New("command terminated with exit code 126"), Code: 126}, dto.CoverageUnsupported, "no shell in image"},
+		{apierrors.NewForbidden(schema.GroupResource{Resource: "pods/exec"}, "x", errors.New("no")), dto.CoverageFailed, "exec forbidden by RBAC"},
+		{errors.New(`pods "x" is forbidden: User "y" cannot create resource "pods/exec"`), dto.CoverageFailed, "exec forbidden by RBAC"},
+		{errors.New(`container not found ("main")`), dto.CoverageFailed, "container not running"},
+		{errors.New("cannot exec in a stopped state: unknown, container is not running"), dto.CoverageFailed, "container not running"},
+		{fmt.Errorf("dial: %w", errors.New("connection refused")), dto.CoverageFailed, "exec failed: dial: connection refused"},
 	} {
 		cov, reason := classifyStartError(c.err)
 		if cov != c.cov || reason != c.want {
@@ -346,9 +346,9 @@ func TestClassifyStartError(t *testing.T) {
 
 func TestOutcomeResult(t *testing.T) {
 	tgt := ExecTarget{Namespace: "a", Pod: "p", Container: "c"}
-	for cov, status := range map[agentapi.Coverage]string{
-		agentapi.CoverageFull: "ok", agentapi.CoverageProcessOnly: "ok", agentapi.CoveragePartial: "partial",
-		agentapi.CoverageUnsupported: "failed", agentapi.CoverageFailed: "failed",
+	for cov, status := range map[dto.Coverage]string{
+		dto.CoverageFull: "ok", dto.CoverageProcessOnly: "ok", dto.CoveragePartial: "partial",
+		dto.CoverageUnsupported: "failed", dto.CoverageFailed: "failed",
 	} {
 		r := ContainerOutcome{Coverage: cov, Reason: "x"}.Result(tgt, "r1")
 		if string(r.Status) != status || r.Coverage != cov || *r.Reason != "x" || *r.ReportId != "r1" || r.Pod != "p" {

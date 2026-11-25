@@ -21,9 +21,12 @@ const (
 
 // ListenTarget is the address of a listen-mode agent the server dials.
 type ListenTarget struct {
-	ID              string
-	Address         string // host:port; unique
-	RegisterKeyID   string // optional: the key the agent is expected to enroll with
+	ID            string
+	Address       string // host:port; unique
+	RegisterKeyID string // optional: the key the agent is expected to enroll with
+	// ScopeID is the data scope: that of the register key when there is
+	// one. Set on create.
+	ScopeID         string
 	AgentID         string // bound after enrollment
 	State           ListenTargetState
 	LastError       string

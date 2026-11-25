@@ -20,7 +20,7 @@ const DefaultCounterBatch = 64
 const maxCounter = 1<<63 - 1
 
 // Counter is the agent's monotonic message counter
-// (msgsig.CounterSource). Values are reserved in batches: the file holds
+// (agentproto.CounterSource). Values are reserved in batches: the file holds
 // the highest reserved value, which is written before any value of the
 // batch is handed out, so a crash skips values but never reuses one.
 type Counter struct {

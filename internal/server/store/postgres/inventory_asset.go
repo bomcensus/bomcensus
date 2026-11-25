@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/bomcensus/bomcensus/internal/server/store"
+	"github.com/bomcensus/bomcensus/server/scope"
 )
 
 // UpsertHostAsset implements store.AssetIngest.
@@ -25,8 +26,12 @@ func (d *DB) UpsertHostAsset(ctx context.Context, id store.HostIdentity, init st
 			return store.AssetRef{}, ivInvalid(op, "malformed id")
 		}
 	}
+	s, err := requireScope(ctx, op)
+	if err != nil {
+		return store.AssetRef{}, err
+	}
 	var ref store.AssetRef
-	err := d.ivAtomic(ctx, func(d *DB) error {
+	err = d.ivAtomic(ctx, func(d *DB) error {
 		// Lock every identity key in a fixed order so concurrent reports
 		// of the same host do not create two assets.
 		var keys []string
@@ -47,6 +52,13 @@ func (d *DB) UpsertHostAsset(ctx context.Context, id store.HostIdentity, init st
 				return err
 			}
 		}
+		scopeID, err := d.ivHostScope(ctx, id)
+		if err != nil {
+			return ivErr(op, err)
+		}
+		if err := checkScope(op, s, scopeID); err != nil {
+			return err
+		}
 		var found string
 		if id.ScanTargetID != "" {
 			linked, err := d.ivScanTargetAsset(ctx, id.ScanTargetID)
@@ -59,7 +71,7 @@ func (d *DB) UpsertHostAsset(ctx context.Context, id store.HostIdentity, init st
 		}
 		if found == "" {
 			var err error
-			if found, err = d.ivFindHost(ctx, id); err != nil {
+			if found, err = d.ivFindHost(ctx, id, scopeID); err != nil {
 				return ivErr(op, err)
 			}
 		}
@@ -82,10 +94,10 @@ func (d *DB) UpsertHostAsset(ctx context.Context, id store.HostIdentity, init st
 			at := ivAt(init.SeenAt)
 			_, err := d.q.Exec(ctx, `
 				INSERT INTO assets (id, kind, name, group_name, tags, method, address,
-					agent_id, machine_id, scanner_id, first_seen, last_seen)
-				VALUES ($1, 'host', $2, $3, $4, $5, $6, $7, $8, $9, $10, $10)`,
+					agent_id, machine_id, scanner_id, first_seen, last_seen, scope_id)
+				VALUES ($1, 'host', $2, $3, $4, $5, $6, $7, $8, $9, $10, $10, $11)`,
 				ref.ID, init.Name, init.Group, ivSortedUnique(init.Tags), string(init.Method), id.Address,
-				ivNull(id.AgentID), ivNull(id.MachineID), ivNull(id.ScannerID), at)
+				ivNull(id.AgentID), ivNull(id.MachineID), ivNull(id.ScannerID), at, scopeID)
 			if err != nil {
 				return ivErr(op, err)
 			}
@@ -99,8 +111,9 @@ func (d *DB) UpsertHostAsset(ctx context.Context, id store.HostIdentity, init st
 		}
 		if id.MachineID != "" {
 			err := d.q.QueryRow(ctx, `
-				SELECT EXISTS (SELECT 1 FROM assets WHERE machine_id = $1 AND kind = 'host' AND id <> $2)`,
-				id.MachineID, ref.ID).Scan(&ref.DuplicateMachineID)
+				SELECT EXISTS (SELECT 1 FROM assets
+					WHERE machine_id = $1 AND kind = 'host' AND id <> $2 AND scope_id = $3)`,
+				id.MachineID, ref.ID, scopeID).Scan(&ref.DuplicateMachineID)
 			if err != nil {
 				return ivErr(op, err)
 			}
@@ -108,6 +121,30 @@ func (d *DB) UpsertHostAsset(ctx context.Context, id store.HostIdentity, init st
 		return nil
 	})
 	return ref, err
+}
+
+// ivHostScope is the scope id of a host asset with identity id: that of
+// its agent (the default scope for a scanner or an unknown agent), else
+// that of its scan target, else the default scope. It is read from the
+// parent row whether or not the caller sees it; the caller checks it
+// against its scope.
+func (d *DB) ivHostScope(ctx context.Context, id store.HostIdentity) (string, error) {
+	var out string
+	switch {
+	case id.AgentID != "":
+		err := d.q.QueryRow(ctx, `SELECT coalesce(scope_id, '') FROM agents WHERE id = $1`, id.AgentID).Scan(&out)
+		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			return "", err
+		}
+	case id.ScanTargetID != "":
+		if err := d.q.QueryRow(ctx, `SELECT scope_id FROM scan_targets WHERE id = $1`, id.ScanTargetID).Scan(&out); err != nil {
+			return "", err
+		}
+	}
+	if out == "" {
+		out = scope.Default
+	}
+	return out, nil
 }
 
 // ivScanTargetAsset returns the host asset linked to a scan target, or "".
@@ -121,18 +158,19 @@ func (d *DB) ivScanTargetAsset(ctx context.Context, targetID string) (string, er
 	return found, err
 }
 
-// ivFindHost returns the asset id for id, or "".
-func (d *DB) ivFindHost(ctx context.Context, id store.HostIdentity) (string, error) {
+// ivFindHost returns the asset id for id in the scope scopeID, or "".
+// Hosts of different scopes are never merged.
+func (d *DB) ivFindHost(ctx context.Context, id store.HostIdentity, scopeID string) (string, error) {
 	var found string
 	scan := func(sql string, args ...any) error {
-		err := d.q.QueryRow(ctx, sql, args...).Scan(&found)
+		err := d.q.QueryRow(ctx, sql, append(args, scopeID)...).Scan(&found)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil
 		}
 		return err
 	}
 	if id.AgentID != "" {
-		if err := scan(`SELECT id::text FROM assets WHERE agent_id = $1`, id.AgentID); err != nil || found != "" {
+		if err := scan(`SELECT id::text FROM assets WHERE agent_id = $1 AND scope_id = $2`, id.AgentID); err != nil || found != "" {
 			return found, err
 		}
 		if id.MachineID == "" {
@@ -141,14 +179,14 @@ func (d *DB) ivFindHost(ctx context.Context, id store.HostIdentity) (string, err
 		// A new agent takes over an agentless asset of the same machine.
 		err := scan(`
 			SELECT id::text FROM assets
-			WHERE machine_id = $1 AND kind = 'host' AND agent_id IS NULL
+			WHERE machine_id = $1 AND kind = 'host' AND agent_id IS NULL AND scope_id = $2
 			ORDER BY first_seen, id LIMIT 1`, id.MachineID)
 		return found, err
 	}
 	if id.MachineID != "" {
 		err := scan(`
 			SELECT id::text FROM assets
-			WHERE machine_id = $1 AND kind = 'host'
+			WHERE machine_id = $1 AND kind = 'host' AND scope_id = $4
 			ORDER BY (scanner_id IS NOT DISTINCT FROM $2::uuid AND address = $3) DESC, first_seen, id
 			LIMIT 1`, id.MachineID, ivNull(id.ScannerID), id.Address)
 		if err != nil || found != "" || id.ScannerID == "" {
@@ -161,7 +199,7 @@ func (d *DB) ivFindHost(ctx context.Context, id store.HostIdentity) (string, err
 	err := scan(`
 		SELECT id::text FROM assets
 		WHERE scanner_id = $1 AND address = $2 AND kind = 'host' AND agent_id IS NULL
-		  AND (machine_id IS NULL OR $3::text IS NULL OR machine_id = $3)
+		  AND (machine_id IS NULL OR $3::text IS NULL OR machine_id = $3) AND scope_id = $4
 		ORDER BY first_seen, id LIMIT 1`, id.ScannerID, id.Address, ivNull(id.MachineID))
 	return found, err
 }
@@ -182,10 +220,14 @@ func (d *DB) UpsertWorkloadAsset(ctx context.Context, id store.WorkloadIdentity,
 	}
 	at := ivAt(init.SeenAt)
 	ref := store.AssetRef{}
+	if err := d.ivScopeCluster(ctx, op, id.ClusterID); err != nil {
+		return ref, err
+	}
 	err := d.q.QueryRow(ctx, `
 		INSERT INTO assets (id, kind, name, group_name, tags, method, cluster_id, namespace,
-			workload_kind, workload_name, first_seen, last_seen)
-		VALUES ($1, 'workload', $2, $3, $4, $5, $6, $7, $8, $9, $10, $10)
+			workload_kind, workload_name, first_seen, last_seen, scope_id)
+		VALUES ($1, 'workload', $2, $3, $4, $5, $6, $7, $8, $9, $10, $10,
+			(SELECT k.scope_id FROM k8s_clusters k WHERE k.id = $6))
 		ON CONFLICT (cluster_id, namespace, workload_kind, workload_name) WHERE kind = 'workload'
 		DO UPDATE SET gone_at = NULL, last_seen = GREATEST(assets.last_seen, EXCLUDED.last_seen)
 		RETURNING id::text, xmax = 0`,
@@ -205,6 +247,12 @@ func (d *DB) UpdateAssetFacts(ctx context.Context, assetID string, f store.Asset
 		tags = ivSortedUnique(f.Tags)
 	}
 	setOS := f.OS != (store.OSInfo{})
+	q, sc, err := scoped(ctx, op, assetID, f.Name, f.Group, tags, setOS, f.OS.Family, f.OS.ID, f.OS.Name, f.OS.Version,
+		f.Kernel, f.Arch, f.Address, string(f.Method), string(f.Privilege), string(f.Coverage),
+		f.CoverageReason, ivTimeOrNil(f.SeenAt))
+	if err != nil {
+		return err
+	}
 	tag, err := d.q.Exec(ctx, `
 		UPDATE assets SET
 			name = COALESCE(NULLIF($2, ''), name),
@@ -226,10 +274,7 @@ func (d *DB) UpdateAssetFacts(ctx context.Context, assetID string, f store.Asset
 			gone_at = CASE WHEN $17::timestamptz IS NULL THEN gone_at END,
 			collect_requested_at = CASE WHEN collect_requested_at <= $17::timestamptz THEN NULL
 				ELSE collect_requested_at END
-		WHERE id = $1`,
-		assetID, f.Name, f.Group, tags, setOS, f.OS.Family, f.OS.ID, f.OS.Name, f.OS.Version,
-		f.Kernel, f.Arch, f.Address, string(f.Method), string(f.Privilege), string(f.Coverage),
-		f.CoverageReason, ivTimeOrNil(f.SeenAt))
+		WHERE id = $1 AND `+sc.col("scope_id"), q.args...)
 	if err != nil {
 		return ivErr(op, err)
 	}
@@ -244,6 +289,9 @@ func (d *DB) SetSectionStates(ctx context.Context, assetID string, states []stor
 	const op = "set section states"
 	if !ivValidID(assetID) {
 		return ivNotFound(op)
+	}
+	if err := d.ivScopeAsset(ctx, op, assetID); err != nil {
+		return err
 	}
 	if len(states) == 0 {
 		return nil
@@ -292,9 +340,9 @@ const ivAssetCols = `a.id::text, a.kind, a.name, a.group_name, a.tags, a.os_fami
 	COALESCE(a.cluster_id::text, ''), COALESCE(k.name, ''), COALESCE(a.namespace, ''),
 	COALESCE(a.workload_kind, ''), COALESCE(a.workload_name, ''), a.first_seen, a.last_seen, a.gone_at,
 	(a.machine_id IS NOT NULL AND EXISTS (SELECT 1 FROM assets o
-		WHERE o.machine_id = a.machine_id AND o.kind = 'host' AND o.id <> a.id)),
+		WHERE o.machine_id = a.machine_id AND o.kind = 'host' AND o.id <> a.id AND o.scope_id = a.scope_id)),
 	COALESCE((SELECT t.id::text FROM scan_targets t WHERE t.asset_id = a.id ORDER BY t.created_at, t.id LIMIT 1), ''),
-	a.collect_requested_at`
+	a.collect_requested_at, a.scope_id`
 
 // ivImagesCol lists the distinct image references of the current
 // containers of asset alias a.
@@ -311,7 +359,7 @@ func ivAssetDest(a *store.Asset) []any {
 		&a.OS.Version, &a.Kernel, &a.Arch, &a.Address, &a.Method, &a.Coverage, &a.CoverageReason,
 		&a.Privilege, &a.AgentID, &a.MachineID, &a.ScannerID, &a.ClusterID, &a.ClusterName,
 		&a.Namespace, &a.WorkloadKind, &a.WorkloadName, &a.FirstSeen, &a.LastSeen, &a.GoneAt,
-		&a.DuplicateMachineID, &a.ScanTargetID, &a.CollectRequestedAt}
+		&a.DuplicateMachineID, &a.ScanTargetID, &a.CollectRequestedAt, &a.ScopeID}
 }
 
 func ivAssetRowDest(r *store.AssetRow) []any {
@@ -347,7 +395,14 @@ func (d *DB) ListAssets(ctx context.Context, f store.AssetFilter, p store.Page) 
 	if err != nil {
 		return nil, 0, err
 	}
-	q := &ivQuery{}
+	q, sc, err := scoped(ctx, op)
+	if err != nil {
+		return nil, 0, err
+	}
+	q.and(sc.col("a.scope_id"))
+	if f.ScopeID != "" {
+		q.where("a.scope_id = %s", f.ScopeID)
+	}
 	if !f.IncludeGone {
 		q.where("a.gone_at IS NULL")
 	}
@@ -408,12 +463,15 @@ func (d *DB) ListAssetGroups(ctx context.Context, f store.AssetGroupFilter, p st
 	if err != nil {
 		return nil, 0, err
 	}
-	q := &ivQuery{}
+	q, sc, err := scoped(ctx, op)
+	if err != nil {
+		return nil, 0, err
+	}
 	if f.Q != "" {
 		q.where("g.name ILIKE %s", ivLike(f.Q))
 	}
 	from := `FROM (SELECT a.group_name AS name, count(*) AS assets FROM assets a
-		WHERE a.gone_at IS NULL AND a.group_name <> '' GROUP BY a.group_name) g` + q.whereSQL()
+		WHERE a.gone_at IS NULL AND a.group_name <> '' AND ` + sc.col("a.scope_id") + ` GROUP BY a.group_name) g` + q.whereSQL()
 	var out []store.AssetGroupRow
 	total, err := ivPage(ctx, d, op, q, "g.name, g.assets", from, order, p, func(rows pgx.Rows) error {
 		var r store.AssetGroupRow
@@ -429,10 +487,14 @@ func (d *DB) ListAssetGroups(ctx context.Context, f store.AssetGroupFilter, p st
 // MarkCollectRequested implements store.AssetRequests.
 func (d *DB) MarkCollectRequested(ctx context.Context, assetID string, at time.Time) error {
 	const op = "mark collect requested"
+	q, sc, err := scoped(ctx, op, assetID, ivAt(at))
+	if err != nil {
+		return err
+	}
 	if !ivValidID(assetID) {
 		return ivNotFound(op)
 	}
-	tag, err := d.q.Exec(ctx, `UPDATE assets SET collect_requested_at = $2 WHERE id = $1`, assetID, ivAt(at))
+	tag, err := d.q.Exec(ctx, `UPDATE assets SET collect_requested_at = $2 WHERE id = $1 AND `+sc.col("scope_id"), q.args...)
 	if err != nil {
 		return ivErr(op, err)
 	}
@@ -446,11 +508,16 @@ func (d *DB) MarkCollectRequested(ctx context.Context, assetID string, at time.T
 func (d *DB) GetAsset(ctx context.Context, id string) (store.AssetDetail, error) {
 	const op = "get asset"
 	var out store.AssetDetail
+	q, sc, err := scoped(ctx, op, id)
+	if err != nil {
+		return out, err
+	}
 	if !ivValidID(id) {
 		return out, ivNotFound(op)
 	}
-	err := d.q.QueryRow(ctx, `SELECT `+ivAssetCols+` FROM assets a
-		LEFT JOIN k8s_clusters k ON k.id = a.cluster_id WHERE a.id = $1`, id).Scan(ivAssetDest(&out.Asset)...)
+	err = d.q.QueryRow(ctx, `SELECT `+ivAssetCols+` FROM assets a
+		LEFT JOIN k8s_clusters k ON k.id = a.cluster_id WHERE a.id = $1 AND `+sc.col("a.scope_id"), q.args...).
+		Scan(ivAssetDest(&out.Asset)...)
 	if err != nil {
 		return out, ivErr(op, err)
 	}
@@ -493,7 +560,12 @@ func (d *DB) GetAsset(ctx context.Context, id string) (store.AssetDetail, error)
 func (d *DB) Dashboard(ctx context.Context) (store.InventoryCounts, error) {
 	const op = "dashboard"
 	out := store.InventoryCounts{AssetsByCoverage: map[store.Coverage]int{}}
-	rows, err := d.q.Query(ctx, `SELECT kind, coverage, count(*) FROM assets WHERE gone_at IS NULL GROUP BY kind, coverage`)
+	q, sc, err := scoped(ctx, op)
+	if err != nil {
+		return out, err
+	}
+	rows, err := d.q.Query(ctx, `SELECT kind, coverage, count(*) FROM assets a WHERE gone_at IS NULL AND `+
+		sc.col("a.scope_id")+` GROUP BY kind, coverage`, q.args...)
 	if err != nil {
 		return out, ivErr(op, err)
 	}
@@ -523,12 +595,12 @@ func (d *DB) Dashboard(ctx context.Context) (store.InventoryCounts, error) {
 	err = d.q.QueryRow(ctx, `
 		SELECT
 			(SELECT count(*) FROM processes p JOIN assets a ON a.id = p.asset_id
-				WHERE a.gone_at IS NULL AND p.needs_restart),
+				WHERE a.gone_at IS NULL AND p.needs_restart AND `+sc.col("a.scope_id")+`),
 			(SELECT count(*) FROM processes p JOIN assets a ON a.id = p.asset_id
-				WHERE a.gone_at IS NULL AND p.suspicious),
-			(SELECT count(*) FROM components),
-			(SELECT count(*) FROM images),
-			(SELECT count(*) FROM k8s_clusters)`).
+				WHERE a.gone_at IS NULL AND p.suspicious AND `+sc.col("a.scope_id")+`),
+			(SELECT count(*) FROM components c WHERE `+sc.component("c.id")+`),
+			(SELECT count(*) FROM images i WHERE `+sc.image("i.digest")+`),
+			(SELECT count(*) FROM k8s_clusters k WHERE `+sc.col("k.scope_id")+`)`, q.args...).
 		Scan(&out.NeedsRestart, &out.Suspicious, &out.Components, &out.Images, &out.Clusters)
 	return out, ivErr(op, err)
 }
@@ -537,6 +609,9 @@ func (d *DB) Dashboard(ctx context.Context) (store.InventoryCounts, error) {
 func (d *DB) PurgeGone(ctx context.Context, before time.Time) (store.PurgeResult, error) {
 	const op = "purge gone"
 	var out store.PurgeResult
+	if err := requireAll(ctx, op); err != nil {
+		return out, err
+	}
 	err := d.ivAtomic(ctx, func(d *DB) error {
 		for _, s := range []struct {
 			sql string

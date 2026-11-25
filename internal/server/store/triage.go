@@ -28,7 +28,10 @@ var TriageJustifications = []string{
 
 // TriageRule is a judgment that a vulnerability does not affect a scope.
 type TriageRule struct {
-	ID         string
+	ID string
+	// ScopeID is the data scope the rule applies in. Asset rules have the
+	// scope of their asset.
+	ScopeID    string
 	VulnID     string
 	ScopeKind  string
 	ScopeValue string

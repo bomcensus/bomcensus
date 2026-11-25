@@ -18,6 +18,14 @@ func (d *DB) StoreReport(ctx context.Context, r store.RawReport) (string, error)
 	if r.AssetID != "" && !ivValidID(r.AssetID) {
 		return "", ivInvalid(op, "malformed asset id")
 	}
+	if _, err := requireScope(ctx, op); err != nil {
+		return "", err
+	}
+	if r.AssetID != "" {
+		if err := d.ivScopeAsset(ctx, op, r.AssetID); err != nil {
+			return "", err
+		}
+	}
 	var subject any
 	if len(r.Subject) > 0 {
 		if !json.Valid(r.Subject) {
@@ -46,14 +54,23 @@ func (d *DB) StoreReport(ctx context.Context, r store.RawReport) (string, error)
 func (d *DB) GetReport(ctx context.Context, id string) (store.RawReport, error) {
 	const op = "get report"
 	var r store.RawReport
+	q, sc, err := scoped(ctx, op, id)
+	if err != nil {
+		return r, err
+	}
 	if !ivValidID(id) {
 		return r, ivNotFound(op)
 	}
+	// A report without an asset is visible only to All.
+	cond := "TRUE"
+	if !sc.isAll() {
+		cond = "asset_id IS NOT NULL AND " + sc.asset("asset_id")
+	}
 	var subject *string
-	err := d.q.QueryRow(ctx, `
+	err = d.q.QueryRow(ctx, `
 		SELECT id::text, source_id, sender_kind, remote_addr, subject_kind, subject::text,
 			COALESCE(asset_id::text, ''), received_at, body
-		FROM reports WHERE id = $1`, id).
+		FROM reports WHERE id = $1 AND `+cond, q.args...).
 		Scan(&r.ID, &r.SourceID, &r.SenderKind, &r.RemoteAddr, &r.SubjectKind, &subject, &r.AssetID,
 			&r.ReceivedAt, &r.Body)
 	if err != nil {
@@ -72,6 +89,10 @@ func (d *DB) SetReportAsset(ctx context.Context, reportID, assetID string) error
 	if !ivValidID(reportID) || !ivValidID(assetID) {
 		return ivNotFound(op)
 	}
+	// Only ingest links reports, before anything else can see them.
+	if err := requireAll(ctx, op); err != nil {
+		return err
+	}
 	tag, err := d.q.Exec(ctx, `UPDATE reports SET asset_id = $2 WHERE id = $1`, reportID, assetID)
 	if err != nil {
 		return ivErr(op, err)
@@ -84,6 +105,9 @@ func (d *DB) SetReportAsset(ctx context.Context, reportID, assetID string) error
 
 // DeleteReportsBefore implements store.Reports.
 func (d *DB) DeleteReportsBefore(ctx context.Context, t time.Time) (int64, error) {
+	if err := requireAll(ctx, "delete reports"); err != nil {
+		return 0, err
+	}
 	tag, err := d.q.Exec(ctx, `DELETE FROM reports WHERE received_at < $1`, t.UTC())
 	if err != nil {
 		return 0, ivErr("delete reports", err)

@@ -8,14 +8,13 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"os"
 	"reflect"
 	"runtime"
 	"time"
 
-	"github.com/bomcensus/bomcensus/internal/gen/agentapi"
-	"github.com/bomcensus/bomcensus/internal/msgsig"
+	"github.com/bomcensus/bomcensus/agentproto"
+	"github.com/bomcensus/bomcensus/agentproto/dto"
 	"github.com/bomcensus/bomcensus/internal/pki"
 	"github.com/bomcensus/bomcensus/internal/report"
 )
@@ -35,8 +34,7 @@ func (r *Runtime) pollLoop(ctx context.Context) {
 				r.revokedByServer(err)
 				return
 			}
-			var ae *APIError
-			if errors.As(err, &ae) && ae.Code == msgsig.CodeClientCertMismatch {
+			if agentproto.IsCode(err, agentproto.CodeClientCertMismatch) {
 				// The agent state passed; the server wants the certificate.
 				r.clearRevoked()
 			}
@@ -56,12 +54,8 @@ func (r *Runtime) pollOnce(ctx context.Context) error {
 	req, acks := r.pollRequest(ctx)
 	pctx, cancel := context.WithTimeout(ctx, r.opts.PollTimeout)
 	defer cancel()
-	resp, err := r.client.PollWithResponse(pctx, req)
+	res, err := r.ch.Poll(pctx, &req)
 	if err != nil {
-		return err
-	}
-	var res agentapi.PollResult
-	if err := DecodeResponse(resp.HTTPResponse, resp.Body, 200, &res); err != nil {
 		return err
 	}
 	r.acked(acks)
@@ -78,29 +72,29 @@ func (r *Runtime) pollOnce(ctx context.Context) error {
 
 // DefaultPrivilege describes the process itself; components that know
 // better (the probe's report) override it in a StatusFunc.
-func DefaultPrivilege() agentapi.Privilege {
-	p := agentapi.Privilege{Level: agentapi.NonRoot, Uid: os.Getuid()}
+func DefaultPrivilege() dto.Privilege {
+	p := dto.Privilege{Level: dto.NonRoot, Uid: os.Getuid()}
 	if p.Uid == 0 {
-		p.Level = agentapi.Privileged
+		p.Level = dto.Privileged
 	}
 	return p
 }
 
-func (r *Runtime) pollRequest(ctx context.Context) (agentapi.PollRequest, []string) {
+func (r *Runtime) pollRequest(ctx context.Context) (dto.PollRequest, []string) {
 	enr := r.Enrollment()
-	tlsMode := agentapi.TlsMode(enr.TLSMode)
+	tlsMode := dto.TlsMode(enr.TLSMode)
 	if enr.ConnectMode == ModeListen || tlsMode == "" {
-		tlsMode = agentapi.Pinned
+		tlsMode = dto.Pinned
 	}
-	req := agentapi.PollRequest{
+	req := dto.PollRequest{
 		Version:        r.opts.Version,
-		Os:             agentapi.TargetOs(runtime.GOOS),
-		Arch:           agentapi.TargetArch(runtime.GOARCH),
-		ConnectMode:    agentapi.ConnectMode(enr.ConnectMode),
+		Os:             dto.TargetOs(runtime.GOOS),
+		Arch:           dto.TargetArch(runtime.GOARCH),
+		ConnectMode:    dto.ConnectMode(enr.ConnectMode),
 		TlsMode:        tlsMode,
 		Privilege:      DefaultPrivilege(),
 		SectionDigests: map[string]string{},
-		Update:         agentapi.UpdateStatus{State: agentapi.UpdateStateUpToDate},
+		Update:         dto.UpdateStatus{State: dto.UpdateStateUpToDate},
 	}
 	if b := r.TrustBundle(); b != nil {
 		req.TrustBundleSerial = int64(b.Version)
@@ -110,7 +104,7 @@ func (r *Runtime) pollRequest(ctx context.Context) (agentapi.PollRequest, []stri
 		req.CertNotAfter = &na
 	}
 	if fp, leaf, ok := r.ObservedServer(); ok {
-		oc := &agentapi.ObservedCert{
+		oc := &dto.ObservedCert{
 			Sha256:  hex.EncodeToString(fp[:]),
 			Subject: leaf.Subject.String(),
 			Issuer:  leaf.Issuer.String(),
@@ -186,7 +180,7 @@ type directiveHead struct {
 	Type string `json:"type"`
 }
 
-func (r *Runtime) handleDirectives(ctx context.Context, ds []agentapi.Directive) {
+func (r *Runtime) handleDirectives(ctx context.Context, ds []dto.Directive) {
 	for _, d := range ds {
 		raw, err := d.MarshalJSON()
 		var head directiveHead
@@ -215,7 +209,7 @@ func (r *Runtime) handleDirectives(ctx context.Context, ds []agentapi.Directive)
 	}
 }
 
-func (r *Runtime) applyConfig(ctx context.Context, cfg agentapi.AgentConfig) {
+func (r *Runtime) applyConfig(ctx context.Context, cfg dto.AgentConfig) {
 	r.mu.Lock()
 	changed := r.config == nil || !reflect.DeepEqual(*r.config, cfg)
 	if changed {
@@ -239,7 +233,7 @@ func (r *Runtime) applyConfig(ctx context.Context, cfg agentapi.AgentConfig) {
 }
 
 // PolicyFromConfig converts the policy of a server configuration.
-func PolicyFromConfig(p agentapi.Policy) report.Policy {
+func PolicyFromConfig(p dto.Policy) report.Policy {
 	out := report.Policy{
 		ExecVersion:    p.ExecVersion,
 		CollectCmdline: p.CollectCmdline,

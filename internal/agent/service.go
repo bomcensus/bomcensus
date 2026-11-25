@@ -18,8 +18,16 @@ import (
 // status so that the service manager starts the executable of the current
 // version.
 func RunService(ctx context.Context, args []string, stderr io.Writer) error {
+	return RunServiceWith(ctx, args, stderr, Extensions{})
+}
+
+// RunServiceWith is RunService with extensions.
+func RunServiceWith(ctx context.Context, args []string, stderr io.Writer, ext Extensions) error {
 	if len(args) == 0 || args[0] != "run" {
 		return fmt.Errorf("%w: a service runs the \"run\" command, got %q", errUsage, args)
 	}
-	return cmdRun(ctx, args[1:], stderr)
+	if err := ext.check(); err != nil {
+		return err
+	}
+	return cmdRun(ctx, args[1:], stderr, ext)
 }

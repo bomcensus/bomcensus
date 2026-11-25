@@ -12,7 +12,7 @@ import (
 
 	gossh "golang.org/x/crypto/ssh"
 
-	"github.com/bomcensus/bomcensus/internal/gen/agentapi"
+	"github.com/bomcensus/bomcensus/agentproto/dto"
 	"github.com/bomcensus/bomcensus/internal/report/reportapi"
 	"github.com/bomcensus/bomcensus/internal/scanner/runner"
 	"github.com/bomcensus/bomcensus/internal/server/ingest"
@@ -132,7 +132,7 @@ func (s *Service) runEmbeddedSSH(ctx context.Context, t store.ScanTarget, jobID 
 func (s *Service) failJob(ctx context.Context, sink runner.Sink, jobID, reason string, cause error) {
 	now := s.now().UTC()
 	msg := runner.Message(reason, cause.Error())
-	res := runner.Result{ScanJobResult: agentapi.ScanJobResult{Status: agentapi.ScanJobStatusFailed, Message: &msg,
+	res := runner.Result{ScanJobResult: dto.ScanJobResult{Status: dto.ScanJobStatusFailed, Message: &msg,
 		StartedAt: now, FinishedAt: now}}
 	s.log.Warn("scan job failed before it started", "job_id", jobID, "reason", reason, "error", cause)
 	if err := sink.SubmitResult(context.WithoutCancel(ctx), jobID, res); err != nil {
@@ -156,8 +156,8 @@ func (s *Service) dispatchSSH(ctx context.Context, sc store.Agent, t store.ScanT
 	if port == 0 {
 		port = 22
 	}
-	d := agentapi.ScanSshDirective{
-		Type: agentapi.ScanSsh, JobId: jobID, ScanTargetId: t.ID, Address: t.Address, Port: port,
+	d := dto.ScanSshDirective{
+		Type: dto.ScanSsh, JobId: jobID, ScanTargetId: t.ID, Address: t.Address, Port: port,
 		Username: cred.Username, Sudo: t.Sudo, Credential: sealed, Policy: runner.PolicyToAPI(s.sshPolicy(ctx, t)),
 	}
 	if sc.HasFeature(store.FeatureGoSymbols) {
@@ -172,7 +172,7 @@ func (s *Service) dispatchSSH(ctx context.Context, sc store.Agent, t store.ScanT
 		wire := key.Marshal()
 		d.HostKeyFingerprint, d.HostKey = &fp, &wire
 	}
-	var body agentapi.Directive
+	var body dto.Directive
 	if err := body.FromScanSshDirective(d); err != nil {
 		return err
 	}
@@ -183,7 +183,7 @@ func (s *Service) dispatchSSH(ctx context.Context, sc store.Agent, t store.ScanT
 // the first successful run, a key other than the pinned one turns the run
 // into a failure with runner.ReasonHostKeyChanged, and the run is recorded
 // through ingest (which also marks the asset of a failed scan).
-func (s *Service) applySSHResult(ctx context.Context, sender ingest.Sender, targetID string, res agentapi.ScanJobResult) error {
+func (s *Service) applySSHResult(ctx context.Context, sender ingest.Sender, targetID string, res dto.ScanJobResult) error {
 	t, err := s.st.GetScanTarget(ctx, targetID)
 	if errors.Is(err, store.ErrNotFound) {
 		return fmt.Errorf("scansvc: scan target %s: %w", targetID, store.ErrNotFound)
@@ -254,9 +254,9 @@ func (s *Service) applySSHResult(ctx context.Context, sender ingest.Sender, targ
 
 // sealSSHCredential seals a target's credential to the scanner for one job.
 func sealSSHCredential(sc store.Agent, jobID string, cred store.Credential, secret runner.SSHCredential) ([]byte, error) {
-	plain := agentapi.SSHCredentialSecret{Kind: agentapi.SshPassword}
+	plain := dto.SSHCredentialSecret{Kind: dto.SshPassword}
 	if cred.Kind == store.CredentialSSHKey {
-		plain.Kind = agentapi.SshKey
+		plain.Kind = dto.SshKey
 	}
 	if len(secret.PrivateKey) > 0 {
 		k, p := string(secret.PrivateKey), string(secret.Passphrase)

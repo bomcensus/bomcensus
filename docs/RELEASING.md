@@ -76,6 +76,8 @@ gcloud kms keys create bomcensus-manifest --keyring R --location L \
 
 Use the key version (`.../cryptoKeyVersions/1`), not the key: binaries trust exactly that version's public key.
 
+**List the manifest key in `internal/sign/official.go`** (the output of `bomcensus-release manifest-pub`, without the PEM lines) before the first release with it. `scripts/release.sh` stops when the key is missing (`bomcensus-release check-official`). Agents and scanners built with their own channels refuse to start when they trust a listed key, so they are always signed with their builder's own keys ([EXTENDING.md](EXTENDING.md#4-signing-your-own-agent)).
+
 **Keep the manifest key and `CODESIGN_ROOTS` the same across releases.** Installed agents and scanners trust only the manifest public key and roots compiled into them; a release signed with another manifest key, or with a certificate under another root, cannot update them. Rotating the manifest key needs a release that trusts both keys (`bomcensus-release print-ldflags` takes `manifest*.pub`); the workflow does not do that yet.
 
 ## 4. Local build
@@ -86,7 +88,7 @@ Use the key version (`.../cryptoKeyVersions/1`), not the key: binaries trust exa
 K=.devstate/devkeys
 MANIFEST_KEY_FILE=$K/manifest.key CODESIGN_ROOTS_FILE=$K/codesign-ca.crt \
 SIGN_KEY_FILE=$K/codesign.key SIGN_CERT_FILE=$K/codesign.crt \
-PE_SIGNER=go make release VERSION=1.2.3
+PE_SIGNER=go ALLOW_UNOFFICIAL_KEYS=1 make release VERSION=1.2.3
 ```
 
 It needs Go, Node with pnpm, `zip` and the `authentielf` CLI (`go install github.com/jc-lab/authentielf/cmd/authentielf@v0.0.1`). The workflow signs Windows files with jsign (`JSIGN="java -jar jsign.jar"`, the default `PE_SIGNER`), which also takes Cloud KMS keys. Output: `dist/release/assets` and `dist/release/docker`. Images from that output:

@@ -101,7 +101,8 @@ func (j Job) Decode(v any) error {
 // Handler runs a job. Returning nil completes it. An error marked with
 // Permanent (or one with a Permanent() bool method returning true) discards
 // the job; any other error schedules a retry with exponential backoff until
-// the attempts are used up.
+// the attempts are used up. Jobs act for no principal: ctx carries the
+// system data scope (scope.System).
 type Handler func(ctx context.Context, j Job) error
 
 // Queue is the job queue.

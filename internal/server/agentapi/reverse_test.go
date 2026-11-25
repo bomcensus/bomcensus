@@ -15,10 +15,11 @@ import (
 	"testing"
 	"time"
 
-	gen "github.com/bomcensus/bomcensus/internal/gen/agentapi"
+	"github.com/bomcensus/bomcensus/agentproto/dto"
 	"github.com/bomcensus/bomcensus/internal/link"
 	"github.com/bomcensus/bomcensus/internal/pki"
 	"github.com/bomcensus/bomcensus/internal/server/store"
+	"github.com/bomcensus/bomcensus/server/scope"
 )
 
 // startManager runs a reverse manager until the returned stop function is
@@ -33,7 +34,7 @@ func startManager(t *testing.T, e *env, owner string) (stop func()) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(scope.System(context.Background()))
 	done := make(chan error, 1)
 	go func() { done <- m.Run(ctx) }()
 	var stopped bool
@@ -64,7 +65,7 @@ func waitUntil(t *testing.T, what string, cond func() bool) {
 
 func TestListenModeRoundTrip(t *testing.T) {
 	e := newEnv(t, envOpts{})
-	ctx := context.Background()
+	ctx := scope.System(context.Background())
 
 	// Agent side: a listener with a temporary certificate feeding a
 	// ReverseHolder.
@@ -107,11 +108,11 @@ func TestListenModeRoundTrip(t *testing.T) {
 
 	// Enrollment over the reverse connection.
 	c := e.newAgent(t, tok)
-	c.connectMode = gen.Listen
+	c.connectMode = dto.Listen
 	c.base = "https://" + testServerName
 	c.rt = holder
 	res := c.enroll(t)
-	if res.finishStatus != http.StatusOK || res.result.Status != gen.EnrollStatusApproved || c.cert == nil {
+	if res.finishStatus != http.StatusOK || res.result.Status != dto.EnrollStatusApproved || c.cert == nil {
 		t.Fatalf("enroll: %+v", res)
 	}
 	if got, _ := e.db.GetListenTarget(ctx, target.ID); got.AgentID != c.id {
@@ -151,7 +152,7 @@ func TestListenModeRoundTrip(t *testing.T) {
 
 func TestListenTargetBoundToOtherAgent(t *testing.T) {
 	e := newEnv(t, envOpts{})
-	ctx := context.Background()
+	ctx := scope.System(context.Background())
 	other := enrolledAgent(t, e)
 	c := enrolledAgent(t, e)
 

@@ -12,7 +12,7 @@ import (
 
 	gossh "golang.org/x/crypto/ssh"
 
-	"github.com/bomcensus/bomcensus/internal/gen/agentapi"
+	"github.com/bomcensus/bomcensus/agentproto/dto"
 	"github.com/bomcensus/bomcensus/internal/report/reportapi"
 	"github.com/bomcensus/bomcensus/internal/scanner/runner"
 	"github.com/bomcensus/bomcensus/internal/server/ingest"
@@ -166,8 +166,8 @@ func (s *Service) startIntegrity(ctx context.Context, t store.ScanTarget, c inte
 		port = 22
 	}
 	q := reportapi.APIIntegrityQuery(c.Query)
-	d := agentapi.ScanSshDirective{
-		Type: agentapi.ScanSsh, JobId: jobID, ScanTargetId: t.ID, Address: t.Address, Port: port,
+	d := dto.ScanSshDirective{
+		Type: dto.ScanSsh, JobId: jobID, ScanTargetId: t.ID, Address: t.Address, Port: port,
 		Username: cred.Username, Sudo: t.Sudo, Credential: sealed, Policy: runner.PolicyToAPI(policy),
 		Integrity: &q,
 	}
@@ -180,7 +180,7 @@ func (s *Service) startIntegrity(ctx context.Context, t store.ScanTarget, c inte
 		wire := key.Marshal()
 		d.HostKeyFingerprint, d.HostKey = &fp, &wire
 	}
-	var body agentapi.Directive
+	var body dto.Directive
 	if err := body.FromScanSshDirective(d); err != nil {
 		return err
 	}
@@ -190,7 +190,7 @@ func (s *Service) startIntegrity(ctx context.Context, t store.ScanTarget, c inte
 // applyIntegrityResult checks the sender of a chunk's result. The chunk's
 // report was ingested on its own; the result does not count as a scan of
 // the target.
-func (s *Service) applyIntegrityResult(ctx context.Context, sender ingest.Sender, targetID string, res agentapi.ScanJobResult) error {
+func (s *Service) applyIntegrityResult(ctx context.Context, sender ingest.Sender, targetID string, res dto.ScanJobResult) error {
 	t, err := s.st.GetScanTarget(ctx, targetID)
 	if err != nil {
 		return fmt.Errorf("scansvc: scan target %s: %w", targetID, err)
@@ -198,7 +198,7 @@ func (s *Service) applyIntegrityResult(ctx context.Context, sender ingest.Sender
 	if t.ScannerID != sender.AgentID {
 		return forbidden("scan target %s is not assigned to scanner %q", t.ID, sender.AgentID)
 	}
-	if res.Status == agentapi.ScanJobStatusFailed {
+	if res.Status == dto.ScanJobStatusFailed {
 		msg := ""
 		if res.Message != nil {
 			msg = *res.Message

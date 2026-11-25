@@ -15,6 +15,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/bomcensus/bomcensus/internal/server/store"
+	"github.com/bomcensus/bomcensus/server/scope"
 )
 
 func mgTestAgent(t *testing.T, db *DB, mutate func(*store.Agent)) store.Agent {
@@ -29,7 +30,7 @@ func mgTestAgent(t *testing.T, db *DB, mutate func(*store.Agent)) store.Agent {
 	if mutate != nil {
 		mutate(&a)
 	}
-	out, err := db.CreateAgent(context.Background(), a)
+	out, err := db.CreateAgent(scope.System(context.Background()), a)
 	if err != nil {
 		t.Fatalf("create agent: %v", err)
 	}
@@ -38,7 +39,7 @@ func mgTestAgent(t *testing.T, db *DB, mutate func(*store.Agent)) store.Agent {
 
 func TestManageAgentLifecycle(t *testing.T) {
 	db := newTestDB(t)
-	ctx := context.Background()
+	ctx := scope.System(context.Background())
 	mgTestKey(t, db, "agentkey000", nil)
 	a := mgTestAgent(t, db, func(a *store.Agent) {
 		a.RegisterKeyID = "agentkey000"
@@ -153,7 +154,7 @@ func TestManageAgentLifecycle(t *testing.T) {
 
 func TestManageAgentCounterSequential(t *testing.T) {
 	db := newTestDB(t)
-	ctx := context.Background()
+	ctx := scope.System(context.Background())
 	a := mgTestAgent(t, db, nil)
 	steps := []struct {
 		v  uint64
@@ -178,7 +179,7 @@ func TestManageAgentCounterSequential(t *testing.T) {
 
 func TestManageAgentCounterConcurrent(t *testing.T) {
 	db := newTestDB(t)
-	ctx := context.Background()
+	ctx := scope.System(context.Background())
 	a := mgTestAgent(t, db, nil)
 	const workers, values = 16, 200
 
@@ -225,7 +226,7 @@ func TestManageAgentCounterConcurrent(t *testing.T) {
 
 func TestManageAgentListFiltersAndPaging(t *testing.T) {
 	db := newTestDB(t)
-	ctx := context.Background()
+	ctx := scope.System(context.Background())
 	online := mgT0.Add(-time.Minute)
 	stale := mgT0.Add(-time.Hour)
 	threshold := mgT0.Add(-5 * time.Minute)

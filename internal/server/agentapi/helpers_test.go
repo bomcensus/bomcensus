@@ -32,7 +32,8 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/bomcensus/bomcensus/internal/enroll"
-	gen "github.com/bomcensus/bomcensus/internal/gen/agentapi"
+
+	"github.com/bomcensus/bomcensus/agentproto/dto"
 	"github.com/bomcensus/bomcensus/internal/link"
 	"github.com/bomcensus/bomcensus/internal/msgsig"
 	"github.com/bomcensus/bomcensus/internal/pki"
@@ -41,6 +42,7 @@ import (
 	"github.com/bomcensus/bomcensus/internal/server/store"
 	"github.com/bomcensus/bomcensus/internal/server/store/postgres"
 	"github.com/bomcensus/bomcensus/internal/token"
+	"github.com/bomcensus/bomcensus/server/scope"
 )
 
 const testServerName = "agents.test"
@@ -54,7 +56,7 @@ func newTestDB(t testing.TB) *postgres.DB {
 	if base == "" {
 		t.Skip("BOMCENSUS_TEST_DATABASE_URL is not set")
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	ctx, cancel := context.WithTimeout(scope.System(context.Background()), time.Minute)
 	defer cancel()
 	admin, err := pgx.Connect(ctx, base)
 	if err != nil {
@@ -68,7 +70,7 @@ func newTestDB(t testing.TB) *postgres.DB {
 		t.Fatalf("create database: %v", err)
 	}
 	t.Cleanup(func() {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+		ctx, cancel := context.WithTimeout(scope.System(context.Background()), time.Minute)
 		defer cancel()
 		if _, err := admin.Exec(ctx, "DROP DATABASE IF EXISTS "+name+" WITH (FORCE)"); err != nil {
 			t.Errorf("drop database: %v", err)
@@ -207,11 +209,11 @@ func (f *fakeIngest) Submit(_ context.Context, sender store.Agent, jobID string,
 	return fmt.Sprintf("report-%d", len(f.reports)), nil
 }
 
-func (f *fakeIngest) IngestK8sInventory(context.Context, store.Agent, gen.K8sInventory) error {
+func (f *fakeIngest) IngestK8sInventory(context.Context, store.Agent, dto.K8sInventory) error {
 	return nil
 }
 
-func (f *fakeIngest) RecordScanResult(context.Context, store.Agent, string, gen.ScanJobResult) error {
+func (f *fakeIngest) RecordScanResult(context.Context, store.Agent, string, dto.ScanJobResult) error {
 	return nil
 }
 
@@ -265,7 +267,7 @@ func newEnv(t *testing.T, o envOpts) *env {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(scope.System(context.Background()))
 	done := make(chan error, 1)
 	go func() {
 		done <- Serve(ctx, ln, ServeOptions{Handler: e.handler, Certificate: e.pki.AgentServerCertificate,
@@ -295,7 +297,7 @@ func (e *env) newKey(t *testing.T, mod func(*store.RegisterKey)) token.Token {
 	if mod != nil {
 		mod(&k)
 	}
-	if _, err := e.db.CreateRegisterKey(context.Background(), k); err != nil {
+	if _, err := e.db.CreateRegisterKey(scope.System(context.Background()), k); err != nil {
 		t.Fatal(err)
 	}
 	return tok
@@ -350,8 +352,8 @@ type agentClient struct {
 	e           *env
 	tok         token.Token
 	key         ed25519.PrivateKey
-	kind        gen.AgentKind
-	connectMode gen.ConnectMode
+	kind        dto.AgentKind
+	connectMode dto.ConnectMode
 	base        string // URL prefix
 	// rt carries enrollment requests: a connect transport without client
 	// certificate, or a ReverseHolder.
@@ -370,7 +372,7 @@ func (e *env) newAgent(t *testing.T, tok token.Token) *agentClient {
 	if err != nil {
 		t.Fatal(err)
 	}
-	c := &agentClient{e: e, tok: tok, key: key, kind: gen.Agent, connectMode: gen.Connect, base: e.url, counter: &memCounter{}}
+	c := &agentClient{e: e, tok: tok, key: key, kind: dto.Agent, connectMode: dto.Connect, base: e.url, counter: &memCounter{}}
 	cfg, err := link.ClientTLSConfig(link.ClientConfig{Mode: link.TLSPinned, Verify: link.PinnedVerifier(tok.CAHash, testServerName)})
 	if err != nil {
 		t.Fatal(err)
@@ -387,12 +389,12 @@ func (c *agentClient) startBody(t *testing.T) []byte {
 	}
 	nonce := make([]byte, 32)
 	_, _ = rand.Read(nonce)
-	req := gen.EnrollStartRequest{
+	req := dto.EnrollStartRequest{
 		KeyId: c.tok.KeyID.String(), AgentNonce: nonce, Csr: csr, Kind: c.kind, Version: "1.0.0",
-		Host:        gen.HostFacts{Hostname: "node-1", Arch: "amd64", Os: gen.OsRelease{Family: "linux"}},
-		ConnectMode: c.connectMode, TlsMode: gen.Pinned,
+		Host:        dto.HostFacts{Hostname: "node-1", Arch: "amd64", Os: dto.OsRelease{Family: "linux"}},
+		ConnectMode: c.connectMode, TlsMode: dto.Pinned,
 	}
-	if c.connectMode == gen.Listen {
+	if c.connectMode == dto.Listen {
 		la := ":7443"
 		req.ListenAddress = &la
 	}
@@ -406,7 +408,7 @@ func (c *agentClient) startBody(t *testing.T) []byte {
 // post sends a raw request on the enrollment transport.
 func (c *agentClient) post(t *testing.T, path string, body []byte) (int, []byte, http.Header) {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(scope.System(context.Background()), 10*time.Second)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.base+path, bytes.NewReader(body))
 	if err != nil {
@@ -430,7 +432,7 @@ type enrollment struct {
 	startStatus  int
 	finishStatus int
 	finishBody   []byte // the exact finish request body, for replays
-	result       gen.EnrollResult
+	result       dto.EnrollResult
 	errorCode    string
 }
 
@@ -445,7 +447,7 @@ func (c *agentClient) enroll(t *testing.T) enrollment {
 		out.errorCode = errorCode(t, startResp)
 		return out
 	}
-	var sess gen.EnrollSession
+	var sess dto.EnrollSession
 	if err := json.Unmarshal(startResp, &sess); err != nil {
 		t.Fatal(err)
 	}
@@ -463,7 +465,7 @@ func (c *agentClient) enroll(t *testing.T) enrollment {
 	if err != nil {
 		t.Fatal(err)
 	}
-	out.finishBody, _ = json.Marshal(gen.EnrollFinishRequest{SessionId: sess.SessionId, Signature: sig})
+	out.finishBody, _ = json.Marshal(dto.EnrollFinishRequest{SessionId: sess.SessionId, Signature: sig})
 	status, finResp, h := c.post(t, "/agent/v1/enroll/finish", out.finishBody)
 	out.finishStatus = status
 	if status != http.StatusOK {
@@ -520,7 +522,7 @@ func (c *agentClient) useSigned(base http.RoundTripper, counter msgsig.CounterSo
 
 func (c *agentClient) do(t *testing.T, method, path string, body []byte) (*http.Response, []byte, error) {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	ctx, cancel := context.WithTimeout(scope.System(context.Background()), 15*time.Second)
 	defer cancel()
 	var rd io.Reader
 	if body != nil {
@@ -541,12 +543,12 @@ func (c *agentClient) do(t *testing.T, method, path string, body []byte) (*http.
 
 func (c *agentClient) pollBody(t *testing.T, acks []string, bundleSerial int64) []byte {
 	t.Helper()
-	req := gen.PollRequest{
-		Version: "1.0.0", Os: gen.Linux, Arch: gen.Amd64, ConnectMode: c.connectMode, TlsMode: gen.Pinned,
-		Privilege:         gen.Privilege{Level: gen.PrivilegeLevel("non_root"), Uid: 1000},
+	req := dto.PollRequest{
+		Version: "1.0.0", Os: dto.Linux, Arch: dto.Amd64, ConnectMode: c.connectMode, TlsMode: dto.Pinned,
+		Privilege:         dto.Privilege{Level: dto.PrivilegeLevel("non_root"), Uid: 1000},
 		SectionDigests:    map[string]string{},
 		TrustBundleSerial: bundleSerial,
-		Update:            gen.UpdateStatus{State: gen.UpdateStateUpToDate},
+		Update:            dto.UpdateStatus{State: dto.UpdateStateUpToDate},
 	}
 	if acks != nil {
 		req.AckedDirectives = &acks
@@ -559,7 +561,7 @@ func (c *agentClient) pollBody(t *testing.T, acks []string, bundleSerial int64) 
 }
 
 // poll sends one poll and decodes a 200 answer.
-func (c *agentClient) poll(t *testing.T, acks []string) gen.PollResult {
+func (c *agentClient) poll(t *testing.T, acks []string) dto.PollResult {
 	t.Helper()
 	resp, body, err := c.do(t, http.MethodPost, "/agent/v1/poll", c.pollBody(t, acks, 1))
 	if err != nil {
@@ -568,7 +570,7 @@ func (c *agentClient) poll(t *testing.T, acks []string) gen.PollResult {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("poll: status %d: %s", resp.StatusCode, body)
 	}
-	var res gen.PollResult
+	var res dto.PollResult
 	if err := json.Unmarshal(body, &res); err != nil {
 		t.Fatal(err)
 	}
@@ -577,14 +579,14 @@ func (c *agentClient) poll(t *testing.T, acks []string) gen.PollResult {
 
 func errorCode(t *testing.T, b []byte) string {
 	t.Helper()
-	var e gen.Error
+	var e dto.Error
 	if err := json.Unmarshal(b, &e); err != nil {
 		t.Fatalf("error body %q: %v", b, err)
 	}
 	return e.Code
 }
 
-func directiveIDs(t *testing.T, ds []gen.Directive) (ids, types []string) {
+func directiveIDs(t *testing.T, ds []dto.Directive) (ids, types []string) {
 	t.Helper()
 	for _, d := range ds {
 		typ, err := d.Discriminator()

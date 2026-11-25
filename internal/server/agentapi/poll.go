@@ -10,14 +10,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"slices"
 	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
 
-	gen "github.com/bomcensus/bomcensus/internal/gen/agentapi"
-	"github.com/bomcensus/bomcensus/internal/msgsig"
+	"github.com/bomcensus/bomcensus/agentproto"
+	"github.com/bomcensus/bomcensus/agentproto/dto"
 	"github.com/bomcensus/bomcensus/internal/pki"
 	"github.com/bomcensus/bomcensus/internal/report"
 	"github.com/bomcensus/bomcensus/internal/server/dispatch"
@@ -40,7 +41,7 @@ type CollectPolicy struct {
 		Processes  *int `json:"processes,omitempty"`
 		Containers *int `json:"containers,omitempty"`
 	} `json:"section_intervals"`
-	Policy *gen.Policy `json:"policy,omitempty"`
+	Policy *dto.Policy `json:"policy,omitempty"`
 }
 
 // Default section intervals in seconds.
@@ -62,14 +63,14 @@ func intervalOr(v *int, def int) int {
 	return *v
 }
 
-func defaultPolicy() gen.Policy {
+func defaultPolicy() dto.Policy {
 	p := report.DefaultPolicy()
-	return gen.Policy{ExecVersion: p.ExecVersion, CollectCmdline: p.CollectCmdline, ScanContainers: p.ScanContainers}
+	return dto.Policy{ExecVersion: p.ExecVersion, CollectCmdline: p.CollectCmdline, ScanContainers: p.ScanContainers}
 }
 
 // agentConfig builds the configuration part of a poll response for agent
 // a. Walk paths come from the agent's detect directories only.
-func (h *Handlers) agentConfig(ctx context.Context, a store.Agent, bundleSerial int64) (gen.AgentConfig, error) {
+func (h *Handlers) agentConfig(ctx context.Context, a store.Agent, bundleSerial int64) (dto.AgentConfig, error) {
 	var cp CollectPolicy
 	raw, err := h.st.GetSetting(ctx, SettingCollectPolicy)
 	switch {
@@ -79,19 +80,19 @@ func (h *Handlers) agentConfig(ctx context.Context, a store.Agent, bundleSerial 
 			cp = CollectPolicy{}
 		}
 	case !errors.Is(err, store.ErrNotFound):
-		return gen.AgentConfig{}, fmt.Errorf("collect policy: %w", err)
+		return dto.AgentConfig{}, fmt.Errorf("collect policy: %w", err)
 	}
 	us, err := h.st.GetUpdateSettings(ctx)
 	if err != nil {
-		return gen.AgentConfig{}, fmt.Errorf("update settings: %w", err)
+		return dto.AgentConfig{}, fmt.Errorf("update settings: %w", err)
 	}
 	interval := us.CheckIntervalMinutes
 	if interval < 1 {
 		interval = store.DefaultUpdateCheckIntervalMinutes
 	}
 	si := cp.SectionIntervals
-	cfg := gen.AgentConfig{
-		SectionIntervals: gen.SectionIntervals{
+	cfg := dto.AgentConfig{
+		SectionIntervals: dto.SectionIntervals{
 			Host:       intervalOr(si.Host, DefaultHostInterval),
 			Packages:   intervalOr(si.Packages, DefaultPackagesInterval),
 			Artifacts:  intervalOr(si.Artifacts, DefaultArtifactsInterval),
@@ -118,14 +119,14 @@ func (h *Handlers) agentConfig(ctx context.Context, a store.Agent, bundleSerial 
 
 // integrityConfig is the agent's integrity configuration. A policy that
 // cannot be read turns the passes off rather than failing the poll.
-func (h *Handlers) integrityConfig(ctx context.Context, a store.Agent) *gen.IntegrityConfig {
+func (h *Handlers) integrityConfig(ctx context.Context, a store.Agent) *dto.IntegrityConfig {
 	p, err := integritysvc.Load(ctx, h.st)
 	if err != nil {
 		h.log.WarnContext(ctx, "integrity policy unreadable; passes are off", "error", err)
 		p, a.Integrity = integritysvc.DefaultPolicy(), store.IntegrityOff
 	}
 	excl := slices.Clone(p.ExcludePaths)
-	return &gen.IntegrityConfig{
+	return &dto.IntegrityConfig{
 		Enabled:        integritysvc.Enabled(a.Integrity, p.Agents),
 		WindowStart:    p.WindowStart,
 		WindowEnd:      p.WindowEnd,
@@ -136,21 +137,23 @@ func (h *Handlers) integrityConfig(ctx context.Context, a store.Agent) *gen.Inte
 	}
 }
 
-func validPoll(b *gen.PollRequest) bool {
+func validPoll(b *dto.PollRequest) bool {
 	return b.Os.Valid() && b.Arch.Valid() && b.ConnectMode.Valid() && b.TlsMode.Valid() &&
 		b.Privilege.Level.Valid() && b.Update.State.Valid()
 }
 
-// Poll implements gen.StrictServerInterface: it stores the reported status,
+// Poll implements agentproto.API: it stores the reported status,
 // acknowledges directives and waits up to the poll timeout for pending
 // directives.
-func (h *Handlers) Poll(ctx context.Context, req gen.PollRequestObject) (gen.PollResponseObject, error) {
-	if req.Body == nil || !validPoll(req.Body) {
-		return gen.Poll400JSONResponse{BadRequestJSONResponse: gen.BadRequestJSONResponse(apiError(msgsig.CodeInvalidRequest, "invalid poll request"))}, nil
+func (h *Handlers) Poll(ctx context.Context, body *dto.PollRequest) (*dto.PollResult, error) {
+	a, err := h.caller(ctx, "Poll")
+	if err != nil {
+		return nil, err
 	}
-	body := req.Body
-	a := agentFrom(ctx)
-	info := requestInfoFrom(ctx)
+	if body == nil || !validPoll(body) {
+		return nil, apiError(http.StatusBadRequest, agentproto.CodeInvalidRequest, "invalid poll request")
+	}
+	remote := agentproto.PeerFrom(ctx).RemoteAddr
 	now := h.now().UTC()
 
 	status := store.AgentPollStatus{
@@ -171,8 +174,8 @@ func (h *Handlers) Poll(ctx context.Context, req gen.PollRequestObject) (gen.Pol
 		Features:           knownFeatures(body.Features),
 		SeenAt:             now,
 	}
-	if info.remote.IsValid() {
-		status.Address = info.remote.String()
+	if remote.IsValid() {
+		status.Address = remote.String()
 	}
 	if err := h.st.UpdateAgentPoll(ctx, a.ID, status); err != nil {
 		return nil, fmt.Errorf("update agent status: %w", err)
@@ -208,12 +211,12 @@ func (h *Handlers) Poll(ctx context.Context, req gen.PollRequestObject) (gen.Pol
 	if err != nil {
 		return nil, fmt.Errorf("agent counter: %w", err)
 	}
-	return gen.Poll200JSONResponse(gen.PollResult{
+	return &dto.PollResult{
 		Config:      cfg,
 		Directives:  directives,
 		LastCounter: int64(counter),
 		ServerTime:  h.now().UTC().Truncate(time.Second),
-	}), nil
+	}, nil
 }
 
 // knownFeatures keeps the features the server knows of.
@@ -253,7 +256,7 @@ func updateMessage(m *string) string {
 // waitDirectives returns the agent's pending directives, waiting up to the
 // poll timeout for one to arrive unless immediate is set. Delivered
 // directives are marked; they are delivered again until acknowledged.
-func (h *Handlers) waitDirectives(ctx context.Context, agentID string, immediate bool) ([]gen.Directive, error) {
+func (h *Handlers) waitDirectives(ctx context.Context, agentID string, immediate bool) ([]dto.Directive, error) {
 	deadline := time.NewTimer(h.pollMax)
 	defer deadline.Stop()
 	recheck := time.NewTicker(h.recheck)
@@ -273,7 +276,7 @@ func (h *Handlers) waitDirectives(ctx context.Context, agentID string, immediate
 		}
 		if immediate {
 			cancel()
-			return []gen.Directive{}, nil
+			return []dto.Directive{}, nil
 		}
 		select {
 		case <-wake:
@@ -282,14 +285,14 @@ func (h *Handlers) waitDirectives(ctx context.Context, agentID string, immediate
 			immediate = true // read once more, then answer
 		case <-ctx.Done():
 			cancel()
-			return []gen.Directive{}, nil
+			return []dto.Directive{}, nil
 		}
 		cancel()
 	}
 }
 
-func (h *Handlers) deliver(ctx context.Context, agentID string, pending []store.Directive) ([]gen.Directive, error) {
-	out := make([]gen.Directive, 0, len(pending))
+func (h *Handlers) deliver(ctx context.Context, agentID string, pending []store.Directive) ([]dto.Directive, error) {
+	out := make([]dto.Directive, 0, len(pending))
 	ids := make([]string, 0, len(pending))
 	for _, d := range pending {
 		g, err := dispatch.Deliverable(d)
@@ -310,8 +313,8 @@ func (h *Handlers) deliver(ctx context.Context, agentID string, pending []store.
 // not stored: renew_cert once the certificate is past two thirds of its
 // life and sync_trust_bundle while the agent's bundle is behind. Their ids
 // are stable for the same condition.
-func (h *Handlers) computedDirectives(ctx context.Context, agentID string, body *gen.PollRequest, bundleSerial int64, now time.Time) ([]gen.Directive, error) {
-	var out []gen.Directive
+func (h *Handlers) computedDirectives(ctx context.Context, agentID string, body *dto.PollRequest, bundleSerial int64, now time.Time) ([]dto.Directive, error) {
+	var out []dto.Directive
 	certs, err := h.st.ListAgentCerts(ctx, agentID)
 	if err != nil {
 		return nil, fmt.Errorf("agent certificates: %w", err)
@@ -326,8 +329,8 @@ func (h *Handlers) computedDirectives(ctx context.Context, agentID string, body 
 	if latest != nil {
 		life := latest.NotAfter.Sub(latest.NotBefore)
 		if !now.Before(latest.NotBefore.Add(life * 2 / 3)) {
-			var d gen.Directive
-			if err := d.FromRenewCertDirective(gen.RenewCertDirective{
+			var d dto.Directive
+			if err := d.FromRenewCertDirective(dto.RenewCertDirective{
 				Id: "renew_cert-" + strconv.FormatInt(latest.NotAfter.Unix(), 10), NewKey: false,
 			}); err != nil {
 				return nil, err
@@ -336,8 +339,8 @@ func (h *Handlers) computedDirectives(ctx context.Context, agentID string, body 
 		}
 	}
 	if body.TrustBundleSerial < bundleSerial {
-		var d gen.Directive
-		if err := d.FromSyncTrustBundleDirective(gen.SyncTrustBundleDirective{
+		var d dto.Directive
+		if err := d.FromSyncTrustBundleDirective(dto.SyncTrustBundleDirective{
 			Id: "sync_trust_bundle-" + strconv.FormatInt(bundleSerial, 10), Serial: bundleSerial,
 		}); err != nil {
 			return nil, err
@@ -352,7 +355,7 @@ func (h *Handlers) computedDirectives(ctx context.Context, agentID string, body 
 // otherwise. Only the CA matters: the leaf changes whenever it is renewed
 // or its names change. A certificate whose issuing CA the agent did not
 // report is treated as foreign.
-func (h *Handlers) observedIssuer(o *gen.ObservedCert) string {
+func (h *Handlers) observedIssuer(o *dto.ObservedCert) string {
 	if o == nil {
 		return ""
 	}

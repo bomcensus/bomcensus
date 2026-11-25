@@ -39,6 +39,13 @@ func (d *DB) ReplaceGoBinaries(ctx context.Context, scope store.GoBinaryScope, b
 	}
 	const recs = `jsonb_to_recordset($1::text::jsonb) AS x(path text, sha256 text, goos text, goarch text)`
 	at := mgOrNow(opts.At)
+	if scope.Digest == "" {
+		if err := d.ivScopeAsset(ctx, "replace go binaries", scope.AssetID); err != nil {
+			return err
+		}
+	} else if _, err := requireScope(ctx, "replace go binaries"); err != nil {
+		return err
+	}
 	return d.mgInTx(ctx, func(tx *DB) error {
 		if scope.Digest != "" {
 			if !opts.KeepMissing {
@@ -93,6 +100,9 @@ func (d *DB) SaveGoSymbolResults(ctx context.Context, assetID string, results []
 	if err != nil {
 		return fmt.Errorf("postgres: save go symbol results: %w", err)
 	}
+	if err := d.ivScopeAsset(ctx, "save go symbol results", assetID); err != nil {
+		return err
+	}
 	return d.mgInTx(ctx, func(tx *DB) error {
 		if _, err := tx.q.Exec(ctx, `
 			INSERT INTO go_symbol_results (asset_id, sha256, name, result, reason, checked_at)
@@ -112,6 +122,9 @@ func (d *DB) SaveGoSymbolResults(ctx context.Context, assetID string, results []
 
 // GoSymbolAssets implements store.GoSymbols.
 func (d *DB) GoSymbolAssets(ctx context.Context, since time.Time, limit int) ([]string, error) {
+	if err := requireAll(ctx, "go symbol assets"); err != nil {
+		return nil, err
+	}
 	rows, err := d.q.Query(ctx, `
 		SELECT f.asset_id::text FROM findings f
 		JOIN assets a ON a.id = f.asset_id AND a.gone_at IS NULL
@@ -139,6 +152,9 @@ func (d *DB) GoSymbolAssets(ctx context.Context, since time.Time, limit int) ([]
 
 // PutGoSymbolQuery implements store.GoSymbols.
 func (d *DB) PutGoSymbolQuery(ctx context.Context, q store.GoSymbolQuery) error {
+	if err := d.ivScopeAsset(ctx, "put go symbol query", q.AssetID); err != nil {
+		return err
+	}
 	_, err := d.q.Exec(ctx, `
 		INSERT INTO go_symbol_queries (asset_id, container, query, created_at) VALUES ($1, $2, $3::text::jsonb, $4)
 		ON CONFLICT (asset_id, container) DO UPDATE SET query = excluded.query, created_at = excluded.created_at`,
@@ -149,6 +165,9 @@ func (d *DB) PutGoSymbolQuery(ctx context.Context, q store.GoSymbolQuery) error 
 // GoSymbolQueryFor implements store.GoSymbols.
 func (d *DB) GoSymbolQueryFor(ctx context.Context, assetID, container string) (store.GoSymbolQuery, error) {
 	q := store.GoSymbolQuery{AssetID: assetID, Container: container}
+	if err := d.ivScopeAsset(ctx, "get go symbol query", assetID); err != nil {
+		return q, err
+	}
 	var raw string
 	err := d.q.QueryRow(ctx, `SELECT query::text, created_at FROM go_symbol_queries WHERE asset_id = $1 AND container = $2`,
 		assetID, container).Scan(&raw, &q.CreatedAt)
@@ -161,12 +180,18 @@ func (d *DB) GoSymbolQueryFor(ctx context.Context, assetID, container string) (s
 
 // DeleteGoSymbolQuery implements store.GoSymbols.
 func (d *DB) DeleteGoSymbolQuery(ctx context.Context, assetID, container string) error {
+	if err := d.ivScopeAsset(ctx, "delete go symbol query", assetID); err != nil {
+		return err
+	}
 	_, err := d.q.Exec(ctx, `DELETE FROM go_symbol_queries WHERE asset_id = $1 AND container = $2`, assetID, container)
 	return mgErr("delete go symbol query", err)
 }
 
 // ClusterGoSymbolQueries implements store.GoSymbols.
 func (d *DB) ClusterGoSymbolQueries(ctx context.Context, clusterID string) ([]store.WorkloadGoSymbolQuery, error) {
+	if err := d.ivScopeCluster(ctx, "cluster go symbol queries", clusterID); err != nil {
+		return nil, err
+	}
 	rows, err := d.q.Query(ctx, `
 		SELECT w.namespace, w.kind, w.name, q.asset_id::text, q.container, q.query::text, q.created_at
 		FROM go_symbol_queries q JOIN k8s_workloads w ON w.asset_id = q.asset_id

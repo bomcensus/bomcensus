@@ -14,11 +14,12 @@ import (
 
 	"github.com/bomcensus/bomcensus/internal/server/store"
 	"github.com/bomcensus/bomcensus/internal/server/vulnsvc"
+	"github.com/bomcensus/bomcensus/server/scope"
 )
 
 func TestRevokedAgentAssetIsGone(t *testing.T) {
 	db := newTestDB(t)
-	ctx := context.Background()
+	ctx := scope.System(context.Background())
 	srv, err := db.GetActiveFeedServer(ctx)
 	ivMust(t, err)
 	epoch := store.MatchEpoch{ServerID: srv.ID, Revision: 1}

@@ -58,6 +58,9 @@ func (h *Handlers) ListAssets(ctx context.Context, req gen.ListAssetsRequestObje
 	if prm.ClusterId != nil {
 		f.ClusterID = *prm.ClusterId
 	}
+	if prm.ScopeId != nil {
+		f.ScopeID = *prm.ScopeId
+	}
 	if f.Sort, err = sortKey(prm.Sort, map[string]string{
 		"name": "name", "kind": "kind", "os": "os", "group": "group", "method": "method",
 		"coverage": "coverage", "firstSeen": "first_seen", "lastSeen": "last_seen",
@@ -112,7 +115,7 @@ func (h *Handlers) GetAsset(ctx context.Context, req gen.GetAssetRequestObject) 
 	}
 	s := assetSummary(a.Asset, 0)
 	out := gen.GetAsset200JSONResponse{
-		Id: s.Id, Name: s.Name, Kind: s.Kind, Group: s.Group, Tags: s.Tags, Os: s.Os, Address: s.Address,
+		Id: s.Id, ScopeId: s.ScopeId, Name: s.Name, Kind: s.Kind, Group: s.Group, Tags: s.Tags, Os: s.Os, Address: s.Address,
 		Method: s.Method, Coverage: s.Coverage, CoverageReason: s.CoverageReason, Privilege: s.Privilege,
 		AgentId: s.AgentId, ScanTargetId: s.ScanTargetId, ClusterId: s.ClusterId, ClusterName: s.ClusterName,
 		Namespace: s.Namespace, WorkloadKind: s.WorkloadKind, CollectRequestedAt: s.CollectRequestedAt,

@@ -23,7 +23,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilexec "k8s.io/client-go/util/exec"
 
-	"github.com/bomcensus/bomcensus/internal/gen/agentapi"
+	"github.com/bomcensus/bomcensus/agentproto/dto"
 	"github.com/bomcensus/bomcensus/internal/report"
 	"github.com/bomcensus/bomcensus/internal/report/reportapi"
 	"github.com/bomcensus/bomcensus/internal/sign"
@@ -74,7 +74,7 @@ type ExecTarget struct {
 }
 
 // TargetFromAPI converts a k8s_exec directive target.
-func TargetFromAPI(t agentapi.K8sExecTarget) ExecTarget {
+func TargetFromAPI(t dto.K8sExecTarget) ExecTarget {
 	out := ExecTarget{Namespace: t.Namespace, Pod: t.Pod, Container: t.Container}
 	if t.ImageRef != nil {
 		out.ImageRef = *t.ImageRef
@@ -90,14 +90,14 @@ func TargetFromAPI(t agentapi.K8sExecTarget) ExecTarget {
 }
 
 // API converts the target to its directive form.
-func (t ExecTarget) API() agentapi.K8sExecTarget {
-	out := agentapi.K8sExecTarget{
+func (t ExecTarget) API() dto.K8sExecTarget {
+	out := dto.K8sExecTarget{
 		Namespace: t.Namespace, Pod: t.Pod, Container: t.Container,
 		ImageRef: strPtr(t.ImageRef), ImageDigest: strPtr(t.ImageDigest),
-		Sections: []agentapi.SectionName{},
+		Sections: []dto.SectionName{},
 	}
 	for _, s := range t.Sections {
-		out.Sections = append(out.Sections, agentapi.SectionName(s))
+		out.Sections = append(out.Sections, dto.SectionName(s))
 	}
 	out.GoSymbols = reportapi.APIGoSymbolQueryPtr(t.GoSymbols)
 	return out
@@ -153,7 +153,7 @@ func (d Deps) withDefaults() Deps {
 // ContainerOutcome describes how the collection of one container went.
 type ContainerOutcome struct {
 	// Coverage is full, partial, process_only, unsupported or failed.
-	Coverage agentapi.Coverage
+	Coverage dto.Coverage
 	Reason   string
 	// Dir is the directory the probe ran from.
 	Dir  string
@@ -166,15 +166,15 @@ type ContainerOutcome struct {
 }
 
 // Result converts the outcome to the per-container scan job result.
-func (o ContainerOutcome) Result(t ExecTarget, reportID string) agentapi.ExecTargetResult {
-	status := agentapi.ScanJobStatus("failed")
+func (o ContainerOutcome) Result(t ExecTarget, reportID string) dto.ExecTargetResult {
+	status := dto.ScanJobStatus("failed")
 	switch o.Coverage {
-	case agentapi.CoverageFull, agentapi.CoverageProcessOnly:
+	case dto.CoverageFull, dto.CoverageProcessOnly:
 		status = "ok"
-	case agentapi.CoveragePartial:
+	case dto.CoveragePartial:
 		status = "partial"
 	}
-	return agentapi.ExecTargetResult{
+	return dto.ExecTargetResult{
 		Namespace: t.Namespace, Pod: t.Pod, Container: t.Container,
 		Status: status, Coverage: o.Coverage, Reason: strPtr(o.Reason), ReportId: strPtr(reportID),
 	}
@@ -192,28 +192,28 @@ func CollectContainer(ctx context.Context, c *Client, t ExecTarget, d Deps) (*re
 	d = d.withDefaults()
 	start := time.Now()
 	out := ContainerOutcome{ExitCode: -1}
-	finish := func(cov agentapi.Coverage, reason string) ContainerOutcome {
+	finish := func(cov dto.Coverage, reason string) ContainerOutcome {
 		out.Coverage, out.Reason, out.Duration = cov, reason, time.Since(start)
 		return out
 	}
 	if d.Probe == nil {
-		return nil, finish(agentapi.CoverageFailed, "no probe source"), errors.New("kube: Deps.Probe is not set")
+		return nil, finish(dto.CoverageFailed, "no probe source"), errors.New("kube: Deps.Probe is not set")
 	}
 	if c == nil || c.Kube == nil || c.Exec == nil {
-		return nil, finish(agentapi.CoverageFailed, "no client"), errors.New("kube: client is not set")
+		return nil, finish(dto.CoverageFailed, "no client"), errors.New("kube: client is not set")
 	}
 
 	pod, err := c.Kube.CoreV1().Pods(t.Namespace).Get(ctx, t.Pod, metav1.GetOptions{})
 	switch {
 	case apierrors.IsNotFound(err):
-		return nil, finish(agentapi.CoverageFailed, "pod not found"), nil
+		return nil, finish(dto.CoverageFailed, "pod not found"), nil
 	case apierrors.IsForbidden(err):
-		return nil, finish(agentapi.CoverageFailed, "reading the pod is forbidden by RBAC"), nil
+		return nil, finish(dto.CoverageFailed, "reading the pod is forbidden by RBAC"), nil
 	case err != nil:
 		if ctx.Err() != nil {
-			return nil, finish(agentapi.CoverageFailed, "canceled"), ctx.Err()
+			return nil, finish(dto.CoverageFailed, "canceled"), ctx.Err()
 		}
-		return nil, finish(agentapi.CoverageFailed, "read pod: "+err.Error()), nil
+		return nil, finish(dto.CoverageFailed, "read pod: "+err.Error()), nil
 	}
 	var spec *corev1.Container
 	for i := range pod.Spec.Containers {
@@ -222,11 +222,11 @@ func CollectContainer(ctx context.Context, c *Client, t ExecTarget, d Deps) (*re
 		}
 	}
 	if spec == nil {
-		return nil, finish(agentapi.CoverageFailed, "container not found in pod"), nil
+		return nil, finish(dto.CoverageFailed, "container not found in pod"), nil
 	}
 	ct := containerFrom(pod, spec)
 	if pod.Status.Phase != corev1.PodRunning || !ct.Running {
-		return nil, finish(agentapi.CoverageFailed, "container not running"), nil
+		return nil, finish(dto.CoverageFailed, "container not running"), nil
 	}
 
 	goos, arch := t.OS, t.Arch
@@ -244,7 +244,7 @@ func CollectContainer(ctx context.Context, c *Client, t ExecTarget, d Deps) (*re
 		goos = "linux"
 	}
 	if goos != "linux" {
-		return nil, finish(agentapi.CoverageUnsupported, "operating system "+goos+" is not supported"), nil
+		return nil, finish(dto.CoverageUnsupported, "operating system "+goos+" is not supported"), nil
 	}
 
 	// Fetch the probe before opening a session when the architecture is
@@ -252,7 +252,7 @@ func CollectContainer(ctx context.Context, c *Client, t ExecTarget, d Deps) (*re
 	var probe []byte
 	if arch != "" {
 		if probe, err = d.Probe(ctx, goos, arch); err != nil {
-			return nil, finish(agentapi.CoverageFailed, "no probe for "+goos+"/"+arch), fmt.Errorf("kube: probe %s/%s: %w", goos, arch, err)
+			return nil, finish(dto.CoverageFailed, "no probe for "+goos+"/"+arch), fmt.Errorf("kube: probe %s/%s: %w", goos, arch, err)
 		}
 	}
 
@@ -269,7 +269,7 @@ func CollectContainer(ctx context.Context, c *Client, t ExecTarget, d Deps) (*re
 	req.Policy.WalkPaths = []string{"/"}
 	reqJSON, err := json.Marshal(req)
 	if err != nil {
-		return nil, finish(agentapi.CoverageFailed, "encode request"), fmt.Errorf("kube: encode request: %w", err)
+		return nil, finish(dto.CoverageFailed, "encode request"), fmt.Errorf("kube: encode request: %w", err)
 	}
 
 	nonce := make([]byte, 16)
@@ -330,40 +330,40 @@ func CollectContainer(ctx context.Context, c *Client, t ExecTarget, d Deps) (*re
 	switch {
 	case res.probeErr != nil:
 		if verifyErr != nil {
-			return nil, finish(agentapi.CoverageFailed, "probe signature verification failed"), fmt.Errorf("kube: probe signature: %w", verifyErr)
+			return nil, finish(dto.CoverageFailed, "probe signature verification failed"), fmt.Errorf("kube: probe signature: %w", verifyErr)
 		}
-		return nil, finish(agentapi.CoverageFailed, "no probe: "+res.probeErr.Error()), fmt.Errorf("kube: %w", res.probeErr)
+		return nil, finish(dto.CoverageFailed, "no probe: "+res.probeErr.Error()), fmt.Errorf("kube: %w", res.probeErr)
 	case ctx.Err() != nil:
-		return nil, finish(agentapi.CoverageFailed, "canceled"), ctx.Err()
+		return nil, finish(dto.CoverageFailed, "canceled"), ctx.Err()
 	case res.overflow:
-		return nil, finish(agentapi.CoverageFailed, fmt.Sprintf("report larger than %d bytes", d.MaxReportBytes)), nil
+		return nil, finish(dto.CoverageFailed, fmt.Sprintf("report larger than %d bytes", d.MaxReportBytes)), nil
 	case timedOut:
-		return nil, finish(agentapi.CoverageFailed, "timeout after "+d.Timeout.String()), nil
+		return nil, finish(dto.CoverageFailed, "timeout after "+d.Timeout.String()), nil
 	case res.badToken != "":
-		return nil, finish(agentapi.CoverageFailed, "unexpected status from container: "+res.badToken), nil
+		return nil, finish(dto.CoverageFailed, "unexpected status from container: "+res.badToken), nil
 	case !res.started:
 		cov, reason := classifyStartError(res.execErr)
 		return nil, finish(cov, reason), nil
 	case res.noTool != "":
-		return nil, finish(agentapi.CoverageUnsupported, "image lacks "+res.noTool), nil
+		return nil, finish(dto.CoverageUnsupported, "image lacks "+res.noTool), nil
 	case res.noDir:
 		if ct.ReadOnlyRootFilesystem {
-			return nil, finish(agentapi.CoverageFailed, "read-only root file system without a writable and executable mount"), nil
+			return nil, finish(dto.CoverageFailed, "read-only root file system without a writable and executable mount"), nil
 		}
-		return nil, finish(agentapi.CoverageFailed, "no writable and executable directory"), nil
+		return nil, finish(dto.CoverageFailed, "no writable and executable directory"), nil
 	case res.short:
-		return nil, finish(agentapi.CoverageFailed, "probe transfer incomplete"), nil
+		return nil, finish(dto.CoverageFailed, "probe transfer incomplete"), nil
 	case !res.ready:
-		return nil, finish(agentapi.CoverageFailed, "session ended before the probe started: "+errText(res.execErr)), nil
+		return nil, finish(dto.CoverageFailed, "session ended before the probe started: "+errText(res.execErr)), nil
 	case !res.exitSeen:
-		return nil, finish(agentapi.CoverageFailed, "session ended while the probe ran: "+errText(res.execErr)), nil
+		return nil, finish(dto.CoverageFailed, "session ended while the probe ran: "+errText(res.execErr)), nil
 	case res.exitCode != 0:
-		return nil, finish(agentapi.CoverageFailed, "probe failed with exit code "+strconv.Itoa(res.exitCode)+lastLine(res.tail)), nil
+		return nil, finish(dto.CoverageFailed, "probe failed with exit code "+strconv.Itoa(res.exitCode)+lastLine(res.tail)), nil
 	}
 
 	r, err := report.Decode(bytes.NewReader(res.stdout))
 	if err != nil {
-		return nil, finish(agentapi.CoverageFailed, "invalid report: "+err.Error()), nil
+		return nil, finish(dto.CoverageFailed, "invalid report: "+err.Error()), nil
 	}
 	r.Cache = nil
 	r.Subject = &report.Subject{
@@ -396,23 +396,23 @@ func cleanup(ctx context.Context, ex Executor, t ExecTarget, pid, path string, l
 
 // classifyStartError maps an exec failure before the script printed
 // anything.
-func classifyStartError(err error) (agentapi.Coverage, string) {
+func classifyStartError(err error) (dto.Coverage, string) {
 	if err == nil {
-		return agentapi.CoverageFailed, "session ended without status"
+		return dto.CoverageFailed, "session ended without status"
 	}
 	msg := strings.ToLower(err.Error())
 	var ee utilexec.ExitError
 	switch {
 	case apierrors.IsForbidden(err) || strings.Contains(msg, "forbidden"):
-		return agentapi.CoverageFailed, "exec forbidden by RBAC"
+		return dto.CoverageFailed, "exec forbidden by RBAC"
 	case strings.Contains(msg, "executable file not found"), strings.Contains(msg, "no such file or directory"):
-		return agentapi.CoverageUnsupported, "no shell in image"
+		return dto.CoverageUnsupported, "no shell in image"
 	case errors.As(err, &ee) && (ee.ExitStatus() == 126 || ee.ExitStatus() == 127):
-		return agentapi.CoverageUnsupported, "no shell in image"
+		return dto.CoverageUnsupported, "no shell in image"
 	case strings.Contains(msg, "not running"), strings.Contains(msg, "not found"):
-		return agentapi.CoverageFailed, "container not running"
+		return dto.CoverageFailed, "container not running"
 	}
-	return agentapi.CoverageFailed, "exec failed: " + err.Error()
+	return dto.CoverageFailed, "exec failed: " + err.Error()
 }
 
 func archFromUname(m string) string {
@@ -470,7 +470,7 @@ func sectionMeta(r *report.Report, name string) *report.SectionMeta {
 
 // coverageOf derives the container coverage from the sections requested
 // and what the probe reported for them.
-func coverageOf(r *report.Report, sections []string) (agentapi.Coverage, string) {
+func coverageOf(r *report.Report, sections []string) (dto.Coverage, string) {
 	var notes []string
 	for _, s := range sections {
 		m := sectionMeta(r, s)
@@ -488,10 +488,10 @@ func coverageOf(r *report.Report, sections []string) (agentapi.Coverage, string)
 	}
 	reason := strings.Join(notes, "; ")
 	if slices.Equal(sections, ProcessSections) && sectionMeta(r, report.SectionProcesses) != nil {
-		return agentapi.CoverageProcessOnly, reason
+		return dto.CoverageProcessOnly, reason
 	}
 	if len(notes) > 0 {
-		return agentapi.CoveragePartial, reason
+		return dto.CoveragePartial, reason
 	}
-	return agentapi.CoverageFull, ""
+	return dto.CoverageFull, ""
 }

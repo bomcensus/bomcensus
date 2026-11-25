@@ -25,9 +25,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bomcensus/bomcensus/agentproto/dto"
 	"github.com/bomcensus/bomcensus/internal/agent/internal/fakeserver"
 	"github.com/bomcensus/bomcensus/internal/agent/update"
-	"github.com/bomcensus/bomcensus/internal/gen/agentapi"
 	"github.com/bomcensus/bomcensus/internal/sign"
 	"github.com/bomcensus/bomcensus/internal/sign/signtest"
 	"github.com/bomcensus/bomcensus/internal/updater"
@@ -211,7 +211,7 @@ func TestUpdateConfirmAfterPoll(t *testing.T) {
 	confirm := filepath.Join(e.spool, updater.ConfirmName("1.1.0"))
 	h.wait("confirmation written", func() bool { _, err := os.Stat(confirm); return err == nil })
 	h.wait("updater started", func() bool { return e.called("apply") })
-	if p := h.srv.Polls()[0]; p.Update.State != agentapi.UpdateStatePending || p.Update.PreviousVersion == nil || *p.Update.PreviousVersion != "1.0.0" {
+	if p := h.srv.Polls()[0]; p.Update.State != dto.UpdateStatePending || p.Update.PreviousVersion == nil || *p.Update.PreviousVersion != "1.0.0" {
 		t.Fatalf("update status = %+v", p.Update)
 	}
 }

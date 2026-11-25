@@ -18,7 +18,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bomcensus/bomcensus/internal/gen/agentapi"
+	"github.com/bomcensus/bomcensus/agentproto/dto"
 	"github.com/bomcensus/bomcensus/internal/server/store"
 )
 
@@ -41,7 +41,7 @@ const DefaultCollectTTL = 24 * time.Hour
 type Directive struct {
 	// Body is the directive as delivered. Its id is assigned by Enqueue and
 	// any id set here is replaced.
-	Body agentapi.Directive
+	Body dto.Directive
 	// DedupeKey, when set, keeps at most one pending directive with this
 	// key per agent.
 	DedupeKey string
@@ -89,10 +89,10 @@ func (s *Service) RequestCollect(ctx context.Context, assetID string) error {
 	if agent.State == store.AgentRevoked {
 		return fmt.Errorf("dispatch: agent %s is revoked: %w", agent.ID, store.ErrInvalidState)
 	}
-	var body agentapi.Directive
-	if err := body.FromCollectDirective(agentapi.CollectDirective{
-		Type:     agentapi.Collect,
-		Sections: []agentapi.SectionName{},
+	var body dto.Directive
+	if err := body.FromCollectDirective(dto.CollectDirective{
+		Type:     dto.Collect,
+		Sections: []dto.SectionName{},
 	}); err != nil {
 		return fmt.Errorf("dispatch: build collect directive: %w", err)
 	}
@@ -127,7 +127,7 @@ func (s *Service) Enqueue(ctx context.Context, agentID string, d Directive) (str
 
 // Payload returns the stored form of a directive: its JSON object without
 // the id.
-func Payload(d agentapi.Directive) (json.RawMessage, error) {
+func Payload(d dto.Directive) (json.RawMessage, error) {
 	raw, err := d.MarshalJSON()
 	if err != nil {
 		return nil, fmt.Errorf("dispatch: encode directive: %w", err)
@@ -145,21 +145,21 @@ func Payload(d agentapi.Directive) (json.RawMessage, error) {
 }
 
 // Deliverable turns a stored directive into its wire form with its id.
-func Deliverable(d store.Directive) (agentapi.Directive, error) {
+func Deliverable(d store.Directive) (dto.Directive, error) {
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(d.Payload, &m); err != nil || m == nil {
-		return agentapi.Directive{}, fmt.Errorf("dispatch: directive %s: payload is not a JSON object", d.ID)
+		return dto.Directive{}, fmt.Errorf("dispatch: directive %s: payload is not a JSON object", d.ID)
 	}
 	id, _ := json.Marshal(d.ID)
 	typ, _ := json.Marshal(d.Type)
 	m["id"], m["type"] = id, typ
 	raw, err := json.Marshal(m)
 	if err != nil {
-		return agentapi.Directive{}, fmt.Errorf("dispatch: directive %s: %w", d.ID, err)
+		return dto.Directive{}, fmt.Errorf("dispatch: directive %s: %w", d.ID, err)
 	}
-	var out agentapi.Directive
+	var out dto.Directive
 	if err := out.UnmarshalJSON(raw); err != nil {
-		return agentapi.Directive{}, fmt.Errorf("dispatch: directive %s: %w", d.ID, err)
+		return dto.Directive{}, fmt.Errorf("dispatch: directive %s: %w", d.ID, err)
 	}
 	return out, nil
 }

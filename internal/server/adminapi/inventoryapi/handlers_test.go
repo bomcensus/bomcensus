@@ -24,9 +24,10 @@ import (
 
 	gen "github.com/bomcensus/bomcensus/internal/gen/adminapi"
 	"github.com/bomcensus/bomcensus/internal/server/adminapi/apierr"
-	"github.com/bomcensus/bomcensus/internal/server/auth"
 	"github.com/bomcensus/bomcensus/internal/server/store"
 	"github.com/bomcensus/bomcensus/internal/server/store/postgres"
+	"github.com/bomcensus/bomcensus/server/auth"
+	"github.com/bomcensus/bomcensus/server/scope"
 )
 
 // newTestDB creates a fresh database from BOMCENSUS_TEST_DATABASE_URL,
@@ -37,7 +38,7 @@ func newTestDB(t *testing.T) *postgres.DB {
 	if base == "" {
 		t.Skip("BOMCENSUS_TEST_DATABASE_URL is not set")
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	ctx, cancel := context.WithTimeout(scope.System(context.Background()), time.Minute)
 	defer cancel()
 	admin, err := pgx.Connect(ctx, base)
 	if err != nil {
@@ -51,7 +52,7 @@ func newTestDB(t *testing.T) *postgres.DB {
 		t.Fatalf("create database: %v", err)
 	}
 	t.Cleanup(func() {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+		ctx, cancel := context.WithTimeout(scope.System(context.Background()), time.Minute)
 		defer cancel()
 		if _, err := admin.Exec(ctx, "DROP DATABASE IF EXISTS "+name+" WITH (FORCE)"); err != nil {
 			t.Errorf("drop database: %v", err)
@@ -139,7 +140,7 @@ func (f *fakeCollector) RequestSync(_ context.Context, id string) error {
 
 func host(t *testing.T, db *postgres.DB, name string, facts store.AssetFacts) string {
 	t.Helper()
-	ctx := context.Background()
+	ctx := scope.System(context.Background())
 	ref, err := db.UpsertHostAsset(ctx, store.HostIdentity{AgentID: uuid.NewString()},
 		store.AssetInit{Name: name, Method: store.CollectAgent, SeenAt: t0})
 	must(t, err)
@@ -149,7 +150,7 @@ func host(t *testing.T, db *postgres.DB, name string, facts store.AssetFacts) st
 
 func seed(t *testing.T) *fixture {
 	db := newTestDB(t)
-	ctx := auth.WithPrincipal(context.Background(), auth.Principal{ID: "env:admin", Name: "admin"})
+	ctx := auth.WithPrincipal(scope.System(context.Background()), auth.User{UserID: "env:admin", UserName: "admin"})
 	f := &fixture{db: db, ctx: ctx, collector: &fakeCollector{}}
 
 	f.web = host(t, db, "web-1", store.AssetFacts{Group: "prod", Tags: []string{"dmz"}, Address: "10.0.0.1",
@@ -847,7 +848,7 @@ func TestDashboardAndMeta(t *testing.T) {
 	if p := me.(gen.GetCurrentUser200JSONResponse); p.Id != "env:admin" {
 		t.Fatalf("me: %+v", p)
 	}
-	_, err = f.h.GetCurrentUser(context.Background(), gen.GetCurrentUserRequestObject{})
+	_, err = f.h.GetCurrentUser(scope.System(context.Background()), gen.GetCurrentUserRequestObject{})
 	wantStatus(t, "me without principal", err, http.StatusUnauthorized)
 }
 

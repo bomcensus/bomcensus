@@ -23,7 +23,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/fake"
 
-	"github.com/bomcensus/bomcensus/internal/gen/agentapi"
+	"github.com/bomcensus/bomcensus/agentproto/dto"
 	"github.com/bomcensus/bomcensus/internal/report"
 	"github.com/bomcensus/bomcensus/internal/scanner/kube"
 	"github.com/bomcensus/bomcensus/internal/scanner/ssh"
@@ -33,7 +33,7 @@ type fakeSink struct {
 	mu          sync.Mutex
 	reports     []*report.Report
 	jobs        []string
-	inventories []agentapi.K8sInventory
+	inventories []dto.K8sInventory
 	results     map[string]Result
 	reportErr   error
 }
@@ -55,7 +55,7 @@ func (s *fakeSink) SubmitReport(_ context.Context, enc []byte, jobID string) err
 	return nil
 }
 
-func (s *fakeSink) SubmitInventory(_ context.Context, inv agentapi.K8sInventory) error {
+func (s *fakeSink) SubmitInventory(_ context.Context, inv dto.K8sInventory) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.inventories = append(s.inventories, inv)
@@ -122,7 +122,7 @@ func TestRunSSHSuccess(t *testing.T) {
 		got.Request.GoSymbols != job.GoSymbols {
 		t.Fatalf("target not built from job: %+v", got)
 	}
-	if res.Status != agentapi.ScanJobStatusOk || res.HostKey == nil || !bytes.Equal(*res.HostKey, key.Marshal()) ||
+	if res.Status != dto.ScanJobStatusOk || res.HostKey == nil || !bytes.Equal(*res.HostKey, key.Marshal()) ||
 		res.HostKeyFingerprint == nil || *res.HostKeyFingerprint != gossh.FingerprintSHA256(key) {
 		t.Fatalf("result: %+v", res)
 	}
@@ -149,7 +149,7 @@ func TestRunSSHPartial(t *testing.T) {
 		return &ssh.Result{Report: rep, SudoFallback: "sudo asks for a password"}, nil
 	}}
 	res, _ := RunSSH(context.Background(), SSHJob{JobID: "j", TargetID: "t", Address: "a", User: "u", Sudo: true}, d)
-	if res.Status != agentapi.ScanJobStatusPartial {
+	if res.Status != dto.ScanJobStatusPartial {
 		t.Fatalf("status %s", res.Status)
 	}
 	if m := msg(res); !strings.Contains(m, ReasonSudoFallback) || !strings.Contains(m, "packages") {
@@ -199,7 +199,7 @@ func TestRunSSHFailures(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if res.Status != agentapi.ScanJobStatusFailed || ReasonOf(msg(res)) != c.reason {
+			if res.Status != dto.ScanJobStatusFailed || ReasonOf(msg(res)) != c.reason {
 				t.Fatalf("status %s message %q, want reason %s", res.Status, msg(res), c.reason)
 			}
 			if c.err == nil && called {
@@ -225,7 +225,7 @@ func TestRunSSHPanicContained(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Status != agentapi.ScanJobStatusFailed || ReasonOf(msg(res)) != ReasonInternal || len(sink.results) != 1 {
+	if res.Status != dto.ScanJobStatusFailed || ReasonOf(msg(res)) != ReasonInternal || len(sink.results) != 1 {
 		t.Fatalf("result %+v", res)
 	}
 }
@@ -276,7 +276,7 @@ func TestRunSSHRealHostKeyMismatch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Status != agentapi.ScanJobStatusFailed || ReasonOf(msg(res)) != ReasonHostKeyChanged {
+	if res.Status != dto.ScanJobStatusFailed || ReasonOf(msg(res)) != ReasonHostKeyChanged {
 		t.Fatalf("status %s message %q", res.Status, msg(res))
 	}
 	if *res.HostKeyFingerprint != gossh.FingerprintSHA256(served.PublicKey()) {
@@ -355,7 +355,7 @@ func TestRunK8sSync(t *testing.T) {
 		t.Fatal("inventory not submitted")
 	}
 	res := sink.results["s1"]
-	if res.Status == agentapi.ScanJobStatusFailed {
+	if res.Status == dto.ScanJobStatusFailed {
 		t.Fatalf("result %+v %q", res.Status, msg(res))
 	}
 }
@@ -367,7 +367,7 @@ func TestRunK8sSyncFailure(t *testing.T) {
 	if err != nil || inv != nil {
 		t.Fatal(inv, err)
 	}
-	if r := sink.results["s"]; r.Status != agentapi.ScanJobStatusFailed || ReasonOf(msg(r)) != ReasonKubeClient {
+	if r := sink.results["s"]; r.Status != dto.ScanJobStatusFailed || ReasonOf(msg(r)) != ReasonKubeClient {
 		t.Fatalf("result %+v", r)
 	}
 	if len(sink.inventories) != 0 {
@@ -393,13 +393,13 @@ func TestRunK8sExec(t *testing.T) {
 			}
 			switch tg.Pod {
 			case "distroless":
-				return nil, kube.ContainerOutcome{Coverage: agentapi.CoverageUnsupported, Reason: "no shell"}, nil
+				return nil, kube.ContainerOutcome{Coverage: dto.CoverageUnsupported, Reason: "no shell"}, nil
 			case "boom":
 				panic("collector bug")
 			}
 			r := sampleReport()
 			r.Host = nil
-			return r, kube.ContainerOutcome{Coverage: agentapi.CoverageFull}, nil
+			return r, kube.ContainerOutcome{Coverage: dto.CoverageFull}, nil
 		}}
 	targets := []kube.ExecTarget{
 		{Namespace: "a", Pod: "p1", Container: "app", Node: "n1", ImageDigest: digestA},
@@ -415,15 +415,15 @@ func TestRunK8sExec(t *testing.T) {
 	if peak > 2 {
 		t.Fatalf("limit exceeded: %d", peak)
 	}
-	if res.Status != agentapi.ScanJobStatusPartial || res.Targets == nil || len(*res.Targets) != 4 {
+	if res.Status != dto.ScanJobStatusPartial || res.Targets == nil || len(*res.Targets) != 4 {
 		t.Fatalf("result %s %q", res.Status, msg(res))
 	}
-	byPod := map[string]agentapi.ExecTargetResult{}
+	byPod := map[string]dto.ExecTargetResult{}
 	for _, tr := range *res.Targets {
 		byPod[tr.Pod] = tr
 	}
-	if byPod["p1"].Status != agentapi.ScanJobStatusOk || byPod["distroless"].Coverage != agentapi.CoverageUnsupported ||
-		byPod["boom"].Status != agentapi.ScanJobStatusFailed {
+	if byPod["p1"].Status != dto.ScanJobStatusOk || byPod["distroless"].Coverage != dto.CoverageUnsupported ||
+		byPod["boom"].Status != dto.ScanJobStatusFailed {
 		t.Fatalf("targets %+v", byPod)
 	}
 	if len(sink.reports) != 2 {
@@ -446,11 +446,11 @@ func TestRunK8sExecNothingCollected(t *testing.T) {
 	d := Deps{Sink: sink,
 		KubeClient: func(kube.Config) (*kube.Client, error) { return kube.NewClientWith(fake.NewClientset(), nil), nil },
 		kubeCollect: func(context.Context, *kube.Client, kube.ExecTarget, kube.Deps) (*report.Report, kube.ContainerOutcome, error) {
-			return sampleReport(), kube.ContainerOutcome{Coverage: agentapi.CoverageFull}, nil
+			return sampleReport(), kube.ContainerOutcome{Coverage: dto.CoverageFull}, nil
 		}}
 	res, _ := RunK8sExec(context.Background(), K8sExecJob{JobID: "e", ClusterID: "c",
 		Targets: []kube.ExecTarget{{Namespace: "a", Pod: "p", Container: "c"}}}, d)
-	if res.Status != agentapi.ScanJobStatusFailed || (*res.Targets)[0].Status != agentapi.ScanJobStatusFailed {
+	if res.Status != dto.ScanJobStatusFailed || (*res.Targets)[0].Status != dto.ScanJobStatusFailed {
 		t.Fatalf("result %s", res.Status)
 	}
 }

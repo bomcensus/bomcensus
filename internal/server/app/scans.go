@@ -8,10 +8,9 @@ import (
 	"context"
 	"log/slog"
 
-	agentgen "github.com/bomcensus/bomcensus/internal/gen/agentapi"
+	agentgen "github.com/bomcensus/bomcensus/agentproto/dto"
 	"github.com/bomcensus/bomcensus/internal/server/adminapi/inventoryapi"
 	"github.com/bomcensus/bomcensus/internal/server/adminapi/manageapi"
-	"github.com/bomcensus/bomcensus/internal/server/config"
 	"github.com/bomcensus/bomcensus/internal/server/dispatch"
 	"github.com/bomcensus/bomcensus/internal/server/ingest"
 	"github.com/bomcensus/bomcensus/internal/server/job"
@@ -20,6 +19,7 @@ import (
 	"github.com/bomcensus/bomcensus/internal/server/secret"
 	"github.com/bomcensus/bomcensus/internal/server/store"
 	"github.com/bomcensus/bomcensus/internal/server/updatesvc"
+	"github.com/bomcensus/bomcensus/server/config"
 )
 
 // Scans is the seam for the scan service: SSH scan targets, Kubernetes
@@ -39,7 +39,7 @@ type Scans interface {
 	// inventoryapi.Collector.
 	RequestCollect(ctx context.Context, assetID string) error
 	// RecordJobResult stores the outcome of a scan job reported by a
-	// scanner (POST /agent/v1/scan-jobs/{id}/result). An unknown job is
+	// scanner (operation submitScanJobResult). An unknown job is
 	// store.ErrNotFound; errors are classified as for agentapi.Ingest.
 	RecordJobResult(ctx context.Context, sender store.Agent, jobID string, res agentgen.ScanJobResult) error
 	// Run does the background work (the embedded scanner, dial-outs) until

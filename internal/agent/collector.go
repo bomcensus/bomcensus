@@ -14,9 +14,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/bomcensus/bomcensus/agentproto/dto"
 	"github.com/bomcensus/bomcensus/internal/agent/core"
 	"github.com/bomcensus/bomcensus/internal/agent/state"
-	"github.com/bomcensus/bomcensus/internal/gen/agentapi"
 	"github.com/bomcensus/bomcensus/internal/report"
 	"github.com/bomcensus/bomcensus/internal/report/reportapi"
 )
@@ -42,7 +42,7 @@ type collector struct {
 	sections  *state.Sections
 	cache     json.RawMessage
 	privilege *report.Privilege
-	cfg       *agentapi.AgentConfig
+	cfg       *dto.AgentConfig
 	next      map[string]time.Time
 	manual    map[string]bool
 	manualAll bool
@@ -91,7 +91,7 @@ func (c *collector) signal() {
 	}
 }
 
-func (c *collector) setConfig(_ context.Context, cfg agentapi.AgentConfig) {
+func (c *collector) setConfig(_ context.Context, cfg dto.AgentConfig) {
 	c.mu.Lock()
 	if c.cfg != nil && !sameWalkPaths(c.cfg.Policy.WalkPaths, cfg.Policy.WalkPaths) {
 		// Other directories are to be walked: collect the artifacts now
@@ -117,7 +117,7 @@ func sameWalkPaths(a, b *[]string) bool {
 	return slices.Equal(x, y)
 }
 
-func (c *collector) handleCollect(_ context.Context, d agentapi.Directive) error {
+func (c *collector) handleCollect(_ context.Context, d dto.Directive) error {
 	cd, err := d.AsCollectDirective()
 	if err != nil {
 		return err
@@ -137,7 +137,7 @@ func (c *collector) handleCollect(_ context.Context, d agentapi.Directive) error
 	return nil
 }
 
-func (c *collector) handleGoSymbols(_ context.Context, d agentapi.Directive) error {
+func (c *collector) handleGoSymbols(_ context.Context, d dto.Directive) error {
 	gd, err := d.AsGoSymbolsDirective()
 	if err != nil {
 		return err
@@ -150,7 +150,7 @@ func (c *collector) handleGoSymbols(_ context.Context, d agentapi.Directive) err
 	return nil
 }
 
-func interval(cfg *agentapi.AgentConfig, section string) time.Duration {
+func interval(cfg *dto.AgentConfig, section string) time.Duration {
 	if cfg == nil {
 		return 0
 	}
@@ -410,7 +410,7 @@ func (c *collector) uploaded(_ context.Context, meta core.ReportMeta) {
 	}
 }
 
-func (c *collector) status(_ context.Context, req *agentapi.PollRequest) {
+func (c *collector) status(_ context.Context, req *dto.PollRequest) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	req.SectionDigests = maps.Clone(c.sections.Digests)
@@ -420,7 +420,7 @@ func (c *collector) status(_ context.Context, req *agentapi.PollRequest) {
 	}
 	req.Features = &features
 	if c.privilege != nil {
-		p := agentapi.Privilege{Level: agentapi.PrivilegeLevel(c.privilege.Level), Uid: c.privilege.UID}
+		p := dto.Privilege{Level: dto.PrivilegeLevel(c.privilege.Level), Uid: c.privilege.UID}
 		if len(c.privilege.Capabilities) > 0 {
 			caps := slices.Clone(c.privilege.Capabilities)
 			p.Capabilities = &caps

@@ -48,7 +48,7 @@ func integrityRuleDTO(r store.IntegrityAllowRule) gen.IntegrityAllowRule {
 		Id: r.ID, Scope: gen.IntegrityAllowRuleScope(r.Scope), AssetId: optStr(r.AssetID), AssetName: optStr(r.AssetName),
 		Path: r.Path, Status: gen.IntegrityStatus(r.Status), ActualSha256: optStr(r.ActualSHA256), Note: r.Note,
 		CreatedBy: r.CreatedBy, CreatedAt: r.CreatedAt, RevokedBy: optStr(r.RevokedBy), RevokedAt: r.RevokedAt,
-		Hidden: r.Hidden,
+		Hidden: r.Hidden, ScopeId: r.ScopeID,
 	}
 }
 
@@ -238,11 +238,17 @@ func (h *Handlers) CreateIntegrityAllowRules(ctx context.Context, req gen.Create
 		if b.AssetIds != nil && len(*b.AssetIds) > 0 {
 			return nil, apierr.Invalid("assetIds apply to scope asset only")
 		}
+		var err error
+		if base.ScopeID, err = newScopeID(ctx, b.ScopeId); err != nil {
+			return nil, err
+		}
 		rules = append(rules, base)
 	case gen.IntegrityAllowRuleScopeAsset:
 		if b.AssetIds == nil || len(*b.AssetIds) == 0 {
 			return nil, apierr.Invalid("scope asset needs assetIds")
 		}
+		// Asset rules have the scope of their asset, which the store sets.
+		base.ScopeID = deref(b.ScopeId)
 		ids := slices.Compact(slices.Sorted(slices.Values(*b.AssetIds)))
 		for _, id := range ids {
 			if _, err := h.cfg.Store.GetAsset(ctx, id); err != nil {

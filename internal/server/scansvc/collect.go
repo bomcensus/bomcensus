@@ -79,7 +79,7 @@ func (s *Service) startEmbeddedKey(_ context.Context, key string, fn func(contex
 	if !s.embedded {
 		return ErrNoScanner
 	}
-	switch err := s.pool.Submit(key, fn); {
+	switch err := s.pool.Submit(key, embeddedJob(fn)); {
 	case err == nil:
 		return nil
 	case errors.Is(err, runner.ErrInFlight):

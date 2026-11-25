@@ -26,7 +26,10 @@ type K8sFilter struct {
 
 // K8sClusterConfig is the configuration of a cluster connection.
 type K8sClusterConfig struct {
-	Name       string
+	Name string
+	// ScopeID is the data scope of the cluster and its workloads. Set on
+	// create; UpdateCluster keeps it.
+	ScopeID    string
 	Connection K8sConnection
 	// CredentialID is the kubeconfig credential; empty for in-cluster.
 	CredentialID string
@@ -71,8 +74,9 @@ type K8sClusterRow struct {
 // ClusterFilter narrows ListClusters.
 type ClusterFilter struct {
 	// Q matches name or version.
-	Q    string
-	Sort string
+	Q       string
+	ScopeID string
+	Sort    string
 }
 
 // K8sInventory is the result of one inventory sync of a cluster.

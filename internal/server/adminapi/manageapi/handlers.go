@@ -25,6 +25,7 @@ import (
 	"github.com/bomcensus/bomcensus/internal/server/secret"
 	"github.com/bomcensus/bomcensus/internal/server/store"
 	"github.com/bomcensus/bomcensus/internal/server/updatesvc"
+	"github.com/bomcensus/bomcensus/server/scope"
 )
 
 // OnlineWindow is how recently an approved agent must have been seen to be
@@ -74,10 +75,12 @@ func (c StoreClusters) CredentialClusterCounts(ctx context.Context) (map[string]
 }
 
 // UnsyncedAgents returns the counter pkisvc.Config.UnsyncedAgents expects:
-// approved agents whose trust bundle version is below the current one.
+// approved agents whose trust bundle version is below the current one. The
+// trust anchor is shared by every scope, so the count covers all agents
+// whatever the scope of the request.
 func UnsyncedAgents(agents store.Agents) func(ctx context.Context) (int, error) {
 	return func(ctx context.Context) (int, error) {
-		c, err := agents.CountAgents(ctx, time.Time{})
+		c, err := agents.CountAgents(scope.System(ctx), time.Time{})
 		if err != nil {
 			return 0, err
 		}
@@ -310,6 +313,32 @@ func deref[T any](p *T) T {
 		return zero
 	}
 	return *p
+}
+
+// newScopeID is the data scope of a record created by the request:
+// requested when it is in the request's scope, otherwise the only scope of
+// the request, or the default scope for a request that sees every scope.
+// scope.ErrOutside (403) otherwise.
+func newScopeID(ctx context.Context, requested *string) (string, error) {
+	s, err := scope.Require(ctx)
+	if err != nil {
+		return "", err
+	}
+	return scope.Resolve(s, deref(requested))
+}
+
+// sharedWrite fails with scope.ErrOutside (403) unless the request sees
+// every scope. Scanners and their Register Keys are shared by all scopes;
+// every scope sees them, only such a request changes them.
+func sharedWrite(ctx context.Context) error {
+	s, err := scope.Require(ctx)
+	if err != nil {
+		return err
+	}
+	if !s.IsAll() {
+		return scope.ErrOutside
+	}
+	return nil
 }
 
 func isNotFound(err error) bool { return errors.Is(err, store.ErrNotFound) }

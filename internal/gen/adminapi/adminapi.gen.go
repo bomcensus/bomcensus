@@ -2117,7 +2117,10 @@ type Agent struct {
 	Os             string         `json:"os"`
 	Privilege      PrivilegeLevel `json:"privilege"`
 	RegisterKeyId  string         `json:"registerKeyId"`
-	Status         AgentStatus    `json:"status"`
+
+	// ScopeId Data scope, from the Register Key the agent enrolled with. Absent for scanners, which every scope sees.
+	ScopeId *string     `json:"scopeId,omitempty"`
+	Status  AgentStatus `json:"status"`
 
 	// TlsInterceptedBy Issuer of the server certificate the agent observed, when it is not the server's own certificate (TLS terminated in transit).
 	TlsInterceptedBy *string `json:"tlsInterceptedBy,omitempty"`
@@ -2211,6 +2214,9 @@ type Asset struct {
 	// Replicas Workloads only. Desired replicas (or current pods for kinds without a replica count).
 	Replicas     *int    `json:"replicas,omitempty"`
 	ScanTargetId *string `json:"scanTargetId,omitempty"`
+
+	// ScopeId Data scope, from the agent, scan target or cluster the asset comes from.
+	ScopeId string `json:"scopeId"`
 
 	// Sections Coverage of each section in the latest collection.
 	Sections []SectionCoverage `json:"sections"`
@@ -2360,8 +2366,11 @@ type AssetSummary struct {
 	Os           *AssetOs        `json:"os,omitempty"`
 	Privilege    *PrivilegeLevel `json:"privilege,omitempty"`
 	ScanTargetId *string         `json:"scanTargetId,omitempty"`
-	Tags         []string        `json:"tags"`
-	WorkloadKind *string         `json:"workloadKind,omitempty"`
+
+	// ScopeId Data scope, from the agent, scan target or cluster the asset comes from.
+	ScopeId      string   `json:"scopeId"`
+	Tags         []string `json:"tags"`
+	WorkloadKind *string  `json:"workloadKind,omitempty"`
 }
 
 // AssetVuln defines model for AssetVuln.
@@ -2653,6 +2662,9 @@ type Credential struct {
 	// PublicKeyFingerprint `ssh_key` only. `SHA256:<base64>` of the public key.
 	PublicKeyFingerprint *string `json:"publicKeyFingerprint,omitempty"`
 
+	// ScopeId Data scope of the record.
+	ScopeId string `json:"scopeId"`
+
 	// UsedBy Scan targets and clusters that use the credential.
 	UsedBy int `json:"usedBy"`
 
@@ -2671,7 +2683,11 @@ type CredentialCreate struct {
 	Passphrase *string        `json:"passphrase,omitempty"`
 	Password   *string        `json:"password,omitempty"`
 	PrivateKey *string        `json:"privateKey,omitempty"`
-	Username   *string        `json:"username,omitempty"`
+
+	// ScopeId Data scope of the new record. Defaults to the only scope of the request, or `default`
+	// for a request that sees every scope. A scope outside the request is refused with `403`.
+	ScopeId  *string `json:"scopeId,omitempty"`
+	Username *string `json:"username,omitempty"`
 }
 
 // CredentialKind defines model for CredentialKind.
@@ -3003,7 +3019,10 @@ type IntegrityAllowRule struct {
 	RevokedAt *time.Time              `json:"revokedAt,omitempty"`
 	RevokedBy *string                 `json:"revokedBy,omitempty"`
 	Scope     IntegrityAllowRuleScope `json:"scope"`
-	Status    IntegrityStatus         `json:"status"`
+
+	// ScopeId Data scope the rule applies in.
+	ScopeId string          `json:"scopeId"`
+	Status  IntegrityStatus `json:"status"`
 }
 
 // IntegrityAllowRuleCreate defines model for IntegrityAllowRuleCreate.
@@ -3016,7 +3035,12 @@ type IntegrityAllowRuleCreate struct {
 	Note     string                  `json:"note"`
 	Path     string                  `json:"path"`
 	Scope    IntegrityAllowRuleScope `json:"scope"`
-	Status   IntegrityStatus         `json:"status"`
+
+	// ScopeId Data scope the rule applies in. An asset rule takes the scope of its asset; otherwise it
+	// defaults to the only scope of the request, or `default` for a request that sees every scope.
+	// A scope outside the request is refused with `403`.
+	ScopeId *string         `json:"scopeId,omitempty"`
+	Status  IntegrityStatus `json:"status"`
 }
 
 // IntegrityAllowRuleList defines model for IntegrityAllowRuleList.
@@ -3183,6 +3207,9 @@ type K8sCluster struct {
 	// ScannerId Scanner that talks to the cluster. Absent means the server's embedded scanner.
 	ScannerId *string `json:"scannerId,omitempty"`
 
+	// ScopeId Data scope of the record.
+	ScopeId string `json:"scopeId"`
+
 	// SyncMessage Error of the last failed sync.
 	SyncMessage *string       `json:"syncMessage,omitempty"`
 	SyncStatus  K8sSyncStatus `json:"syncStatus"`
@@ -3209,6 +3236,11 @@ type K8sClusterCreate struct {
 	Filter    *K8sFilter `json:"filter,omitempty"`
 	Name      string     `json:"name"`
 	ScannerId *string    `json:"scannerId,omitempty"`
+
+	// ScopeId Data scope of the new record. Defaults to the only scope of the request, or `default`
+	// for a request that sees every scope. A scope outside the request is refused with `403`.
+	// The credential must be of the same scope.
+	ScopeId *string `json:"scopeId,omitempty"`
 }
 
 // K8sClusterList defines model for K8sClusterList.
@@ -3375,14 +3407,22 @@ type ListenTarget struct {
 	LastError       *string    `json:"lastError,omitempty"`
 
 	// RegisterKeyId When set, only this Register Key may enroll an agent over this target.
-	RegisterKeyId *string           `json:"registerKeyId,omitempty"`
-	State         ListenTargetState `json:"state"`
+	RegisterKeyId *string `json:"registerKeyId,omitempty"`
+
+	// ScopeId Data scope, that of the Register Key when the target has one.
+	ScopeId string            `json:"scopeId"`
+	State   ListenTargetState `json:"state"`
 }
 
 // ListenTargetCreate defines model for ListenTargetCreate.
 type ListenTargetCreate struct {
 	Address       string  `json:"address"`
 	RegisterKeyId *string `json:"registerKeyId,omitempty"`
+
+	// ScopeId Data scope of the new record. Defaults to the only scope of the request, or `default`
+	// for a request that sees every scope. A scope outside the request is refused with `403`.
+	// Ignored when the target has a Register Key: it takes the key's scope.
+	ScopeId *string `json:"scopeId,omitempty"`
 }
 
 // ListenTargetList defines model for ListenTargetList.
@@ -3521,9 +3561,12 @@ type RegisterKey struct {
 	Id string `json:"id"`
 
 	// MaxUses 0 means unlimited.
-	MaxUses   int              `json:"maxUses"`
-	Name      string           `json:"name"`
-	RevokedAt *time.Time       `json:"revokedAt,omitempty"`
+	MaxUses   int        `json:"maxUses"`
+	Name      string     `json:"name"`
+	RevokedAt *time.Time `json:"revokedAt,omitempty"`
+
+	// ScopeId Data scope of the key and of the agents it enrolls. Absent for scanner keys, which every scope sees.
+	ScopeId   *string          `json:"scopeId,omitempty"`
 	State     RegisterKeyState `json:"state"`
 	Target    AgentKind        `json:"target"`
 	UsedCount int              `json:"usedCount"`
@@ -3542,7 +3585,12 @@ type RegisterKeyCreate struct {
 	ExpiresAt       *time.Time          `json:"expiresAt,omitempty"`
 	MaxUses         *int                `json:"maxUses,omitempty"`
 	Name            string              `json:"name"`
-	Target          AgentKind           `json:"target"`
+
+	// ScopeId Data scope of the new record. Defaults to the only scope of the request, or `default`
+	// for a request that sees every scope. A scope outside the request is refused with `403`.
+	// Not allowed for scanner keys: they have no scope and need a request that sees every scope.
+	ScopeId *string   `json:"scopeId,omitempty"`
+	Target  AgentKind `json:"target"`
 }
 
 // RegisterKeyCreated defines model for RegisterKeyCreated.
@@ -3639,7 +3687,10 @@ type ScanTarget struct {
 
 	// ScannerId Absent means the server's embedded scanner.
 	ScannerId *string `json:"scannerId,omitempty"`
-	Sudo      bool    `json:"sudo"`
+
+	// ScopeId Data scope of the record.
+	ScopeId string `json:"scopeId"`
+	Sudo    bool   `json:"sudo"`
 }
 
 // ScanTargetCreate Without `hostKey` the first host key seen is pinned. The server stores
@@ -3663,7 +3714,12 @@ type ScanTargetCreate struct {
 	Port            *int          `json:"port,omitempty"`
 	Protocol        *ScanProtocol `json:"protocol,omitempty"`
 	ScannerId       *string       `json:"scannerId,omitempty"`
-	Sudo            *bool         `json:"sudo,omitempty"`
+
+	// ScopeId Data scope of the new record. Defaults to the only scope of the request, or `default`
+	// for a request that sees every scope. A scope outside the request is refused with `403`.
+	// The credential must be of the same scope.
+	ScopeId *string `json:"scopeId,omitempty"`
+	Sudo    *bool   `json:"sudo,omitempty"`
 }
 
 // ScanTargetList defines model for ScanTargetList.
@@ -3862,6 +3918,9 @@ type TriageRule struct {
 	RevokedBy     *string             `json:"revokedBy,omitempty"`
 	Scope         TriageScope         `json:"scope"`
 
+	// ScopeId Data scope the rule applies in.
+	ScopeId string `json:"scopeId"`
+
 	// ScopeName Asset name of an asset scope.
 	ScopeName *string          `json:"scopeName,omitempty"`
 	Status    TriageRuleStatus `json:"status"`
@@ -3880,7 +3939,12 @@ type TriageRuleCreate struct {
 	Justification TriageJustification `json:"justification"`
 	Note          *string             `json:"note,omitempty"`
 	Scope         TriageScope         `json:"scope"`
-	VulnId        string              `json:"vulnId"`
+
+	// ScopeId Data scope the rule applies in. An asset rule takes the scope of its asset; otherwise it
+	// defaults to the only scope of the request, or `default` for a request that sees every scope.
+	// A scope outside the request is refused with `403`.
+	ScopeId *string `json:"scopeId,omitempty"`
+	VulnId  string  `json:"vulnId"`
 }
 
 // TriageRuleList defines model for TriageRuleList.
@@ -4327,6 +4391,9 @@ type QueryOffset = int
 // QueryQ defines model for QueryQ.
 type QueryQ = string
 
+// QueryScopeId defines model for QueryScopeId.
+type QueryScopeId = string
+
 // QuerySeverity Rating of a match: the distribution's rating of a package match when
 // its advisories have one (Debian urgency), otherwise the CVSS rating
 // of the highest base score. `negligible` comes from distributions
@@ -4340,6 +4407,9 @@ type BadRequest = Error
 
 // Conflict defines model for Conflict.
 type Conflict = Error
+
+// Forbidden defines model for Forbidden.
+type Forbidden = Error
 
 // NotFound defines model for NotFound.
 type NotFound = Error
@@ -4390,11 +4460,14 @@ type ListAssetGroupsParamsSort string
 // ListAssetsParams defines parameters for ListAssets.
 type ListAssetsParams struct {
 	// Q Free-text search, case-insensitive substring match.
-	Q      *QueryQ        `form:"q,omitempty" json:"q,omitempty"`
-	Kind   *AssetKind     `form:"kind,omitempty" json:"kind,omitempty"`
-	Group  *string        `form:"group,omitempty" json:"group,omitempty"`
-	Tag    *string        `form:"tag,omitempty" json:"tag,omitempty"`
-	Method *CollectMethod `form:"method,omitempty" json:"method,omitempty"`
+	Q *QueryQ `form:"q,omitempty" json:"q,omitempty"`
+
+	// ScopeId Keep the records of this data scope.
+	ScopeId *QueryScopeId  `form:"scopeId,omitempty" json:"scopeId,omitempty"`
+	Kind    *AssetKind     `form:"kind,omitempty" json:"kind,omitempty"`
+	Group   *string        `form:"group,omitempty" json:"group,omitempty"`
+	Tag     *string        `form:"tag,omitempty" json:"tag,omitempty"`
+	Method  *CollectMethod `form:"method,omitempty" json:"method,omitempty"`
 
 	// Coverage A coverage value, or `limited` for every coverage other than `full`.
 	Coverage  *ListAssetsParamsCoverage `form:"coverage,omitempty" json:"coverage,omitempty"`
@@ -4508,11 +4581,14 @@ type ListComponentAssetsParamsSort string
 // ListCredentialsParams defines parameters for ListCredentials.
 type ListCredentialsParams struct {
 	// Q Free-text search, case-insensitive substring match.
-	Q      *QueryQ                    `form:"q,omitempty" json:"q,omitempty"`
-	Kind   *CredentialKind            `form:"kind,omitempty" json:"kind,omitempty"`
-	Sort   *ListCredentialsParamsSort `form:"sort,omitempty" json:"sort,omitempty"`
-	Limit  *QueryLimit                `form:"limit,omitempty" json:"limit,omitempty"`
-	Offset *QueryOffset               `form:"offset,omitempty" json:"offset,omitempty"`
+	Q *QueryQ `form:"q,omitempty" json:"q,omitempty"`
+
+	// ScopeId Keep the records of this data scope.
+	ScopeId *QueryScopeId              `form:"scopeId,omitempty" json:"scopeId,omitempty"`
+	Kind    *CredentialKind            `form:"kind,omitempty" json:"kind,omitempty"`
+	Sort    *ListCredentialsParamsSort `form:"sort,omitempty" json:"sort,omitempty"`
+	Limit   *QueryLimit                `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset  *QueryOffset               `form:"offset,omitempty" json:"offset,omitempty"`
 }
 
 // ListCredentialsParamsSort defines parameters for ListCredentials.
@@ -4568,10 +4644,13 @@ type ListIntegrityFileNodesParams struct {
 // ListK8sClustersParams defines parameters for ListK8sClusters.
 type ListK8sClustersParams struct {
 	// Q Free-text search, case-insensitive substring match.
-	Q      *QueryQ                    `form:"q,omitempty" json:"q,omitempty"`
-	Sort   *ListK8sClustersParamsSort `form:"sort,omitempty" json:"sort,omitempty"`
-	Limit  *QueryLimit                `form:"limit,omitempty" json:"limit,omitempty"`
-	Offset *QueryOffset               `form:"offset,omitempty" json:"offset,omitempty"`
+	Q *QueryQ `form:"q,omitempty" json:"q,omitempty"`
+
+	// ScopeId Keep the records of this data scope.
+	ScopeId *QueryScopeId              `form:"scopeId,omitempty" json:"scopeId,omitempty"`
+	Sort    *ListK8sClustersParamsSort `form:"sort,omitempty" json:"sort,omitempty"`
+	Limit   *QueryLimit                `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset  *QueryOffset               `form:"offset,omitempty" json:"offset,omitempty"`
 }
 
 // ListK8sClustersParamsSort defines parameters for ListK8sClusters.
@@ -4654,12 +4733,15 @@ type ListProcessesParamsSort string
 // ListRegisterKeysParams defines parameters for ListRegisterKeys.
 type ListRegisterKeysParams struct {
 	// Q Free-text search, case-insensitive substring match.
-	Q      *QueryQ                     `form:"q,omitempty" json:"q,omitempty"`
-	Target *AgentKind                  `form:"target,omitempty" json:"target,omitempty"`
-	State  *RegisterKeyState           `form:"state,omitempty" json:"state,omitempty"`
-	Sort   *ListRegisterKeysParamsSort `form:"sort,omitempty" json:"sort,omitempty"`
-	Limit  *QueryLimit                 `form:"limit,omitempty" json:"limit,omitempty"`
-	Offset *QueryOffset                `form:"offset,omitempty" json:"offset,omitempty"`
+	Q *QueryQ `form:"q,omitempty" json:"q,omitempty"`
+
+	// ScopeId Keep the records of this data scope.
+	ScopeId *QueryScopeId               `form:"scopeId,omitempty" json:"scopeId,omitempty"`
+	Target  *AgentKind                  `form:"target,omitempty" json:"target,omitempty"`
+	State   *RegisterKeyState           `form:"state,omitempty" json:"state,omitempty"`
+	Sort    *ListRegisterKeysParamsSort `form:"sort,omitempty" json:"sort,omitempty"`
+	Limit   *QueryLimit                 `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset  *QueryOffset                `form:"offset,omitempty" json:"offset,omitempty"`
 }
 
 // ListRegisterKeysParamsSort defines parameters for ListRegisterKeys.
@@ -4682,7 +4764,10 @@ type ListReleasesParamsSort string
 // ListScanTargetsParams defines parameters for ListScanTargets.
 type ListScanTargetsParams struct {
 	// Q Free-text search, case-insensitive substring match.
-	Q            *QueryQ                    `form:"q,omitempty" json:"q,omitempty"`
+	Q *QueryQ `form:"q,omitempty" json:"q,omitempty"`
+
+	// ScopeId Keep the records of this data scope.
+	ScopeId      *QueryScopeId              `form:"scopeId,omitempty" json:"scopeId,omitempty"`
 	ScannerId    *string                    `form:"scannerId,omitempty" json:"scannerId,omitempty"`
 	CredentialId *string                    `form:"credentialId,omitempty" json:"credentialId,omitempty"`
 	LastResult   *ScanResult                `form:"lastResult,omitempty" json:"lastResult,omitempty"`
@@ -8339,6 +8424,18 @@ func NewListAssetsRequest(server string, params *ListAssetsParams) (*http.Reques
 
 		}
 
+		if params.ScopeId != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "scopeId", *params.ScopeId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
 		if params.Kind != nil {
 
 			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "kind", *params.Kind, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
@@ -9499,6 +9596,18 @@ func NewListCredentialsRequest(server string, params *ListCredentialsParams) (*h
 		if params.Q != nil {
 
 			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "q", *params.Q, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.ScopeId != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "scopeId", *params.ScopeId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
 				return nil, err
 			} else {
 				for _, qp := range strings.Split(queryFrag, "&") {
@@ -10743,6 +10852,18 @@ func NewListK8sClustersRequest(server string, params *ListK8sClustersParams) (*h
 
 		}
 
+		if params.ScopeId != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "scopeId", *params.ScopeId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
 		if params.Sort != nil {
 
 			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "sort", *params.Sort, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
@@ -11766,6 +11887,18 @@ func NewListRegisterKeysRequest(server string, params *ListRegisterKeysParams) (
 
 		}
 
+		if params.ScopeId != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "scopeId", *params.ScopeId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
 		if params.Target != nil {
 
 			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "target", *params.Target, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
@@ -12122,6 +12255,18 @@ func NewListScanTargetsRequest(server string, params *ListScanTargetsParams) (*h
 		if params.Q != nil {
 
 			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "q", *params.Q, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.ScopeId != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "scopeId", *params.ScopeId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
 				return nil, err
 			} else {
 				for _, qp := range strings.Split(queryFrag, "&") {
@@ -16025,6 +16170,8 @@ type CreateCredentialResponse struct {
 	JSON400 *BadRequest
 	// JSON401 the response for an HTTP 401 `application/json` response
 	JSON401 *Unauthorized
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Forbidden
 	// JSON409 the response for an HTTP 409 `application/json` response
 	JSON409 *Conflict
 	// JSONDefault the response for an HTTP default `application/json` response
@@ -16044,6 +16191,11 @@ func (r CreateCredentialResponse) GetJSON400() *BadRequest {
 // GetJSON401 returns the response for an HTTP 401 `application/json` response
 func (r CreateCredentialResponse) GetJSON401() *Unauthorized {
 	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r CreateCredentialResponse) GetJSON403() *Forbidden {
+	return r.JSON403
 }
 
 // GetJSON409 returns the response for an HTTP 409 `application/json` response
@@ -17238,6 +17390,8 @@ type CreateIntegrityAllowRulesResponse struct {
 	JSON400 *BadRequest
 	// JSON401 the response for an HTTP 401 `application/json` response
 	JSON401 *Unauthorized
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Forbidden
 	// JSON404 the response for an HTTP 404 `application/json` response
 	JSON404 *NotFound
 	// JSONDefault the response for an HTTP default `application/json` response
@@ -17257,6 +17411,11 @@ func (r CreateIntegrityAllowRulesResponse) GetJSON400() *BadRequest {
 // GetJSON401 returns the response for an HTTP 401 `application/json` response
 func (r CreateIntegrityAllowRulesResponse) GetJSON401() *Unauthorized {
 	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r CreateIntegrityAllowRulesResponse) GetJSON403() *Forbidden {
+	return r.JSON403
 }
 
 // GetJSON404 returns the response for an HTTP 404 `application/json` response
@@ -17596,6 +17755,8 @@ type CreateK8sClusterResponse struct {
 	JSON400 *BadRequest
 	// JSON401 the response for an HTTP 401 `application/json` response
 	JSON401 *Unauthorized
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Forbidden
 	// JSON409 the response for an HTTP 409 `application/json` response
 	JSON409 *Conflict
 	// JSONDefault the response for an HTTP default `application/json` response
@@ -17615,6 +17776,11 @@ func (r CreateK8sClusterResponse) GetJSON400() *BadRequest {
 // GetJSON401 returns the response for an HTTP 401 `application/json` response
 func (r CreateK8sClusterResponse) GetJSON401() *Unauthorized {
 	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r CreateK8sClusterResponse) GetJSON403() *Forbidden {
+	return r.JSON403
 }
 
 // GetJSON409 returns the response for an HTTP 409 `application/json` response
@@ -18182,6 +18348,8 @@ type CreateListenTargetResponse struct {
 	JSON400 *BadRequest
 	// JSON401 the response for an HTTP 401 `application/json` response
 	JSON401 *Unauthorized
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Forbidden
 	// JSON409 the response for an HTTP 409 `application/json` response
 	JSON409 *Conflict
 	// JSONDefault the response for an HTTP default `application/json` response
@@ -18201,6 +18369,11 @@ func (r CreateListenTargetResponse) GetJSON400() *BadRequest {
 // GetJSON401 returns the response for an HTTP 401 `application/json` response
 func (r CreateListenTargetResponse) GetJSON401() *Unauthorized {
 	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r CreateListenTargetResponse) GetJSON403() *Forbidden {
+	return r.JSON403
 }
 
 // GetJSON409 returns the response for an HTTP 409 `application/json` response
@@ -18566,6 +18739,8 @@ type CreateRegisterKeyResponse struct {
 	JSON400 *BadRequest
 	// JSON401 the response for an HTTP 401 `application/json` response
 	JSON401 *Unauthorized
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Forbidden
 	// JSONDefault the response for an HTTP default `application/json` response
 	JSONDefault *UnexpectedError
 	// Headers201 the parsed response headers for an HTTP 201 response
@@ -18585,6 +18760,11 @@ func (r CreateRegisterKeyResponse) GetJSON400() *BadRequest {
 // GetJSON401 returns the response for an HTTP 401 `application/json` response
 func (r CreateRegisterKeyResponse) GetJSON401() *Unauthorized {
 	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r CreateRegisterKeyResponse) GetJSON403() *Forbidden {
+	return r.JSON403
 }
 
 // GetJSONDefault returns the response for an HTTP default `application/json` response
@@ -18961,6 +19141,8 @@ type CreateScanTargetResponse struct {
 	JSON400 *BadRequest
 	// JSON401 the response for an HTTP 401 `application/json` response
 	JSON401 *Unauthorized
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Forbidden
 	// JSON409 the response for an HTTP 409 `application/json` response
 	JSON409 *Conflict
 	// JSONDefault the response for an HTTP default `application/json` response
@@ -18980,6 +19162,11 @@ func (r CreateScanTargetResponse) GetJSON400() *BadRequest {
 // GetJSON401 returns the response for an HTTP 401 `application/json` response
 func (r CreateScanTargetResponse) GetJSON401() *Unauthorized {
 	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r CreateScanTargetResponse) GetJSON403() *Forbidden {
+	return r.JSON403
 }
 
 // GetJSON409 returns the response for an HTTP 409 `application/json` response
@@ -19643,6 +19830,8 @@ type CreateTriageRuleResponse struct {
 	JSON400 *BadRequest
 	// JSON401 the response for an HTTP 401 `application/json` response
 	JSON401 *Unauthorized
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Forbidden
 	// JSONDefault the response for an HTTP default `application/json` response
 	JSONDefault *UnexpectedError
 }
@@ -19660,6 +19849,11 @@ func (r CreateTriageRuleResponse) GetJSON400() *BadRequest {
 // GetJSON401 returns the response for an HTTP 401 `application/json` response
 func (r CreateTriageRuleResponse) GetJSON401() *Unauthorized {
 	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r CreateTriageRuleResponse) GetJSON403() *Forbidden {
+	return r.JSON403
 }
 
 // GetJSONDefault returns the response for an HTTP default `application/json` response
@@ -23379,6 +23573,13 @@ func ParseCreateCredentialResponse(rsp *http.Response) (*CreateCredentialRespons
 		}
 		response.JSON401 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
 		var dest Conflict
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -24319,6 +24520,13 @@ func ParseCreateIntegrityAllowRulesResponse(rsp *http.Response) (*CreateIntegrit
 		}
 		response.JSON401 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
 		var dest NotFound
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -24589,6 +24797,13 @@ func ParseCreateK8sClusterResponse(rsp *http.Response) (*CreateK8sClusterRespons
 			return nil, err
 		}
 		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
 		var dest Conflict
@@ -25047,6 +25262,13 @@ func ParseCreateListenTargetResponse(rsp *http.Response) (*CreateListenTargetRes
 		}
 		response.JSON401 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
 		var dest Conflict
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -25338,6 +25560,13 @@ func ParseCreateRegisterKeyResponse(rsp *http.Response) (*CreateRegisterKeyRespo
 			return nil, err
 		}
 		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest UnexpectedError
@@ -25654,6 +25883,13 @@ func ParseCreateScanTargetResponse(rsp *http.Response) (*CreateScanTargetRespons
 			return nil, err
 		}
 		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
 		var dest Conflict
@@ -26177,6 +26413,13 @@ func ParseCreateTriageRuleResponse(rsp *http.Response) (*CreateTriageRuleRespons
 			return nil, err
 		}
 		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest UnexpectedError
@@ -28009,6 +28252,19 @@ func (siw *ServerInterfaceWrapper) ListAssets(w http.ResponseWriter, r *http.Req
 		return
 	}
 
+	// ------------- Optional query parameter "scopeId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "scopeId", r.URL.Query(), &params.ScopeId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "scopeId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "scopeId", Err: err})
+		}
+		return
+	}
+
 	// ------------- Optional query parameter "kind" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "kind", r.URL.Query(), &params.Kind, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
@@ -28990,6 +29246,19 @@ func (siw *ServerInterfaceWrapper) ListCredentials(w http.ResponseWriter, r *htt
 		return
 	}
 
+	// ------------- Optional query parameter "scopeId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "scopeId", r.URL.Query(), &params.ScopeId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "scopeId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "scopeId", Err: err})
+		}
+		return
+	}
+
 	// ------------- Optional query parameter "kind" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "kind", r.URL.Query(), &params.Kind, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
@@ -29840,6 +30109,19 @@ func (siw *ServerInterfaceWrapper) ListK8sClusters(w http.ResponseWriter, r *htt
 		return
 	}
 
+	// ------------- Optional query parameter "scopeId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "scopeId", r.URL.Query(), &params.ScopeId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "scopeId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "scopeId", Err: err})
+		}
+		return
+	}
+
 	// ------------- Optional query parameter "sort" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "sort", r.URL.Query(), &params.Sort, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
@@ -30631,6 +30913,19 @@ func (siw *ServerInterfaceWrapper) ListRegisterKeys(w http.ResponseWriter, r *ht
 		return
 	}
 
+	// ------------- Optional query parameter "scopeId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "scopeId", r.URL.Query(), &params.ScopeId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "scopeId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "scopeId", Err: err})
+		}
+		return
+	}
+
 	// ------------- Optional query parameter "target" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "target", r.URL.Query(), &params.Target, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
@@ -30903,6 +31198,19 @@ func (siw *ServerInterfaceWrapper) ListScanTargets(w http.ResponseWriter, r *htt
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "q"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "q", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "scopeId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "scopeId", r.URL.Query(), &params.ScopeId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "scopeId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "scopeId", Err: err})
 		}
 		return
 	}
@@ -32273,6 +32581,8 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 type BadRequestJSONResponse Error
 
 type ConflictJSONResponse Error
+
+type ForbiddenJSONResponse Error
 
 type NotFoundJSONResponse Error
 
@@ -33932,6 +34242,20 @@ func (response CreateCredential401JSONResponse) VisitCreateCredentialResponse(w 
 	return err
 }
 
+type CreateCredential403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response CreateCredential403JSONResponse) VisitCreateCredentialResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type CreateCredential409JSONResponse struct{ ConflictJSONResponse }
 
 func (response CreateCredential409JSONResponse) VisitCreateCredentialResponse(w http.ResponseWriter) error {
@@ -35307,6 +35631,20 @@ func (response CreateIntegrityAllowRules401JSONResponse) VisitCreateIntegrityAll
 	return err
 }
 
+type CreateIntegrityAllowRules403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response CreateIntegrityAllowRules403JSONResponse) VisitCreateIntegrityAllowRulesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type CreateIntegrityAllowRules404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response CreateIntegrityAllowRules404JSONResponse) VisitCreateIntegrityAllowRulesResponse(w http.ResponseWriter) error {
@@ -35684,6 +36022,20 @@ func (response CreateK8sCluster401JSONResponse) VisitCreateK8sClusterResponse(w 
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateK8sCluster403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response CreateK8sCluster403JSONResponse) VisitCreateK8sClusterResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -36366,6 +36718,20 @@ func (response CreateListenTarget401JSONResponse) VisitCreateListenTargetRespons
 	return err
 }
 
+type CreateListenTarget403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response CreateListenTarget403JSONResponse) VisitCreateListenTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type CreateListenTarget409JSONResponse struct{ ConflictJSONResponse }
 
 func (response CreateListenTarget409JSONResponse) VisitCreateListenTargetResponse(w http.ResponseWriter) error {
@@ -36796,6 +37162,20 @@ func (response CreateRegisterKey401JSONResponse) VisitCreateRegisterKeyResponse(
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateRegisterKey403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response CreateRegisterKey403JSONResponse) VisitCreateRegisterKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -37240,6 +37620,20 @@ func (response CreateScanTarget401JSONResponse) VisitCreateScanTargetResponse(w 
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateScanTarget403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response CreateScanTarget403JSONResponse) VisitCreateScanTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -37993,6 +38387,20 @@ func (response CreateTriageRule401JSONResponse) VisitCreateTriageRuleResponse(w 
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateTriageRule403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response CreateTriageRule403JSONResponse) VisitCreateTriageRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
 	_, err := buf.WriteTo(w)
 	return err
 }

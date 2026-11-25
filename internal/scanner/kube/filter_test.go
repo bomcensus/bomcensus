@@ -7,7 +7,7 @@ package kube
 import (
 	"testing"
 
-	"github.com/bomcensus/bomcensus/internal/gen/agentapi"
+	"github.com/bomcensus/bomcensus/agentproto/dto"
 )
 
 func TestFilterEvaluationOrder(t *testing.T) {
@@ -65,7 +65,7 @@ func TestFilterInvalid(t *testing.T) {
 }
 
 func TestFilterFromAPI(t *testing.T) {
-	f := FilterFromAPI(agentapi.K8sFilter{NamespaceInclude: []string{"a"}, NamespaceExclude: []string{"b"}, LabelInclude: []string{"c"},
+	f := FilterFromAPI(dto.K8sFilter{NamespaceInclude: []string{"a"}, NamespaceExclude: []string{"b"}, LabelInclude: []string{"c"},
 		LabelExclude: []string{"d"}, AnnotationInclude: []string{"e"}, AnnotationExclude: []string{"f"}})
 	if f.NamespaceInclude[0] != "a" || f.NamespaceExclude[0] != "b" || f.LabelInclude[0] != "c" ||
 		f.LabelExclude[0] != "d" || f.AnnotationInclude[0] != "e" || f.AnnotationExclude[0] != "f" {

@@ -29,7 +29,8 @@ curl -fsSL https://github.com/bomcensus/bomcensus/releases/latest/download/insta
 - `make demo-up`: a local demo with example data at http://localhost:8080 (admin / demo), see [DEPLOYMENT.md §2.9](docs/DEPLOYMENT.md#29-demo).
 - [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md): building and running the server, agents and scanners with Docker Compose, Helm, systemd or Windows services.
 - [docs/SECURITY.md](docs/SECURITY.md): security design, privileges and known limitations.
-- [docs/PROTOCOL.md](docs/PROTOCOL.md): signatures and sealed secrets on the agent protocol.
+- [docs/PROTOCOL.md](docs/PROTOCOL.md): the agent protocol, its signatures and sealed secrets.
+- [docs/EXTENDING.md](docs/EXTENDING.md): building the server, agent and scanner from your own Go module, with your authentication, authorization, data scopes and agent channels.
 - [docs/GO_SYMBOLS.md](docs/GO_SYMBOLS.md): the Go symbol check, supported executables and the Go versions it was tested with.
 - [docs/FILE_INTEGRITY.md](docs/FILE_INTEGRITY.md): package file integrity checks, their schedule and allow rules.
 - [docs/RELEASING.md](docs/RELEASING.md): published images, charts and binaries, and how to verify them.

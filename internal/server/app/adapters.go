@@ -13,13 +13,13 @@ import (
 	"log/slog"
 	"time"
 
-	agentgen "github.com/bomcensus/bomcensus/internal/gen/agentapi"
+	agentgen "github.com/bomcensus/bomcensus/agentproto/dto"
 	"github.com/bomcensus/bomcensus/internal/server/agentapi"
-	"github.com/bomcensus/bomcensus/internal/server/auth"
 	"github.com/bomcensus/bomcensus/internal/server/dispatch"
 	"github.com/bomcensus/bomcensus/internal/server/enrollsvc"
 	"github.com/bomcensus/bomcensus/internal/server/ingest"
 	"github.com/bomcensus/bomcensus/internal/server/job"
+	"github.com/bomcensus/bomcensus/internal/server/session"
 	"github.com/bomcensus/bomcensus/internal/server/store"
 	"github.com/bomcensus/bomcensus/internal/server/updatesvc"
 )
@@ -148,7 +148,8 @@ func (c collector) RequestCollect(ctx context.Context, assetID string) error {
 // service go through that service; the rest are plain store deletions.
 type cleanupStore struct {
 	store.Store
-	auth     *auth.Service
+	// sessions is nil without the built-in login.
+	sessions *session.Service
 	enroll   *enrollsvc.Service
 	dispatch *dispatch.Service
 }
@@ -156,7 +157,10 @@ type cleanupStore struct {
 var _ job.CleanupStore = cleanupStore{}
 
 func (c cleanupStore) DeleteExpiredSessions(ctx context.Context, _ time.Time) (int64, error) {
-	return c.auth.PurgeExpired(ctx)
+	if c.sessions == nil {
+		return 0, nil
+	}
+	return c.sessions.PurgeExpired(ctx)
 }
 
 func (c cleanupStore) DeleteExpiredEnrollSessions(ctx context.Context, _ time.Time) (int64, error) {

@@ -18,7 +18,6 @@ import (
 	"io"
 	"io/fs"
 	"log/slog"
-	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -29,7 +28,8 @@ import (
 
 	"github.com/bomcensus/bomcensus/internal/agent/core"
 	"github.com/bomcensus/bomcensus/internal/agent/state"
-	"github.com/bomcensus/bomcensus/internal/gen/agentapi"
+
+	"github.com/bomcensus/bomcensus/agentproto/dto"
 	"github.com/bomcensus/bomcensus/internal/platform/paths"
 	"github.com/bomcensus/bomcensus/internal/sign"
 	"github.com/bomcensus/bomcensus/internal/updater"
@@ -167,13 +167,13 @@ func New(o Options) (*Manager, error) {
 
 // Attach registers the manager's tasks and hooks on rt.
 func (m *Manager) Attach(rt *core.Runtime) {
-	rt.OnConfig(func(_ context.Context, cfg agentapi.AgentConfig) {
+	rt.OnConfig(func(_ context.Context, cfg dto.AgentConfig) {
 		if cfg.UpdateCheckIntervalMinutes > 0 {
 			m.setInterval(time.Duration(cfg.UpdateCheckIntervalMinutes) * time.Minute)
 		}
 	})
 	rt.OnPoll(m.confirm)
-	rt.OnStatus(func(ctx context.Context, req *agentapi.PollRequest) { req.Update = m.Status(ctx) })
+	rt.OnStatus(func(ctx context.Context, req *dto.PollRequest) { req.Update = m.Status(ctx) })
 	rt.AddTask(core.Task{
 		Name:      "update check",
 		Interval:  m.checkInterval,
@@ -231,8 +231,8 @@ func (m *Manager) Changed(ctx context.Context) *ReexecError {
 }
 
 // Status describes the update state for the poll request.
-func (m *Manager) Status(ctx context.Context) agentapi.UpdateStatus {
-	out := agentapi.UpdateStatus{State: agentapi.UpdateStateUpToDate}
+func (m *Manager) Status(ctx context.Context) dto.UpdateStatus {
+	out := dto.UpdateStatus{State: dto.UpdateStateUpToDate}
 	st, err := updater.Status(ctx, m.o.InstallDir)
 	if err != nil {
 		msg := err.Error()
@@ -245,11 +245,11 @@ func (m *Manager) Status(ctx context.Context) agentapi.UpdateStatus {
 	}
 	switch {
 	case st.Pending != nil:
-		out.State = agentapi.UpdateStatePending
+		out.State = dto.UpdateStatePending
 	case m.spooled():
-		out.State = agentapi.UpdateStateUpdating
+		out.State = dto.UpdateStateUpdating
 	case len(st.Failed) > 0 && sign.Newer(st.Failed[len(st.Failed)-1].Version, m.o.Version):
-		out.State = agentapi.UpdateStateRolledBack
+		out.State = dto.UpdateStateRolledBack
 		msg := fmt.Sprintf("version %s was rolled back: %s", st.Failed[len(st.Failed)-1].Version, st.Failed[len(st.Failed)-1].Reason)
 		out.Message = &msg
 	}
@@ -363,13 +363,9 @@ func (m *Manager) apply(ctx context.Context) {
 // Check asks the server for the deployed version and downloads it when it
 // is newer than the running one.
 func (m *Manager) Check(ctx context.Context, rt *core.Runtime) error {
-	params := &agentapi.CheckUpdateParams{Os: agentapi.TargetOs(runtime.GOOS), Arch: agentapi.TargetArch(runtime.GOARCH)}
-	resp, err := rt.Client().CheckUpdateWithResponse(ctx, params)
+	params := dto.CheckUpdateParams{Os: dto.TargetOs(runtime.GOOS), Arch: dto.TargetArch(runtime.GOARCH)}
+	uc, err := rt.API().CheckUpdate(ctx, params)
 	if err != nil {
-		return fmt.Errorf("update check: %w", err)
-	}
-	uc := &agentapi.UpdateCheck{}
-	if err := core.DecodeResponse(resp.HTTPResponse, resp.Body, http.StatusOK, uc); err != nil {
 		return fmt.Errorf("update check: %w", err)
 	}
 	if uc.CheckIntervalMinutes > 0 {
@@ -441,15 +437,12 @@ func (m *Manager) download(ctx context.Context, rt *core.Runtime, version string
 	if err := os.MkdirAll(m.o.SpoolDir, 0o750); err != nil {
 		return fmt.Errorf("update spool: %w", err)
 	}
-	params := &agentapi.DownloadUpdateBundleParams{Os: agentapi.TargetOs(runtime.GOOS), Arch: agentapi.TargetArch(runtime.GOARCH)}
-	resp, err := rt.Client().DownloadUpdateBundle(ctx, version, params)
+	params := dto.DownloadUpdateBundleParams{Os: dto.TargetOs(runtime.GOOS), Arch: dto.TargetArch(runtime.GOARCH)}
+	resp, err := rt.API().DownloadUpdateBundle(ctx, version, params)
 	if err != nil {
 		return fmt.Errorf("download %s: %w", version, err)
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("download %s: status %d", version, resp.StatusCode)
-	}
 	limit := int64(maxBundle)
 	if size > 0 {
 		limit = size

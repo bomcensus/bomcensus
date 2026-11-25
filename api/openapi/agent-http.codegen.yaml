@@ -1,0 +1,18 @@
+# Copyright (C) 2026 JC-Lab
+# SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-bomcensus-Commercial
+# Additional terms apply. See LICENSING.md.
+
+# oapi-codegen configuration for agent.yaml: the HTTP server and client of
+# the agent protocol. The models are in agentproto/dto (agent.codegen.yaml),
+# imported unqualified. Run `make generate`.
+package: agentapi
+output: internal/gen/agentapi/agentapi.gen.go
+generate:
+  chi-server: true
+  strict-server: true
+  client: true
+additional-imports:
+  - package: github.com/bomcensus/bomcensus/agentproto/dto
+    alias: .
+output-options:
+  skip-prune: true

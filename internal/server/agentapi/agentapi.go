@@ -2,16 +2,19 @@
 // SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-bomcensus-Commercial
 // Additional terms apply. See LICENSING.md.
 
-// Package agentapi is the agent-facing HTTP surface of the server
-// (api/openapi/agent.yaml under /agent/v1): the handler stack shared by the
-// connect-mode listener and listen-mode reverse connections, the connect
-// mode HTTPS server and the reverse dialing of listen-mode agents.
+// Package agentapi is the agent-facing side of the server: the operations
+// of the agent protocol (Handlers, an agentproto.API) and the HTTP channel
+// in front of them (api/openapi/agent.yaml under /agent/v1): the handler
+// stack shared by the connect-mode listener and listen-mode reverse
+// connections, the connect mode HTTPS server and the reverse dialing of
+// listen-mode agents. Other channels reach the operations through Gateway.
 //
-// The handler stack is
+// The handler stack of the HTTP channel is
 //
-//	link.AgentVerifier.DeferringMiddleware → peer adapter → msgsig.Middleware → router
+//	link.AgentVerifier.DeferringMiddleware → peer adapter → msgsig.Middleware → signed agent → router
 //
-// The router serves the generated strict handlers, except POST
+// The router serves the generated strict handlers (httpAPI, which calls
+// Handlers), except POST
 // /enroll/start and POST /enroll/finish: their signatures cover the exact
 // body bytes, which the strict wrapper does not expose, so they are plain
 // http.HandlerFuncs.
@@ -19,6 +22,7 @@ package agentapi
 
 import (
 	"context"
+	"crypto"
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
@@ -27,17 +31,16 @@ import (
 	"log/slog"
 	"math/big"
 	"net/http"
-	"strings"
 	"time"
 
-	"github.com/go-chi/chi/v5"
-
-	gen "github.com/bomcensus/bomcensus/internal/gen/agentapi"
+	"github.com/bomcensus/bomcensus/agentproto"
+	"github.com/bomcensus/bomcensus/agentproto/dto"
 	"github.com/bomcensus/bomcensus/internal/link"
 	"github.com/bomcensus/bomcensus/internal/msgsig"
 	"github.com/bomcensus/bomcensus/internal/server/dispatch"
 	"github.com/bomcensus/bomcensus/internal/server/enrollsvc"
 	"github.com/bomcensus/bomcensus/internal/server/store"
+	"github.com/bomcensus/bomcensus/server/scope"
 )
 
 // BasePath is the prefix of every agent API path.
@@ -74,7 +77,7 @@ type PKI interface {
 type Updates interface {
 	// CheckUpdate answers the update check of an agent running
 	// currentVersion. With no deployed version TargetVersion is nil.
-	CheckUpdate(ctx context.Context, currentVersion, os, arch string) (gen.UpdateCheck, error)
+	CheckUpdate(ctx context.Context, currentVersion, os, arch string) (dto.UpdateCheck, error)
 	// Bundle returns the release bundle of version holding the files of
 	// one platform, and its size.
 	Bundle(ctx context.Context, version, os, arch string) (io.ReadCloser, int64, error)
@@ -92,9 +95,9 @@ type Ingest interface {
 	// ingestion. jobID is the job_id query parameter, empty when absent.
 	Submit(ctx context.Context, sender store.Agent, jobID string, raw []byte) (reportID string, err error)
 	// IngestK8sInventory stores a cluster inventory sent by a scanner.
-	IngestK8sInventory(ctx context.Context, sender store.Agent, inv gen.K8sInventory) error
+	IngestK8sInventory(ctx context.Context, sender store.Agent, inv dto.K8sInventory) error
 	// RecordScanResult stores the outcome of a scan job sent by a scanner.
-	RecordScanResult(ctx context.Context, sender store.Agent, jobID string, res gen.ScanJobResult) error
+	RecordScanResult(ctx context.Context, sender store.Agent, jobID string, res dto.ScanJobResult) error
 }
 
 // Options configures NewHandler.
@@ -140,154 +143,36 @@ func NewAgentVerifier(p PKI) *link.AgentVerifier {
 	}
 }
 
-// NewHandler returns the complete agent-port handler.
-func NewHandler(o Options) (http.Handler, error) {
+// New returns the agent protocol service with the handler stack of the
+// HTTP channel.
+func New(o Options) (*Handlers, error) {
 	h, err := newHandlers(o)
 	if err != nil {
 		return nil, err
 	}
-	mw, err := msgsig.New(msgsig.Config{
-		KeyLookup:      h.keyLookup,
-		AdvanceCounter: h.advanceCounter,
-		Signer:         h.signer,
-		Bypass:         bypassPaths,
-		Exempt:         exemptPaths,
-		PendingAllowed: pendingPaths,
-		MaxRequestBody: h.maxRequest,
-		Logger:         h.log,
-		Now:            h.now,
-	})
+	if h.http, err = h.newHTTPHandler(); err != nil {
+		return nil, err
+	}
+	return h, nil
+}
+
+// NewHandler returns the complete agent-port handler of the HTTP channel.
+func NewHandler(o Options) (http.Handler, error) {
+	h, err := New(o)
 	if err != nil {
 		return nil, err
 	}
-	strict := gen.NewStrictHandlerWithOptions(h, []gen.StrictMiddlewareFunc{h.agentMiddleware}, gen.StrictHTTPServerOptions{
-		RequestErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, err error) {
-			writeJSONError(w, http.StatusBadRequest, msgsig.CodeInvalidRequest, err.Error())
-		},
-		ResponseErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, err error) {
-			if clientGone(r, err) {
-				// A long poll or upload whose client went away.
-				h.log.DebugContext(r.Context(), "agent API request ended by the client", "path", r.URL.Path, "error", err)
-			} else {
-				h.log.ErrorContext(r.Context(), "agent API handler failed", "path", r.URL.Path, "error", err)
-			}
-			writeJSONError(w, http.StatusInternalServerError, msgsig.CodeInternal, "internal error")
-		},
-	})
-	r := chi.NewRouter()
-	r.NotFound(func(w http.ResponseWriter, _ *http.Request) {
-		writeJSONError(w, http.StatusNotFound, "not_found", "not found")
-	})
-	r.MethodNotAllowed(func(w http.ResponseWriter, _ *http.Request) {
-		writeJSONError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
-	})
-	router := gen.HandlerWithOptions(routes{ServerInterface: strict, h: h}, gen.ChiServerOptions{
-		BaseURL:    BasePath,
-		BaseRouter: r,
-		ErrorHandlerFunc: func(w http.ResponseWriter, _ *http.Request, err error) {
-			writeJSONError(w, http.StatusBadRequest, msgsig.CodeInvalidRequest, err.Error())
-		},
-	})
-	return h.verifier.DeferringMiddleware(signedPath, h.peerAdapter(mw.Wrap(router))), nil
+	return h.HTTP(), nil
 }
 
-// signedPath reports whether msgsig answers the request with a signed
-// response, so that a failed client certificate check is left to it
-// (agent_revoked, client_certificate_mismatch) instead of a plain 403 the
-// agent cannot verify.
-func signedPath(r *http.Request) bool { return !bypassPaths.Match(r.URL.Path) }
+// HTTP returns the handler stack of the HTTP channel, shared by the
+// connect-mode listener and listen-mode reverse connections.
+func (h *Handlers) HTTP() http.Handler { return h.http }
 
-// clientGone reports whether err is the cancellation of a request whose
-// client disconnected.
-func clientGone(r *http.Request, err error) bool {
-	return errors.Is(err, context.Canceled) && errors.Is(r.Context().Err(), context.Canceled)
-}
-
-// routes serves the enrollment exchange with raw handlers and everything
-// else through the strict handler.
-type routes struct {
-	gen.ServerInterface
-	h *Handlers
-}
-
-func (rt routes) EnrollStart(w http.ResponseWriter, r *http.Request)  { rt.h.serveEnroll(w, r, false) }
-func (rt routes) EnrollFinish(w http.ResponseWriter, r *http.Request) { rt.h.serveEnroll(w, r, true) }
-
-// peerAdapter records the connection facts of the request and passes the
-// TLS peer identity, or why its certificate failed the per-request check,
-// to msgsig. A reverse connection to an agent that presented a temporary
-// certificate is restricted to enrollment.
-func (h *Handlers) peerAdapter(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ctx := r.Context()
-		info := &requestInfo{
-			remote:     remoteAddr(r.RemoteAddr),
-			reverse:    link.PeerReverse(ctx),
-			unenrolled: link.PeerUnenrolled(ctx),
-			target:     reverseTargetFrom(ctx),
-		}
-		if info.unenrolled && !strings.HasPrefix(r.URL.Path, enrollPrefix) {
-			h.log.WarnContext(ctx, "request on unenrolled reverse connection refused", "path", r.URL.Path, "remote", info.remote.String())
-			writeJSONError(w, http.StatusForbidden, "enrollment_only", "connection may only be used for enrollment")
-			return
-		}
-		if id, ok := link.PeerAgentID(ctx); ok {
-			ctx = msgsig.WithTLSPeerAgentID(ctx, id)
-		}
-		if err := link.PeerCertError(ctx); err != nil {
-			ctx = msgsig.WithTLSPeerFailure(ctx, tlsPeerFailure(err))
-			if errors.Is(err, link.ErrRevocationCheck) {
-				h.log.ErrorContext(ctx, "client certificate check failed", "path", r.URL.Path, "remote", info.remote.String(), "error", err)
-			}
-		}
-		next.ServeHTTP(w, r.WithContext(withRequestInfo(ctx, info)))
-	})
-}
-
-func tlsPeerFailure(err error) msgsig.TLSPeerFailure {
-	switch {
-	case errors.Is(err, link.ErrRevoked):
-		return msgsig.TLSPeerRevoked
-	case errors.Is(err, link.ErrRevocationCheck):
-		return msgsig.TLSPeerCheckFailed
-	}
-	return msgsig.TLSPeerInvalid
-}
-
-// Scanner-only operations.
-var scannerOnly = map[string]bool{
-	"UploadK8sInventory":  true,
-	"SubmitScanJobResult": true,
-	"DownloadProbe":       true,
-}
-
-// agentMiddleware resolves the authenticated agent record for every
-// signed operation and enforces the scanner-only operations.
-func (h *Handlers) agentMiddleware(f gen.StrictHandlerFunc, op string) gen.StrictHandlerFunc {
-	if op == "GetServerChain" || op == "EnrollStart" || op == "EnrollFinish" {
-		return f
-	}
-	return func(ctx context.Context, w http.ResponseWriter, r *http.Request, req any) (any, error) {
-		id, ok := msgsig.AgentFromContext(ctx)
-		if !ok {
-			writeJSONError(w, http.StatusUnauthorized, msgsig.CodeUnauthorized, "unauthenticated")
-			return nil, nil
-		}
-		info := requestInfoFrom(ctx)
-		a, ok := info.agent()
-		if !ok || a.ID != id.ID {
-			var err error
-			if a, err = h.st.GetAgent(ctx, id.ID); err != nil {
-				return nil, fmt.Errorf("load agent %s: %w", id.ID, err)
-			}
-		}
-		if scannerOnly[op] && a.Kind != store.AgentKindScanner {
-			h.log.WarnContext(ctx, "scanner operation refused", "operation", op, "agent_id", a.ID, "kind", a.Kind)
-			writeJSONError(w, http.StatusForbidden, "forbidden", "operation is reserved for scanners")
-			return nil, nil
-		}
-		return f(withAgent(ctx, a), w, r, req)
-	}
+// Gateway returns what other channels serve: the operations, run with the
+// system data scope, and the agents to authenticate requests with.
+func (h *Handlers) Gateway() *agentproto.Server {
+	return &agentproto.Server{API: systemScoped{h}, Agents: agents{h}, Logger: h.log}
 }
 
 // keyLookup is msgsig's KeyLookup over the agents store.
@@ -360,8 +245,45 @@ func (h *Handlers) signer(context.Context) (*msgsig.ServerSigner, error) {
 	return s, nil
 }
 
-func writeJSONError(w http.ResponseWriter, status int, code, msg string) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_, _ = w.Write(jsonError(code, msg))
+// agents is agentproto.Agents for gateways.
+type agents struct{ h *Handlers }
+
+func (a agents) AgentKey(ctx context.Context, agentID string) (agentproto.AgentKey, error) {
+	k, err := a.h.keyLookup(scope.System(ctx), agentID)
+	if errors.Is(err, msgsig.ErrUnknownAgent) {
+		return agentproto.AgentKey{}, fmt.Errorf("%w: %s", agentproto.ErrUnknownAgent, agentID)
+	}
+	if err != nil {
+		return agentproto.AgentKey{}, err
+	}
+	out := agentproto.AgentKey{PublicKey: k.PublicKey, RequireCertificate: k.RequireTLSClientCert}
+	switch k.State {
+	case msgsig.StateApproved:
+		out.State = agentproto.StateApproved
+	case msgsig.StatePending:
+		out.State = agentproto.StatePending
+	default:
+		out.State = agentproto.StateRevoked
+	}
+	return out, nil
+}
+
+func (a agents) AdvanceCounter(ctx context.Context, agentID string, n uint64) (uint64, bool, error) {
+	return a.h.advanceCounter(scope.System(ctx), agentID, n)
+}
+
+func (a agents) SigningKey(context.Context) (crypto.Signer, []*x509.Certificate, error) {
+	key, chain := a.h.pki.Signer()
+	if key == nil || len(chain) == 0 {
+		return nil, nil, errors.New("agentapi: no server signing key")
+	}
+	return key, chain, nil
+}
+
+func (a agents) ServerCertificate() (*tls.Certificate, error) {
+	return a.h.pki.AgentServerCertificate()
+}
+
+func (a agents) VerifyCertificate(chain []*x509.Certificate) (string, error) {
+	return a.h.verifier.Verify(chain, x509.ExtKeyUsageClientAuth)
 }

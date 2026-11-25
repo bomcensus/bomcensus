@@ -75,6 +75,7 @@ func scanTargetDTO(t store.ScanTarget, pol integritysvc.Policy) gen.ScanTarget {
 		AssetId:         optString(t.AssetID),
 		CreatedAt:       t.CreatedAt,
 		DetectDirIds:    orEmpty(t.DetectDirIDs),
+		ScopeId:         t.ScopeID,
 	}
 	mode := cmp.Or(t.Integrity, store.IntegrityInherit)
 	out.Integrity, out.IntegrityEnabled = gen.IntegrityMode(mode), integritysvc.Enabled(mode, pol.SSH)
@@ -91,7 +92,7 @@ func scanTargetDTO(t store.ScanTarget, pol integritysvc.Policy) gen.ScanTarget {
 // ListScanTargets implements listScanTargets.
 func (h *Handlers) ListScanTargets(ctx context.Context, req gen.ListScanTargetsRequestObject) (gen.ListScanTargetsResponseObject, error) {
 	p := req.Params
-	f := store.ScanTargetFilter{Q: deref(p.Q)}
+	f := store.ScanTargetFilter{Q: deref(p.Q), ScopeID: deref(p.ScopeId)}
 	all, err := collectAll(func(pg store.Page) ([]store.ScanTarget, int, error) { return h.st.ListScanTargets(ctx, f, pg) })
 	if err != nil {
 		return nil, err
@@ -163,6 +164,10 @@ func (h *Handlers) CreateScanTarget(ctx context.Context, req gen.CreateScanTarge
 	if err := checkScanTarget(t); err != nil {
 		return nil, err
 	}
+	var err error
+	if t.ScopeID, err = newScopeID(ctx, b.ScopeId); err != nil {
+		return nil, err
+	}
 	if hk := strings.TrimSpace(deref(b.HostKey)); hk != "" {
 		key, err := parseHostKey(hk)
 		if err != nil {
@@ -184,7 +189,7 @@ func (h *Handlers) CreateScanTarget(ctx context.Context, req gen.CreateScanTarge
 		return nil, err
 	}
 	var created store.ScanTarget
-	err := h.st.WithTx(ctx, func(tx store.Store) error {
+	err = h.st.WithTx(ctx, func(tx store.Store) error {
 		var err error
 		if created, err = tx.CreateScanTarget(ctx, t); err != nil || len(dirs) == 0 {
 			return err
@@ -377,6 +382,7 @@ func credentialDTO(c store.Credential, clusters int) gen.Credential {
 		PublicKeyFingerprint: optString(c.PublicKeyFingerprint),
 		UsedBy:               c.UsedBy + clusters,
 		CreatedAt:            c.CreatedAt,
+		ScopeId:              c.ScopeID,
 	}
 }
 
@@ -417,7 +423,8 @@ func (h *Handlers) ListCredentials(ctx context.Context, req gen.ListCredentialsR
 	}
 	kept := all[:0]
 	for _, c := range all {
-		if (p.Kind == nil || string(c.Kind) == string(*p.Kind)) && matches(p.Q, c.Name, c.Username) {
+		if (p.Kind == nil || string(c.Kind) == string(*p.Kind)) && (p.ScopeId == nil || c.ScopeID == *p.ScopeId) &&
+			matches(p.Q, c.Name, c.Username) {
 			kept = append(kept, c)
 		}
 	}
@@ -521,6 +528,10 @@ func (h *Handlers) CreateCredential(ctx context.Context, req gen.CreateCredentia
 	if err != nil {
 		return nil, apierr.Invalid("%s", err.Error())
 	}
+	scopeID, err := newScopeID(ctx, b.ScopeId)
+	if err != nil {
+		return nil, err
+	}
 	id, err := uuid.NewV7()
 	if err != nil {
 		return nil, err
@@ -531,6 +542,7 @@ func (h *Handlers) CreateCredential(ctx context.Context, req gen.CreateCredentia
 	}
 	c, err := h.st.CreateCredential(ctx, store.Credential{
 		ID:                   id.String(),
+		ScopeID:              scopeID,
 		Name:                 name,
 		Kind:                 store.CredentialKind(b.Kind),
 		Username:             username,

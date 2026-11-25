@@ -18,9 +18,9 @@ import (
 
 	gen "github.com/bomcensus/bomcensus/internal/gen/adminapi"
 	"github.com/bomcensus/bomcensus/internal/server/adminapi/apierr"
-	"github.com/bomcensus/bomcensus/internal/server/auth"
 	"github.com/bomcensus/bomcensus/internal/server/store"
 	"github.com/bomcensus/bomcensus/internal/server/vulnsvc"
+	"github.com/bomcensus/bomcensus/server/auth"
 )
 
 // viewOptions are the options of a list; asking for negligible ones by
@@ -35,7 +35,7 @@ func triageRuleDTO(r store.TriageRule, now time.Time) gen.TriageRule {
 		Id: r.ID, VulnId: r.VulnID, Scope: gen.TriageScope{Kind: gen.TriageScopeKind(r.ScopeKind), Value: r.ScopeValue},
 		Status: gen.TriageRuleStatus(r.Status), Justification: gen.TriageJustification(r.Justification), Note: optStr(r.Note),
 		ExpiresAt: r.ExpiresAt, ExpiredAt: r.ExpiredAt, Active: r.Active(now), CreatedBy: r.CreatedBy, CreatedAt: r.CreatedAt,
-		RevokedAt: r.RevokedAt, RevokedBy: optStr(r.RevokedBy),
+		RevokedAt: r.RevokedAt, RevokedBy: optStr(r.RevokedBy), ScopeId: r.ScopeID,
 	}
 }
 
@@ -77,11 +77,14 @@ func (rs rulesOf) dto(time.Time) []gen.TriageRule {
 }
 
 func principal(ctx context.Context) string {
-	p, _ := auth.FromContext(ctx)
-	if p.Name != "" {
-		return p.Name
+	p, ok := auth.FromContext(ctx)
+	if !ok {
+		return ""
 	}
-	return p.ID
+	if n := p.Name(); n != "" {
+		return n
+	}
+	return p.ID()
 }
 
 // ── rules ───────────────────────────────────────────────────────────────
@@ -153,6 +156,15 @@ func (h *Handlers) CreateTriageRule(ctx context.Context, req gen.CreateTriageRul
 	case store.TriageScopeGroup:
 	default:
 		return nil, apierr.Invalid("scope kind must be purl, asset or group")
+	}
+	// An asset rule has the scope of its asset, which the store sets.
+	if r.ScopeKind == store.TriageScopeAsset {
+		r.ScopeID = deref(b.ScopeId)
+	} else {
+		var err error
+		if r.ScopeID, err = newScopeID(ctx, b.ScopeId); err != nil {
+			return nil, err
+		}
 	}
 	created, err := h.cfg.Store.CreateTriageRule(ctx, r)
 	if err != nil {

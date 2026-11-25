@@ -15,7 +15,8 @@ import (
 
 	"github.com/bomcensus/bomcensus/internal/agent/internal/fakeserver"
 	"github.com/bomcensus/bomcensus/internal/agent/state"
-	"github.com/bomcensus/bomcensus/internal/gen/agentapi"
+
+	"github.com/bomcensus/bomcensus/agentproto/dto"
 	"github.com/bomcensus/bomcensus/internal/report"
 )
 
@@ -51,7 +52,7 @@ func TestRuntimeExtension(t *testing.T) {
 	tuning := Options{MinPollInterval: 20 * time.Millisecond, MaxBackoff: 200 * time.Millisecond}
 	_, err = Enroll(ctx, EnrollOptions{
 		State: st, Kind: KindScanner, Version: "1.0.0", Token: srv.Token.String(), ServerURL: srv.URL,
-		Host:          agentapi.HostFacts{Hostname: "scanner", Arch: "amd64", Os: agentapi.OsRelease{Family: "linux"}},
+		Host:          dto.HostFacts{Hostname: "scanner", Arch: "amd64", Os: dto.OsRelease{Family: "linux"}},
 		HPKEPublicKey: []byte("public key"),
 	})
 	if err != nil {
@@ -70,7 +71,7 @@ func TestRuntimeExtension(t *testing.T) {
 		t.Fatal(err)
 	}
 	var handled, ticks, uploaded atomic.Int32
-	rt.Handle("scan_ssh", func(ctx context.Context, d agentapi.Directive) error {
+	rt.Handle("scan_ssh", func(ctx context.Context, d dto.Directive) error {
 		sd, err := d.AsScanSshDirective()
 		if err != nil || sd.JobId != "job-1" {
 			return errors.New("unexpected directive")
@@ -94,7 +95,7 @@ func TestRuntimeExtension(t *testing.T) {
 	})
 	sentinel := errors.New("stop requested")
 	var acksSent atomic.Bool
-	rt.OnStatus(func(_ context.Context, req *agentapi.PollRequest) {
+	rt.OnStatus(func(_ context.Context, req *dto.PollRequest) {
 		acksSent.Store(req.AckedDirectives != nil && len(*req.AckedDirectives) == 2)
 	})
 	rt.OnPoll(func(context.Context) {
@@ -166,7 +167,7 @@ func TestRevokedIsTerminal(t *testing.T) {
 	defer cancel()
 	enr, err := Enroll(ctx, EnrollOptions{
 		State: st, Kind: KindAgent, Version: "1.0.0", Token: srv.Token.String(), ServerURL: srv.URL,
-		Host: agentapi.HostFacts{Hostname: "host", Arch: "amd64", Os: agentapi.OsRelease{Family: "linux"}},
+		Host: dto.HostFacts{Hostname: "host", Arch: "amd64", Os: dto.OsRelease{Family: "linux"}},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -238,7 +239,7 @@ func TestStaleRevocationRecordCleared(t *testing.T) {
 	defer cancel()
 	if _, err := Enroll(ctx, EnrollOptions{
 		State: st, Kind: KindAgent, Version: "1.0.0", Token: srv.Token.String(), ServerURL: srv.URL,
-		Host: agentapi.HostFacts{Hostname: "host", Arch: "amd64", Os: agentapi.OsRelease{Family: "linux"}},
+		Host: dto.HostFacts{Hostname: "host", Arch: "amd64", Os: dto.OsRelease{Family: "linux"}},
 	}); err != nil {
 		t.Fatal(err)
 	}

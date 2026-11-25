@@ -122,6 +122,7 @@ func privilege(p store.Privilege) *gen.PrivilegeLevel {
 func assetSummary(a store.Asset, containers int) gen.AssetSummary {
 	return gen.AssetSummary{
 		Id:                 a.ID,
+		ScopeId:            a.ScopeID,
 		Name:               a.Name,
 		Kind:               gen.AssetKind(a.Kind),
 		Group:              a.Group,
@@ -341,5 +342,6 @@ func k8sCluster(c store.K8sCluster) gen.K8sCluster {
 		WorkloadCount: c.Workloads,
 		ExcludedCount: c.Excluded,
 		CreatedAt:     c.CreatedAt,
+		ScopeId:       c.ScopeID,
 	}
 }

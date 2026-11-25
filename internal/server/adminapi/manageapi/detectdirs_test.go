@@ -12,11 +12,12 @@ import (
 	gen "github.com/bomcensus/bomcensus/internal/gen/adminapi"
 	"github.com/bomcensus/bomcensus/internal/server/adminapi/apierr"
 	"github.com/bomcensus/bomcensus/internal/server/store"
+	"github.com/bomcensus/bomcensus/server/scope"
 )
 
 func TestDetectDirs(t *testing.T) {
 	e := newEnv(t, true)
-	ctx := context.Background()
+	ctx := scope.System(context.Background())
 
 	for _, bad := range []string{"opt", "/opt/*", "/opt/a\x01", ""} {
 		e.want(e.do("POST", "/detect-dirs", gen.DetectDirCreate{Path: bad}), 400, apierr.CodeInvalidArgument)

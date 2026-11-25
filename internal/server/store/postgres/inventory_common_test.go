@@ -12,13 +12,14 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/bomcensus/bomcensus/internal/server/store"
+	"github.com/bomcensus/bomcensus/server/scope"
 )
 
 var ivT0 = time.Date(2026, 11, 1, 9, 0, 0, 0, time.UTC)
 
 func ivCtx(t *testing.T) context.Context {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	ctx, cancel := context.WithTimeout(scope.System(context.Background()), time.Minute)
 	t.Cleanup(cancel)
 	return ctx
 }

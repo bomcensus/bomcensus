@@ -9,7 +9,7 @@ import (
 	"encoding/hex"
 	"testing"
 
-	gen "github.com/bomcensus/bomcensus/internal/gen/agentapi"
+	"github.com/bomcensus/bomcensus/agentproto/dto"
 	"github.com/bomcensus/bomcensus/internal/pki"
 )
 
@@ -25,7 +25,7 @@ func TestObservedIssuerByCA(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	reissued := &gen.ObservedCert{
+	reissued := &dto.ObservedCert{
 		Sha256: hexHash([32]byte{1}), Subject: "CN=new", Issuer: "CN=Agent TLS CA",
 		IssuerSpkiSha256: ptr(hexHash(pki.SPKIHash(own.tlsCA.Cert))),
 	}
@@ -37,7 +37,7 @@ func TestObservedIssuerByCA(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	mitm := &gen.ObservedCert{
+	mitm := &dto.ObservedCert{
 		Sha256: hexHash([32]byte{2}), Subject: "CN=x", Issuer: "CN=Proxy CA",
 		IssuerSpkiSha256: ptr(hexHash(pki.SPKIHash(evil.Cert))),
 	}
@@ -46,7 +46,7 @@ func TestObservedIssuerByCA(t *testing.T) {
 	}
 
 	// A prepared anchor is accepted too.
-	prepared := &gen.ObservedCert{
+	prepared := &dto.ObservedCert{
 		Sha256: hexHash([32]byte{3}), Subject: "CN=x", Issuer: "CN=Agent TLS CA 2",
 		IssuerSpkiSha256: ptr(hexHash(pki.SPKIHash(own.pending.Cert))),
 	}
@@ -56,7 +56,7 @@ func TestObservedIssuerByCA(t *testing.T) {
 
 	// Without the issuer hash the certificate cannot be attributed to the
 	// server's CAs, even when it is the server's own leaf.
-	noIssuer := &gen.ObservedCert{Sha256: hexHash(pki.Fingerprint(own.chain[0])), Subject: "CN=x", Issuer: "CN=Agent TLS CA"}
+	noIssuer := &dto.ObservedCert{Sha256: hexHash(pki.Fingerprint(own.chain[0])), Subject: "CN=x", Issuer: "CN=Agent TLS CA"}
 	if got := h.observedIssuer(noIssuer); got != "CN=Agent TLS CA" {
 		t.Fatalf("certificate without issuer hash reported as %q", got)
 	}

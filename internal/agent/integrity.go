@@ -16,9 +16,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/bomcensus/bomcensus/agentproto/dto"
 	"github.com/bomcensus/bomcensus/internal/agent/core"
 	"github.com/bomcensus/bomcensus/internal/agent/state"
-	"github.com/bomcensus/bomcensus/internal/gen/agentapi"
 	"github.com/bomcensus/bomcensus/internal/nightwindow"
 	"github.com/bomcensus/bomcensus/internal/report"
 )
@@ -55,7 +55,7 @@ type integrityRunner struct {
 	submit func(ctx context.Context, encoded []byte, meta core.ReportMeta) error
 
 	mu     sync.Mutex
-	cfg    *agentapi.IntegrityConfig
+	cfg    *dto.IntegrityConfig
 	state  *state.Integrity
 	cache  []byte
 	cancel context.CancelFunc
@@ -100,7 +100,7 @@ func (g *integrityRunner) signal() {
 	}
 }
 
-func (g *integrityRunner) setConfig(_ context.Context, cfg agentapi.AgentConfig) {
+func (g *integrityRunner) setConfig(_ context.Context, cfg dto.AgentConfig) {
 	g.mu.Lock()
 	g.cfg = cfg.Integrity
 	if !g.enabledLocked() && g.state.PassID != "" {

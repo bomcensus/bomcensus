@@ -103,16 +103,22 @@ func (d *DB) SetScanTargetDetectDirs(ctx context.Context, targetID string, dirID
 	return d.setDetectDirs(ctx, "set scan target detect dirs", "scan_targets", "scan_target_detect_dirs", "target_id", targetID, dirIDs)
 }
 
-// setDetectDirs replaces the assignments of one owner row. The table and
-// column names are constants of the callers.
+// setDetectDirs replaces the assignments of one owner row, which must be in
+// the scope of ctx. The table and column names are constants of the
+// callers.
 func (d *DB) setDetectDirs(ctx context.Context, op, owners, table, column, ownerID string, dirIDs []string) error {
 	ids := slices.Clone(dirIDs)
 	slices.Sort(ids)
 	ids = slices.Compact(ids)
+	q, sc, err := scoped(ctx, op, ownerID)
+	if err != nil {
+		return err
+	}
 	return d.WithTx(ctx, func(s store.Store) error {
 		tx := s.(*DB)
 		var exists bool
-		if err := tx.q.QueryRow(ctx, `SELECT true FROM `+owners+` WHERE id = $1 FOR UPDATE`, ownerID).Scan(&exists); err != nil {
+		if err := tx.q.QueryRow(ctx, `SELECT true FROM `+owners+` WHERE id = $1 AND `+sc.col("scope_id")+` FOR UPDATE`,
+			q.args...).Scan(&exists); err != nil {
 			return mgErr(op, err)
 		}
 		if _, err := tx.q.Exec(ctx, `DELETE FROM `+table+` WHERE `+column+` = $1`, ownerID); err != nil {

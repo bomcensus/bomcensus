@@ -11,7 +11,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 
-	"github.com/bomcensus/bomcensus/internal/gen/agentapi"
+	"github.com/bomcensus/bomcensus/agentproto/dto"
 	"github.com/bomcensus/bomcensus/internal/report"
 )
 
@@ -192,7 +192,7 @@ func RunPlan(ctx context.Context, targets []ExecTarget, lim Limits, collect Coll
 			}
 		} else {
 			for _, t := range pending {
-				done(Result{Target: t, Outcome: ContainerOutcome{Coverage: agentapi.CoverageFailed, Reason: "canceled", ExitCode: -1}, Err: ctx.Err()})
+				done(Result{Target: t, Outcome: ContainerOutcome{Coverage: dto.CoverageFailed, Reason: "canceled", ExitCode: -1}, Err: ctx.Err()})
 			}
 			pending = nil
 		}

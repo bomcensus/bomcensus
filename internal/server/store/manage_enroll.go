@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-// EnrollSession carries the state between enroll/start and enroll/finish.
+// EnrollSession carries the state between enrollStart and enrollFinish.
 type EnrollSession struct {
 	// ID is handed to an unauthenticated peer, so it is a random UUID (v4),
 	// not a time-ordered one.

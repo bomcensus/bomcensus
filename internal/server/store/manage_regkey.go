@@ -42,8 +42,11 @@ const RegisterKeyIDLen = 11
 // RegisterKey is the server side of an enrollment string: the key ID, the
 // public key and the policy. The private seed is never stored.
 type RegisterKey struct {
-	ID              string
-	Name            string
+	ID   string
+	Name string
+	// ScopeID is the data scope of the key and of the agents enrolled with
+	// it; empty for scanner keys, which are shared by every scope.
+	ScopeID         string
 	PublicKey       []byte // Ed25519
 	Target          AgentKind
 	ExpiresAt       *time.Time
@@ -89,8 +92,9 @@ func (k RegisterKey) AllowsAddr(addr netip.Addr) bool {
 
 // RegisterKeyFilter narrows ListRegisterKeys. Zero fields do not filter.
 type RegisterKeyFilter struct {
-	Q      string // case-insensitive substring of name or ID
-	Target AgentKind
+	Q       string // case-insensitive substring of name or ID
+	Target  AgentKind
+	ScopeID string
 }
 
 // RegisterKeys stores register keys.

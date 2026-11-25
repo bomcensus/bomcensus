@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/bomcensus/bomcensus/internal/gen/agentapi"
+	"github.com/bomcensus/bomcensus/agentproto/dto"
 	"github.com/bomcensus/bomcensus/internal/scanner/runner"
 	"github.com/bomcensus/bomcensus/internal/server/ingest"
 	"github.com/bomcensus/bomcensus/internal/server/store"
@@ -23,7 +23,7 @@ func (e *embeddedSink) SubmitReport(ctx context.Context, enc []byte, _ string) e
 	return e.s.ing.IngestReport(ctx, ingest.EmbeddedScanner(), enc)
 }
 
-func (e *embeddedSink) SubmitInventory(ctx context.Context, inv agentapi.K8sInventory) error {
+func (e *embeddedSink) SubmitInventory(ctx context.Context, inv dto.K8sInventory) error {
 	return e.s.ing.IngestK8sInventory(ctx, ingest.EmbeddedScanner(), inv.ClusterId, inv)
 }
 
@@ -32,24 +32,24 @@ func (e *embeddedSink) SubmitResult(ctx context.Context, jobID string, res runne
 }
 
 // RecordJobResult stores the outcome of a job reported by a remote scanner
-// (POST /agent/v1/scan-jobs/{id}/result). The host key of a scan_ssh
+// (operation submitScanJobResult). The host key of a scan_ssh
 // result is pinned on the first successful scan. An unknown job id is
 // store.ErrNotFound; a job of a subject not assigned to the sender is an
 // error with Permanent() true.
-func (s *Service) RecordJobResult(ctx context.Context, sender store.Agent, jobID string, res agentapi.ScanJobResult) error {
+func (s *Service) RecordJobResult(ctx context.Context, sender store.Agent, jobID string, res dto.ScanJobResult) error {
 	if sender.Kind != store.AgentKindScanner || sender.ID == "" {
 		return forbidden("only scanners report scan jobs")
 	}
 	return s.applyResult(ctx, ingest.Sender{AgentID: sender.ID, Kind: sender.Kind, RemoteAddr: sender.Address}, jobID, res)
 }
 
-func (s *Service) applyResult(ctx context.Context, sender ingest.Sender, jobID string, res agentapi.ScanJobResult) error {
+func (s *Service) applyResult(ctx context.Context, sender ingest.Sender, jobID string, res dto.ScanJobResult) error {
 	kind, subject, ok := parseJobID(jobID)
 	if !ok {
 		return fmt.Errorf("scansvc: scan job %q: %w", jobID, store.ErrNotFound)
 	}
 	switch res.Status {
-	case agentapi.ScanJobStatusOk, agentapi.ScanJobStatusPartial, agentapi.ScanJobStatusFailed:
+	case dto.ScanJobStatusOk, dto.ScanJobStatusPartial, dto.ScanJobStatusFailed:
 	default:
 		return &permanentError{fmt.Errorf("scansvc: unknown job status %q: %w", res.Status, store.ErrInvalid)}
 	}
@@ -92,7 +92,7 @@ func (s *Service) cluster(ctx context.Context, sender ingest.Sender, id string) 
 	return c, nil
 }
 
-func finishedAt(res agentapi.ScanJobResult, now time.Time) time.Time {
+func finishedAt(res dto.ScanJobResult, now time.Time) time.Time {
 	if res.FinishedAt.IsZero() {
 		return now
 	}
@@ -101,7 +101,7 @@ func finishedAt(res agentapi.ScanJobResult, now time.Time) time.Time {
 
 // applySyncResult records the sync status. A successful sync already
 // recorded ok when its inventory was stored; warnings are added here.
-func (s *Service) applySyncResult(ctx context.Context, sender ingest.Sender, clusterID string, res agentapi.ScanJobResult) error {
+func (s *Service) applySyncResult(ctx context.Context, sender ingest.Sender, clusterID string, res dto.ScanJobResult) error {
 	c, err := s.cluster(ctx, sender, clusterID)
 	if err != nil {
 		return err
@@ -111,7 +111,7 @@ func (s *Service) applySyncResult(ctx context.Context, sender ingest.Sender, clu
 		msg = *res.Message
 	}
 	status := store.K8sSyncOK
-	if res.Status == agentapi.ScanJobStatusFailed {
+	if res.Status == dto.ScanJobStatusFailed {
 		status = store.K8sSyncFailed
 	} else if msg == "" {
 		return nil
@@ -124,7 +124,7 @@ func (s *Service) applySyncResult(ctx context.Context, sender ingest.Sender, clu
 
 // applyExecResult records the coverage of containers that produced no
 // report; those with a report got theirs from ingest.
-func (s *Service) applyExecResult(ctx context.Context, sender ingest.Sender, clusterID string, res agentapi.ScanJobResult) error {
+func (s *Service) applyExecResult(ctx context.Context, sender ingest.Sender, clusterID string, res dto.ScanJobResult) error {
 	c, err := s.cluster(ctx, sender, clusterID)
 	if err != nil {
 		return err
@@ -133,7 +133,7 @@ func (s *Service) applyExecResult(ctx context.Context, sender ingest.Sender, clu
 		return nil
 	}
 	for _, t := range *res.Targets {
-		if t.Status != agentapi.ScanJobStatusFailed {
+		if t.Status != dto.ScanJobStatusFailed {
 			continue
 		}
 		reason := ""

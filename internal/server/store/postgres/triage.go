@@ -15,11 +15,11 @@ import (
 var _ store.Triage = (*DB)(nil)
 
 const trCols = `r.id::text, r.vuln_id, r.scope_kind, r.scope_value, r.purl_like, r.status, r.justification, r.note,
-	r.expires_at, r.expired_at, r.created_by, r.created_at, r.revoked_at, r.revoked_by`
+	r.expires_at, r.expired_at, r.created_by, r.created_at, r.revoked_at, r.revoked_by, r.scope_id`
 
 func trScan(row mgRow, r *store.TriageRule, extra ...any) error {
 	dest := append([]any{&r.ID, &r.VulnID, &r.ScopeKind, &r.ScopeValue, &r.PURLLike, &r.Status, &r.Justification, &r.Note,
-		&r.ExpiresAt, &r.ExpiredAt, &r.CreatedBy, &r.CreatedAt, &r.RevokedAt, &r.RevokedBy}, extra...)
+		&r.ExpiresAt, &r.ExpiredAt, &r.CreatedBy, &r.CreatedAt, &r.RevokedAt, &r.RevokedBy, &r.ScopeID}, extra...)
 	if err := row.Scan(dest...); err != nil {
 		return err
 	}
@@ -28,9 +28,9 @@ func trScan(row mgRow, r *store.TriageRule, extra ...any) error {
 	return nil
 }
 
-// trScope matches the open findings f (with asset a and component c) in
-// the scope of rule r.
-const trScope = `f.resolved_at IS NULL AND f.vuln_id = r.vuln_id
+// trScope matches the open findings f (with asset a and component c) that
+// rule r applies to: in its data scope and its rule scope.
+const trScope = `f.resolved_at IS NULL AND f.vuln_id = r.vuln_id AND a.scope_id = r.scope_id
 	AND ((r.scope_kind = 'asset' AND r.scope_value = f.asset_id::text)
 		OR (r.scope_kind = 'group' AND a.group_name <> '' AND r.scope_value = a.group_name)
 		OR (r.scope_kind = 'purl' AND split_part(c.purl, '?', 1) LIKE r.purl_like))`
@@ -55,20 +55,54 @@ func (d *DB) CreateTriageRule(ctx context.Context, r store.TriageRule) (store.Tr
 	if r.Status == "" {
 		r.Status = store.TriageStatusNotAffected
 	}
+	scopeID, err := d.mgRuleScope(ctx, "create triage rule", r.ScopeKind == store.TriageScopeAsset, r.ScopeValue, r.ScopeID)
+	if err != nil {
+		return store.TriageRule{}, err
+	}
 	var out store.TriageRule
 	err = d.mgInTx(ctx, func(tx *DB) error {
 		if err := trScan(tx.q.QueryRow(ctx, `
 			INSERT INTO triage_rules AS r (id, vuln_id, scope_kind, scope_value, purl_like, status, justification, note,
-				expires_at, created_by, created_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+				expires_at, created_by, created_at, scope_id)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 			RETURNING `+trCols,
 			id, r.VulnID, r.ScopeKind, r.ScopeValue, r.PURLLike, r.Status, r.Justification, r.Note,
-			mgTimePtr(r.ExpiresAt), r.CreatedBy, mgOrNow(r.CreatedAt)), &out); err != nil {
+			mgTimePtr(r.ExpiresAt), r.CreatedBy, mgOrNow(r.CreatedAt), scopeID), &out); err != nil {
 			return mgErr("create triage rule", err)
 		}
 		return tx.trEvent(ctx, out.ID, store.TriageEventCreated, out.CreatedBy, out.CreatedAt)
 	})
 	return out, err
+}
+
+// mgRuleScope is the scope id of a new rule: that of its asset for an
+// asset rule (requested must then be empty or the same), otherwise
+// requested. ErrNotFound when the asset is not in the scope of ctx,
+// scope.ErrOutside when requested is not.
+func (d *DB) mgRuleScope(ctx context.Context, op string, forAsset bool, assetID, requested string) (string, error) {
+	s, err := requireScope(ctx, op)
+	if err != nil {
+		return "", err
+	}
+	if !forAsset {
+		return resolveScope(op, s, requested)
+	}
+	q, sc, err := scoped(ctx, op, assetID)
+	if err != nil {
+		return "", err
+	}
+	if !ivValidID(assetID) {
+		return "", mgNotFound(op)
+	}
+	var id string
+	if err := d.q.QueryRow(ctx, `SELECT scope_id FROM assets a WHERE a.id = $1 AND `+sc.col("a.scope_id"),
+		q.args...).Scan(&id); err != nil {
+		return "", mgErr(op, err)
+	}
+	if requested != "" && requested != id {
+		return "", fmt.Errorf("postgres: %s: an asset rule has the scope of its asset: %w", op, store.ErrInvalid)
+	}
+	return id, nil
 }
 
 // RevokeTriageRule implements store.Triage.
@@ -86,9 +120,13 @@ func (d *DB) RevokeTriageRule(ctx context.Context, id, by string, at time.Time) 
 		if err := tx.trEvent(ctx, id, store.TriageEventRevoked, by, at); err != nil {
 			return err
 		}
+		q, sc, err := scoped(ctx, "revoke triage rule", id, at.UTC(), by)
+		if err != nil {
+			return err
+		}
 		err = trScan(tx.q.QueryRow(ctx, `
-			UPDATE triage_rules r SET revoked_at = $2, revoked_by = $3 WHERE r.id = $1 RETURNING `+trCols,
-			id, at.UTC(), by), &out)
+			UPDATE triage_rules r SET revoked_at = $2, revoked_by = $3 WHERE r.id = $1 AND `+sc.col("r.scope_id")+`
+			RETURNING `+trCols, q.args...), &out)
 		return mgErr("revoke triage rule", err)
 	})
 	return out, err
@@ -97,21 +135,31 @@ func (d *DB) RevokeTriageRule(ctx context.Context, id, by string, at time.Time) 
 // GetTriageRule implements store.Triage.
 func (d *DB) GetTriageRule(ctx context.Context, id string) (store.TriageRule, error) {
 	var r store.TriageRule
-	err := trScan(d.q.QueryRow(ctx, `SELECT `+trCols+` FROM triage_rules r WHERE r.id = $1`, id), &r)
+	q, sc, err := scoped(ctx, "get triage rule", id)
+	if err != nil {
+		return r, err
+	}
+	err = trScan(d.q.QueryRow(ctx, `SELECT `+trCols+` FROM triage_rules r WHERE r.id = $1 AND `+sc.col("r.scope_id"),
+		q.args...), &r)
 	return r, mgErr("get triage rule", err)
 }
 
 // ListTriageRules implements store.Triage.
 func (d *DB) ListTriageRules(ctx context.Context, at time.Time, includeRevoked bool) ([]store.TriageRuleRow, error) {
+	q, sc, err := scoped(ctx, "list triage rules", mgOrNow(at), includeRevoked)
+	if err != nil {
+		return nil, err
+	}
 	rows, err := d.q.Query(ctx, `
 		SELECT `+trCols+`, coalesce(n.findings, 0), coalesce(n.assets, 0)
 		FROM triage_rules r
 		LEFT JOIN LATERAL (
 			SELECT count(*) AS findings, count(DISTINCT f.asset_id) AS assets FROM `+trFindingsJoin+`
-			WHERE `+trScope+` AND (SELECT t.rule_id FROM triage_rule_for(f.vuln_id, f.asset_id, a.group_name, c.purl, $1) t) = r.id
+			WHERE `+trScope+` AND (SELECT t.rule_id FROM triage_rule_for(f.vuln_id, f.asset_id, a.group_name, c.purl, $1,
+				ARRAY[a.scope_id]) t) = r.id
 		) n ON r.revoked_at IS NULL
-		WHERE $2 OR r.revoked_at IS NULL
-		ORDER BY r.created_at DESC, r.id DESC`, mgOrNow(at), includeRevoked)
+		WHERE ($2 OR r.revoked_at IS NULL) AND `+sc.col("r.scope_id")+`
+		ORDER BY r.created_at DESC, r.id DESC`, q.args...)
 	if err != nil {
 		return nil, mgErr("list triage rules", err)
 	}
@@ -129,6 +177,9 @@ func (d *DB) ListTriageRules(ctx context.Context, at time.Time, includeRevoked b
 
 // ExpireTriageRules implements store.Triage.
 func (d *DB) ExpireTriageRules(ctx context.Context, at time.Time) ([]store.TriageEvent, error) {
+	if err := requireAll(ctx, "expire triage rules"); err != nil {
+		return nil, err
+	}
 	var out []store.TriageEvent
 	err := d.mgInTx(ctx, func(tx *DB) error {
 		rows, err := tx.q.Query(ctx, `
@@ -166,7 +217,8 @@ func (d *DB) ExpireTriageRules(ctx context.Context, at time.Time) ([]store.Triag
 					SELECT r.id, 'expired', $2, (
 						SELECT count(*) FROM `+trFindingsJoin+`
 						WHERE `+trScope+` AND NOT EXISTS (
-							SELECT 1 FROM triage_rule_for(f.vuln_id, f.asset_id, a.group_name, c.purl, $2) t
+							SELECT 1 FROM triage_rule_for(f.vuln_id, f.asset_id, a.group_name, c.purl, $2,
+								ARRAY[a.scope_id]) t
 							WHERE t.expires_at IS NULL OR t.expires_at > $2)
 					)
 					FROM triage_rules r WHERE r.id = $1
@@ -188,10 +240,14 @@ func (d *DB) ListTriageEvents(ctx context.Context, afterID int64, limit int) ([]
 	if limit <= 0 {
 		limit = 200
 	}
+	q, sc, err := scoped(ctx, "list triage events", afterID, limit)
+	if err != nil {
+		return nil, err
+	}
 	rows, err := d.q.Query(ctx, `
 		SELECT `+trCols+`, e.id, e.kind, e.at, e.actor, e.findings
 		FROM triage_events e JOIN triage_rules r ON r.id = e.rule_id
-		WHERE e.id > $1 ORDER BY e.id LIMIT $2`, afterID, limit)
+		WHERE e.id > $1 AND `+sc.col("r.scope_id")+` ORDER BY e.id LIMIT $2`, q.args...)
 	if err != nil {
 		return nil, mgErr("list triage events", err)
 	}

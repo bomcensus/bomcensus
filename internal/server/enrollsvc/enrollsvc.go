@@ -28,7 +28,8 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/bomcensus/bomcensus/internal/enroll"
-	"github.com/bomcensus/bomcensus/internal/gen/agentapi"
+
+	"github.com/bomcensus/bomcensus/agentproto/dto"
 	"github.com/bomcensus/bomcensus/internal/pki"
 	"github.com/bomcensus/bomcensus/internal/server/store"
 	"github.com/bomcensus/bomcensus/internal/token"
@@ -135,7 +136,7 @@ type sessionState struct {
 
 // startRequest is a validated enroll/start body.
 type startRequest struct {
-	agentapi.EnrollStartRequest
+	dto.EnrollStartRequest
 	csr      *x509.CertificateRequest
 	identity ed25519.PublicKey
 }
@@ -192,14 +193,14 @@ func (s *Service) checkPolicy(ctx context.Context, req *startRequest, remote net
 	if !remote.IsValid() || !key.AllowsAddr(remote) {
 		return key, refuse("source address %s is not allowed", remote)
 	}
-	listen := req.ConnectMode == agentapi.Listen
+	listen := req.ConnectMode == dto.Listen
 	if listen != reverse {
 		return key, refuse("connect mode %s does not match the connection direction", req.ConnectMode)
 	}
-	if listen && req.Kind == agentapi.Scanner {
+	if listen && req.Kind == dto.Scanner {
 		return key, refuse("scanners support connect mode only")
 	}
-	if req.TlsMode != agentapi.Pinned {
+	if req.TlsMode != dto.Pinned {
 		if !key.AllowRelaxedTLS {
 			return key, refuse("register key does not allow TLS mode %s", req.TlsMode)
 		}
@@ -279,7 +280,7 @@ func (s *Service) Start(ctx context.Context, body []byte, remote netip.Addr, rev
 		return nil, "", s.fail(ctx, "start", req.KeyId, remote, err)
 	}
 	sessionID := uuid.NewString() // random (v4): handed to an unauthenticated peer
-	resp, err := json.Marshal(agentapi.EnrollSession{SessionId: sessionID, ServerNonce: nonce, ServerChain: chain})
+	resp, err := json.Marshal(dto.EnrollSession{SessionId: sessionID, ServerNonce: nonce, ServerChain: chain})
 	if err != nil {
 		return nil, "", s.fail(ctx, "start", req.KeyId, remote, err)
 	}
@@ -307,7 +308,7 @@ func (s *Service) Start(ctx context.Context, body []byte, remote netip.Addr, rev
 // the exact response body and the Bomcensus-Enroll-Signature header value.
 func (s *Service) Finish(ctx context.Context, body []byte, remote netip.Addr) ([]byte, string, error) {
 	remote = remote.Unmap()
-	var fin agentapi.EnrollFinishRequest
+	var fin dto.EnrollFinishRequest
 	if err := json.Unmarshal(body, &fin); err != nil || fin.SessionId == "" {
 		return nil, "", s.fail(ctx, "finish", "", remote, fmt.Errorf("%w: finish body", ErrBadRequest))
 	}
@@ -403,7 +404,7 @@ func (s *Service) Finish(ctx context.Context, body []byte, remote netip.Addr) ([
 		return nil, "", s.fail(ctx, "finish", keyID, remote, err)
 	}
 
-	var result agentapi.EnrollResult
+	var result dto.EnrollResult
 	if agent.State == store.AgentApproved {
 		result, err = s.approved(ctx, agent.ID, req.Csr)
 		if err != nil {
@@ -431,28 +432,28 @@ func (s *Service) Finish(ctx context.Context, body []byte, remote netip.Addr) ([
 	return resp, sig, nil
 }
 
-func (s *Service) pending(agentID string) agentapi.EnrollResult {
+func (s *Service) pending(agentID string) dto.EnrollResult {
 	retry := int(s.retry / time.Second)
-	return agentapi.EnrollResult{Status: agentapi.EnrollStatusPending, AgentId: agentID, RetryAfterSeconds: &retry}
+	return dto.EnrollResult{Status: dto.EnrollStatusPending, AgentId: agentID, RetryAfterSeconds: &retry}
 }
 
 // approved issues a certificate and builds the approved result.
-func (s *Service) approved(ctx context.Context, agentID string, csrDER []byte) (agentapi.EnrollResult, error) {
+func (s *Service) approved(ctx context.Context, agentID string, csrDER []byte) (dto.EnrollResult, error) {
 	cert, err := s.pki.IssueAgentCertificate(ctx, csrDER, agentID)
 	if err != nil {
-		return agentapi.EnrollResult{}, fmt.Errorf("issue certificate: %w", err)
+		return dto.EnrollResult{}, fmt.Errorf("issue certificate: %w", err)
 	}
 	ca, err := s.pki.AgentCA()
 	if err != nil {
-		return agentapi.EnrollResult{}, fmt.Errorf("agent CA: %w", err)
+		return dto.EnrollResult{}, fmt.Errorf("agent CA: %w", err)
 	}
 	tb, err := s.TrustBundle(ctx)
 	if err != nil {
-		return agentapi.EnrollResult{}, err
+		return dto.EnrollResult{}, err
 	}
 	der, caDER := cert.Raw, ca.Raw
-	return agentapi.EnrollResult{
-		Status:      agentapi.EnrollStatusApproved,
+	return dto.EnrollResult{
+		Status:      dto.EnrollStatusApproved,
 		AgentId:     agentID,
 		Certificate: &der,
 		AgentCa:     &caDER,
@@ -461,15 +462,15 @@ func (s *Service) approved(ctx context.Context, agentID string, csrDER []byte) (
 }
 
 // TrustBundle returns the current trust bundle in its wire form.
-func (s *Service) TrustBundle(ctx context.Context) (agentapi.TrustBundle, error) {
+func (s *Service) TrustBundle(ctx context.Context) (dto.TrustBundle, error) {
 	b, err := s.pki.TrustBundle()
 	if err != nil {
-		return agentapi.TrustBundle{}, fmt.Errorf("trust bundle: %w", err)
+		return dto.TrustBundle{}, fmt.Errorf("trust bundle: %w", err)
 	}
 	if err := b.Validate(); err != nil {
-		return agentapi.TrustBundle{}, fmt.Errorf("trust bundle: %w", err)
+		return dto.TrustBundle{}, fmt.Errorf("trust bundle: %w", err)
 	}
-	out := agentapi.TrustBundle{
+	out := dto.TrustBundle{
 		Serial:   int64(b.Version),
 		Anchors:  make([][]byte, 0, len(b.Anchors)),
 		AgentCas: [][]byte{b.AgentCA.Raw},
@@ -493,25 +494,25 @@ func (s *Service) agentCSR(ctx context.Context, agentID string) ([]byte, error) 
 // Result answers GET /enroll/result for an authenticated agent: the
 // pending answer while it waits for approval, a new certificate once it is
 // approved.
-func (s *Service) Result(ctx context.Context, agentID string) (agentapi.EnrollResult, error) {
+func (s *Service) Result(ctx context.Context, agentID string) (dto.EnrollResult, error) {
 	a, err := s.st.GetAgent(ctx, agentID)
 	if err != nil {
-		return agentapi.EnrollResult{}, fmt.Errorf("enrollsvc: result: %w", err)
+		return dto.EnrollResult{}, fmt.Errorf("enrollsvc: result: %w", err)
 	}
 	switch a.State {
 	case store.AgentPending:
 		return s.pending(a.ID), nil
 	case store.AgentRevoked:
 		s.log.WarnContext(ctx, "enrollment result refused", "agent_id", a.ID, "reason", "agent is revoked")
-		return agentapi.EnrollResult{}, ErrRefused
+		return dto.EnrollResult{}, ErrRefused
 	}
 	csr, err := s.agentCSR(ctx, a.ID)
 	if err != nil {
-		return agentapi.EnrollResult{}, fmt.Errorf("enrollsvc: result: %w", err)
+		return dto.EnrollResult{}, fmt.Errorf("enrollsvc: result: %w", err)
 	}
 	res, err := s.approved(ctx, a.ID, csr)
 	if err != nil {
-		return agentapi.EnrollResult{}, fmt.Errorf("enrollsvc: result: %w", err)
+		return dto.EnrollResult{}, fmt.Errorf("enrollsvc: result: %w", err)
 	}
 	s.log.InfoContext(ctx, "enrollment certificate delivered", "agent_id", a.ID, "key_id", a.RegisterKeyID)
 	return res, nil
@@ -520,36 +521,36 @@ func (s *Service) Result(ctx context.Context, agentID string) (agentapi.EnrollRe
 // Renew issues a new certificate for the agent's identity key. csrDER is
 // optional; when given it must be a CSR for the current identity key
 // (ErrKeyMismatch otherwise). Key rotation is not supported.
-func (s *Service) Renew(ctx context.Context, agentID string, csrDER []byte) (agentapi.RenewedCert, error) {
+func (s *Service) Renew(ctx context.Context, agentID string, csrDER []byte) (dto.RenewedCert, error) {
 	a, err := s.st.GetAgent(ctx, agentID)
 	if err != nil {
-		return agentapi.RenewedCert{}, fmt.Errorf("enrollsvc: renew: %w", err)
+		return dto.RenewedCert{}, fmt.Errorf("enrollsvc: renew: %w", err)
 	}
 	if a.State != store.AgentApproved {
-		return agentapi.RenewedCert{}, fmt.Errorf("enrollsvc: renew: agent is %s: %w", a.State, store.ErrInvalidState)
+		return dto.RenewedCert{}, fmt.Errorf("enrollsvc: renew: agent is %s: %w", a.State, store.ErrInvalidState)
 	}
 	if len(csrDER) > 0 {
 		csr, err := pki.ParseAgentCSR(csrDER)
 		if err != nil {
-			return agentapi.RenewedCert{}, fmt.Errorf("%w: %v", ErrBadRequest, err)
+			return dto.RenewedCert{}, fmt.Errorf("%w: %v", ErrBadRequest, err)
 		}
 		if !bytes.Equal(csr.PublicKey.(ed25519.PublicKey), a.IdentityKey) {
 			s.log.WarnContext(ctx, "certificate renewal refused", "agent_id", a.ID, "reason", "CSR for another key")
-			return agentapi.RenewedCert{}, ErrKeyMismatch
+			return dto.RenewedCert{}, ErrKeyMismatch
 		}
 	} else if csrDER, err = s.agentCSR(ctx, a.ID); err != nil {
-		return agentapi.RenewedCert{}, fmt.Errorf("enrollsvc: renew: %w", err)
+		return dto.RenewedCert{}, fmt.Errorf("enrollsvc: renew: %w", err)
 	}
 	cert, err := s.pki.IssueAgentCertificate(ctx, csrDER, a.ID)
 	if err != nil {
-		return agentapi.RenewedCert{}, fmt.Errorf("enrollsvc: renew: issue certificate: %w", err)
+		return dto.RenewedCert{}, fmt.Errorf("enrollsvc: renew: issue certificate: %w", err)
 	}
 	ca, err := s.pki.AgentCA()
 	if err != nil {
-		return agentapi.RenewedCert{}, fmt.Errorf("enrollsvc: renew: agent CA: %w", err)
+		return dto.RenewedCert{}, fmt.Errorf("enrollsvc: renew: agent CA: %w", err)
 	}
 	s.log.InfoContext(ctx, "agent certificate renewed", "agent_id", a.ID, "serial", cert.SerialNumber.Text(16), "not_after", cert.NotAfter)
-	return agentapi.RenewedCert{Certificate: cert.Raw, AgentCa: ca.Raw, NotAfter: cert.NotAfter.UTC()}, nil
+	return dto.RenewedCert{Certificate: cert.Raw, AgentCa: ca.Raw, NotAfter: cert.NotAfter.UTC()}, nil
 }
 
 // Cleanup removes expired enrollment sessions. It is meant to run

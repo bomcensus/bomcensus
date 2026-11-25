@@ -10,6 +10,8 @@ package store
 import (
 	"context"
 	"errors"
+
+	"github.com/bomcensus/bomcensus/server/scope"
 )
 
 // ErrNotFound is returned when a requested record does not exist.
@@ -17,6 +19,10 @@ var ErrNotFound = errors.New("store: not found")
 
 // ErrConflict is returned when a write violates a uniqueness rule.
 var ErrConflict = errors.New("store: conflict")
+
+// ErrNoScope is returned by every method that reads or writes scoped data
+// when the context carries no data scope (scope.With, scope.System).
+var ErrNoScope = scope.ErrNone
 
 // Store is the whole persistence surface of the server.
 type Store interface {

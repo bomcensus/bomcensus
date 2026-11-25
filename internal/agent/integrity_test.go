@@ -13,9 +13,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bomcensus/bomcensus/agentproto/dto"
 	"github.com/bomcensus/bomcensus/internal/agent/core"
 	"github.com/bomcensus/bomcensus/internal/agent/state"
-	"github.com/bomcensus/bomcensus/internal/gen/agentapi"
 	"github.com/bomcensus/bomcensus/internal/report"
 )
 
@@ -91,8 +91,8 @@ func newIntegrityHarness(t *testing.T, probe *fakeIntegrityProbe) *integrityHarn
 	return h
 }
 
-func integrityConfig(enabled bool) agentapi.AgentConfig {
-	return agentapi.AgentConfig{Integrity: &agentapi.IntegrityConfig{
+func integrityConfig(enabled bool) dto.AgentConfig {
+	return dto.AgentConfig{Integrity: &dto.IntegrityConfig{
 		Enabled: enabled, WindowStart: "02:00", WindowEnd: "05:00", IntervalDays: 1, MaxReadMbps: 20, FullRehashDays: 7,
 	}}
 }

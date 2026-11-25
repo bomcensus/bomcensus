@@ -113,7 +113,10 @@ type AssetFacts struct {
 
 // Asset is a host or a workload.
 type Asset struct {
-	ID             string
+	ID string
+	// ScopeID is the data scope, taken from the agent, scan target or
+	// cluster the asset comes from. Read-only.
+	ScopeID        string
 	Kind           AssetKind
 	Name           string
 	Group          string
@@ -210,6 +213,7 @@ type AssetFilter struct {
 	Method    CollectMethod
 	Coverage  Coverage // also CoverageLimited
 	ClusterID string
+	ScopeID   string
 	// Tag keeps assets that carry the tag.
 	Tag string
 	// Q matches a case-insensitive substring of name, address, OS name or

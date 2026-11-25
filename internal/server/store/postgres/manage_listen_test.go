@@ -13,11 +13,12 @@ import (
 	"time"
 
 	"github.com/bomcensus/bomcensus/internal/server/store"
+	"github.com/bomcensus/bomcensus/server/scope"
 )
 
 func TestManageListenLeases(t *testing.T) {
 	db := newTestDB(t)
-	ctx := context.Background()
+	ctx := scope.System(context.Background())
 	const ttl = 30 * time.Second
 	var ids []string
 	for i := 0; i < 3; i++ {
@@ -99,7 +100,7 @@ func TestManageListenLeases(t *testing.T) {
 
 func TestManageListenLeasesConcurrent(t *testing.T) {
 	db := newTestDB(t)
-	ctx := context.Background()
+	ctx := scope.System(context.Background())
 	const targets, replicas = 40, 4
 	for i := 0; i < targets; i++ {
 		if _, err := db.CreateListenTarget(ctx, store.ListenTarget{Address: fmt.Sprintf("h%d:7443", i)}); err != nil {
@@ -173,7 +174,7 @@ func TestManageListenLeasesConcurrent(t *testing.T) {
 
 func TestManageListenTargetBind(t *testing.T) {
 	db := newTestDB(t)
-	ctx := context.Background()
+	ctx := scope.System(context.Background())
 	mgTestKey(t, db, "listenkey00", nil)
 	lt, err := db.CreateListenTarget(ctx, store.ListenTarget{Address: "edge:7443", RegisterKeyID: "listenkey00"})
 	if err != nil || lt.RegisterKeyID != "listenkey00" {

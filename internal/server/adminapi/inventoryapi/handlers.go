@@ -18,9 +18,11 @@ import (
 
 	gen "github.com/bomcensus/bomcensus/internal/gen/adminapi"
 	"github.com/bomcensus/bomcensus/internal/server/adminapi/apierr"
-	"github.com/bomcensus/bomcensus/internal/server/auth"
+	"github.com/bomcensus/bomcensus/internal/server/session"
 	"github.com/bomcensus/bomcensus/internal/server/store"
 	"github.com/bomcensus/bomcensus/internal/version"
+	"github.com/bomcensus/bomcensus/server/auth"
+	"github.com/bomcensus/bomcensus/server/scope"
 )
 
 // Store is the part of the store the handlers read and write.
@@ -45,7 +47,7 @@ type AgentStore interface {
 	CountAgents(ctx context.Context, onlineAfter time.Time) (store.AgentCounts, error)
 }
 
-// Authenticator logs users in and out (auth.Service).
+// Authenticator logs users in and out (session.Service).
 type Authenticator interface {
 	Login(ctx context.Context, username, password string) (auth.Principal, *http.Cookie, error)
 	Logout(ctx context.Context) (*http.Cookie, error)
@@ -87,8 +89,9 @@ const DefaultOnlineWindow = 3 * time.Minute
 // Config holds the dependencies of Handlers. Collector, Syncer and
 // Credentials default to implementations that fail with 503.
 type Config struct {
-	Store       Store
-	Agents      AgentStore
+	Store  Store
+	Agents AgentStore
+	// Auth is the built-in login; nil answers 404 to login and logout.
 	Auth        Authenticator
 	Collector   Collector
 	Syncer      ClusterSyncer
@@ -173,8 +176,7 @@ func (s StoreCredentials) CheckKubeconfig(ctx context.Context, id string) error 
 
 // logChange records a change made through the console.
 func (h *Handlers) logChange(ctx context.Context, msg string, args ...any) {
-	p, _ := auth.FromContext(ctx)
-	h.cfg.Logger.InfoContext(ctx, msg, append(args, "principal", p.ID)...)
+	h.cfg.Logger.InfoContext(ctx, msg, append(args, "principal", auth.IDFrom(ctx))...)
 }
 
 // GetMeta implements gen.StrictServerInterface.
@@ -188,6 +190,9 @@ func (h *Handlers) GetMeta(ctx context.Context, _ gen.GetMetaRequestObject) (gen
 
 // Login implements gen.StrictServerInterface.
 func (h *Handlers) Login(ctx context.Context, req gen.LoginRequestObject) (gen.LoginResponseObject, error) {
+	if h.cfg.Auth == nil {
+		return nil, apierr.NotFound("login")
+	}
 	b := req.Body
 	if b == nil || b.Username == "" || b.Password == "" {
 		return nil, apierr.Invalid("username and password are required")
@@ -196,7 +201,7 @@ func (h *Handlers) Login(ctx context.Context, req gen.LoginRequestObject) (gen.L
 		return nil, apierr.Invalid("username or password too long")
 	}
 	p, cookie, err := h.cfg.Auth.Login(ctx, b.Username, b.Password)
-	var throttled *auth.ThrottledError
+	var throttled *session.ThrottledError
 	switch {
 	case errors.As(err, &throttled):
 		secs := int((throttled.RetryAfter + time.Second - 1) / time.Second)
@@ -211,13 +216,16 @@ func (h *Handlers) Login(ctx context.Context, req gen.LoginRequestObject) (gen.L
 	}
 	c := cookie.String()
 	return gen.Login200JSONResponse{
-		Body:    gen.Principal{Id: p.ID, Name: p.Name},
+		Body:    gen.Principal{Id: p.ID(), Name: p.Name()},
 		Headers: gen.Login200ResponseHeaders{SetCookie: &c},
 	}, nil
 }
 
 // Logout implements gen.StrictServerInterface.
 func (h *Handlers) Logout(ctx context.Context, _ gen.LogoutRequestObject) (gen.LogoutResponseObject, error) {
+	if h.cfg.Auth == nil {
+		return nil, apierr.NotFound("login")
+	}
 	cookie, err := h.cfg.Auth.Logout(ctx)
 	if err != nil {
 		return nil, err
@@ -232,7 +240,7 @@ func (h *Handlers) GetCurrentUser(ctx context.Context, _ gen.GetCurrentUserReque
 	if !ok {
 		return nil, apierr.Unauthenticated("login required")
 	}
-	return gen.GetCurrentUser200JSONResponse{Id: p.ID, Name: p.Name}, nil
+	return gen.GetCurrentUser200JSONResponse{Id: p.ID(), Name: p.Name()}, nil
 }
 
 // dashboardCoverages is the order of the coverage counts; every value is
@@ -273,4 +281,16 @@ func (h *Handlers) GetDashboard(ctx context.Context, _ gen.GetDashboardRequestOb
 		out.Coverage = append(out.Coverage, gen.CoverageCount{Coverage: c, Count: inv.AssetsByCoverage[store.Coverage(c)]})
 	}
 	return out, nil
+}
+
+// newScopeID is the data scope of a record created by the request:
+// requested when it is in the request's scope, otherwise the only scope of
+// the request, or the default scope for a request that sees every scope.
+// scope.ErrOutside (403) otherwise.
+func newScopeID(ctx context.Context, requested *string) (string, error) {
+	s, err := scope.Require(ctx)
+	if err != nil {
+		return "", err
+	}
+	return scope.Resolve(s, deref(requested))
 }

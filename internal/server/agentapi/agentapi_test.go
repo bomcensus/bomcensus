@@ -20,12 +20,13 @@ import (
 	"time"
 	"unicode/utf8"
 
-	gen "github.com/bomcensus/bomcensus/internal/gen/agentapi"
+	"github.com/bomcensus/bomcensus/agentproto/dto"
 	"github.com/bomcensus/bomcensus/internal/msgsig"
 	"github.com/bomcensus/bomcensus/internal/pki"
 	"github.com/bomcensus/bomcensus/internal/server/dispatch"
 	"github.com/bomcensus/bomcensus/internal/server/store"
 	"github.com/bomcensus/bomcensus/internal/token"
+	"github.com/bomcensus/bomcensus/server/scope"
 )
 
 // enrolledAgent enrolls an agent with an auto-approving key and returns it
@@ -34,7 +35,7 @@ func enrolledAgent(t *testing.T, e *env) *agentClient {
 	t.Helper()
 	c := e.newAgent(t, e.newKey(t, nil))
 	res := c.enroll(t)
-	if res.finishStatus != http.StatusOK || res.result.Status != gen.EnrollStatusApproved {
+	if res.finishStatus != http.StatusOK || res.result.Status != dto.EnrollStatusApproved {
 		t.Fatalf("enroll: %+v", res)
 	}
 	c.connectSigned(t)
@@ -43,13 +44,13 @@ func enrolledAgent(t *testing.T, e *env) *agentClient {
 
 func TestEnrollAutoApproved(t *testing.T) {
 	e := newEnv(t, envOpts{})
-	ctx := context.Background()
+	ctx := scope.System(context.Background())
 	c := e.newAgent(t, e.newKey(t, func(k *store.RegisterKey) {
 		k.AllowedCIDRs = []netip.Prefix{mustPrefix(t, "127.0.0.0/8")}
 		k.MaxUses = 1
 	}))
 	res := c.enroll(t)
-	if res.finishStatus != http.StatusOK || res.result.Status != gen.EnrollStatusApproved || res.result.Certificate == nil ||
+	if res.finishStatus != http.StatusOK || res.result.Status != dto.EnrollStatusApproved || res.result.Certificate == nil ||
 		res.result.AgentCa == nil || res.result.TrustBundle == nil {
 		t.Fatalf("enroll: %+v", res)
 	}
@@ -85,7 +86,7 @@ func TestEnrollAutoApproved(t *testing.T) {
 	if err != nil || resp.StatusCode != http.StatusOK {
 		t.Fatalf("trust bundle: %v %v", resp, err)
 	}
-	var tb gen.TrustBundle
+	var tb dto.TrustBundle
 	if err := json.Unmarshal(body, &tb); err != nil || tb.Serial != 1 || len(tb.Anchors) != 1 {
 		t.Fatalf("trust bundle: %+v %v", tb, err)
 	}
@@ -97,7 +98,7 @@ func TestEnrollAutoApproved(t *testing.T) {
 	}
 	other, _ := pki.GenerateAgentKey()
 	csr, _ := pki.CreateAgentCSR(other)
-	b, _ := json.Marshal(gen.CertRenewRequest{Csr: &csr})
+	b, _ := json.Marshal(dto.CertRenewRequest{Csr: &csr})
 	if resp, _, err = c.do(t, http.MethodPost, "/agent/v1/cert/renew", b); err != nil || resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("renew with another key: %v %v", resp, err)
 	}
@@ -105,28 +106,28 @@ func TestEnrollAutoApproved(t *testing.T) {
 
 func TestEnrollPendingThenApproved(t *testing.T) {
 	e := newEnv(t, envOpts{})
-	ctx := context.Background()
+	ctx := scope.System(context.Background())
 	c := e.newAgent(t, e.newKey(t, func(k *store.RegisterKey) { k.Approval = store.ApprovalManual }))
 	res := c.enroll(t)
-	if res.finishStatus != http.StatusOK || res.result.Status != gen.EnrollStatusPending || res.result.Certificate != nil ||
+	if res.finishStatus != http.StatusOK || res.result.Status != dto.EnrollStatusPending || res.result.Certificate != nil ||
 		res.result.RetryAfterSeconds == nil || *res.result.RetryAfterSeconds != 10 {
 		t.Fatalf("enroll: %+v", res)
 	}
 	c.connectSigned(t)
 
-	result := func() gen.EnrollResult {
+	result := func() dto.EnrollResult {
 		t.Helper()
 		resp, body, err := c.do(t, http.MethodGet, "/agent/v1/enroll/result", nil)
 		if err != nil || resp.StatusCode != http.StatusOK {
 			t.Fatalf("result: %v %v %s", resp, err, body)
 		}
-		var r gen.EnrollResult
+		var r dto.EnrollResult
 		if err := json.Unmarshal(body, &r); err != nil {
 			t.Fatal(err)
 		}
 		return r
 	}
-	if r := result(); r.Status != gen.EnrollStatusPending {
+	if r := result(); r.Status != dto.EnrollStatusPending {
 		t.Fatalf("result before approval: %+v", r)
 	}
 	resp, body, err := c.do(t, http.MethodPost, "/agent/v1/poll", c.pollBody(t, nil, 1))
@@ -138,7 +139,7 @@ func TestEnrollPendingThenApproved(t *testing.T) {
 		t.Fatal(err)
 	}
 	r := result()
-	if r.Status != gen.EnrollStatusApproved || r.Certificate == nil || r.TrustBundle == nil {
+	if r.Status != dto.EnrollStatusApproved || r.Certificate == nil || r.TrustBundle == nil {
 		t.Fatalf("result after approval: %+v", r)
 	}
 	c.setCert(t, *r.Certificate)
@@ -148,14 +149,14 @@ func TestEnrollPendingThenApproved(t *testing.T) {
 
 func TestEnrollRefused(t *testing.T) {
 	e := newEnv(t, envOpts{})
-	ctx := context.Background()
+	ctx := scope.System(context.Background())
 
 	revoked := e.newKey(t, nil)
 	if err := e.db.RevokeRegisterKey(ctx, revoked.KeyID.String(), time.Now()); err != nil {
 		t.Fatal(err)
 	}
 	exhausted := e.newKey(t, func(k *store.RegisterKey) { k.MaxUses = 1 })
-	if res := e.newAgent(t, exhausted).enroll(t); res.result.Status != gen.EnrollStatusApproved {
+	if res := e.newAgent(t, exhausted).enroll(t); res.result.Status != dto.EnrollStatusApproved {
 		t.Fatalf("first use: %+v", res)
 	}
 	wrongRange := e.newKey(t, func(k *store.RegisterKey) { k.AllowedCIDRs = []netip.Prefix{mustPrefix(t, "10.0.0.0/8")} })
@@ -176,7 +177,7 @@ func TestEnrollRefused(t *testing.T) {
 	t.Run("replayed finish", func(t *testing.T) {
 		c := e.newAgent(t, e.newKey(t, nil))
 		res := c.enroll(t)
-		if res.result.Status != gen.EnrollStatusApproved {
+		if res.result.Status != dto.EnrollStatusApproved {
 			t.Fatalf("enroll: %+v", res)
 		}
 		status, body, _ := c.post(t, "/agent/v1/enroll/finish", res.finishBody)
@@ -187,7 +188,7 @@ func TestEnrollRefused(t *testing.T) {
 
 	t.Run("listen mode over connect", func(t *testing.T) {
 		c := e.newAgent(t, e.newKey(t, nil))
-		c.connectMode = gen.Listen
+		c.connectMode = dto.Listen
 		if res := c.enroll(t); res.startStatus != http.StatusForbidden {
 			t.Fatalf("got %+v", res)
 		}
@@ -211,11 +212,11 @@ func TestEnrollRateLimited(t *testing.T) {
 
 func TestPollDeliversDirective(t *testing.T) {
 	e := newEnv(t, envOpts{pollTimeout: 3 * time.Second})
-	ctx := context.Background()
+	ctx := scope.System(context.Background())
 	c := enrolledAgent(t, e)
 
 	type result struct {
-		res     gen.PollResult
+		res     dto.PollResult
 		elapsed time.Duration
 	}
 	ch := make(chan result, 1)
@@ -225,8 +226,8 @@ func TestPollDeliversDirective(t *testing.T) {
 		ch <- result{r, time.Since(start)}
 	}()
 	time.Sleep(300 * time.Millisecond)
-	var body gen.Directive
-	if err := body.FromCollectDirective(gen.CollectDirective{Sections: []gen.SectionName{"packages"}}); err != nil {
+	var body dto.Directive
+	if err := body.FromCollectDirective(dto.CollectDirective{Sections: []dto.SectionName{"packages"}}); err != nil {
 		t.Fatal(err)
 	}
 	id, err := e.dispatch.Enqueue(ctx, c.id, dispatch.Directive{Body: body})
@@ -239,7 +240,7 @@ func TestPollDeliversDirective(t *testing.T) {
 		t.Fatalf("poll: ids %v types %v after %s", ids, types, r.elapsed)
 	}
 	got, _ := r.res.Directives[0].AsCollectDirective()
-	if !slices.Equal(got.Sections, []gen.SectionName{"packages"}) {
+	if !slices.Equal(got.Sections, []dto.SectionName{"packages"}) {
 		t.Fatalf("directive: %+v", got)
 	}
 
@@ -290,13 +291,13 @@ func TestPollDeliversDirective(t *testing.T) {
 func TestPollStoresUpdateStatus(t *testing.T) {
 	e := newEnv(t, envOpts{})
 	c := enrolledAgent(t, e)
-	send := func(st gen.UpdateState, msg *string) {
+	send := func(st dto.UpdateState, msg *string) {
 		t.Helper()
-		req := gen.PollRequest{
-			Version: "0.2.0", Os: gen.Linux, Arch: gen.Amd64, ConnectMode: gen.Connect, TlsMode: gen.Pinned,
-			Privilege:      gen.Privilege{Level: gen.PrivilegeLevel("non_root"), Uid: 1000},
+		req := dto.PollRequest{
+			Version: "0.2.0", Os: dto.Linux, Arch: dto.Amd64, ConnectMode: dto.Connect, TlsMode: dto.Pinned,
+			Privilege:      dto.Privilege{Level: dto.PrivilegeLevel("non_root"), Uid: 1000},
 			SectionDigests: map[string]string{}, TrustBundleSerial: 1,
-			Update: gen.UpdateStatus{State: st, Message: msg},
+			Update: dto.UpdateStatus{State: st, Message: msg},
 		}
 		b, _ := json.Marshal(req)
 		resp, body, err := c.do(t, http.MethodPost, "/agent/v1/poll", b)
@@ -305,25 +306,25 @@ func TestPollStoresUpdateStatus(t *testing.T) {
 		}
 	}
 	msg := "version 0.3.0 was rolled back: no confirmation within 10m0s"
-	send(gen.UpdateStateRolledBack, &msg)
-	a, err := e.db.GetAgent(context.Background(), c.id)
+	send(dto.UpdateStateRolledBack, &msg)
+	a, err := e.db.GetAgent(scope.System(context.Background()), c.id)
 	if err != nil || a.UpdateState != store.UpdateRolledBack || a.UpdateMessage != msg {
 		t.Fatalf("agent %q %q, %v", a.UpdateState, a.UpdateMessage, err)
 	}
 	long := strings.Repeat("é", maxUpdateMessage)
-	send(gen.UpdateStateRolledBack, &long)
-	if a, _ = e.db.GetAgent(context.Background(), c.id); len(a.UpdateMessage) != maxUpdateMessage || !utf8.ValidString(a.UpdateMessage) {
+	send(dto.UpdateStateRolledBack, &long)
+	if a, _ = e.db.GetAgent(scope.System(context.Background()), c.id); len(a.UpdateMessage) != maxUpdateMessage || !utf8.ValidString(a.UpdateMessage) {
 		t.Fatalf("long message stored with %d bytes", len(a.UpdateMessage))
 	}
-	send(gen.UpdateStateUpToDate, nil)
-	if a, _ = e.db.GetAgent(context.Background(), c.id); a.UpdateState != store.UpdateUpToDate || a.UpdateMessage != "" {
+	send(dto.UpdateStateUpToDate, nil)
+	if a, _ = e.db.GetAgent(scope.System(context.Background()), c.id); a.UpdateState != store.UpdateUpToDate || a.UpdateMessage != "" {
 		t.Fatalf("agent %q %q", a.UpdateState, a.UpdateMessage)
 	}
 }
 
 func TestPollComputedDirectives(t *testing.T) {
 	e := newEnv(t, envOpts{})
-	ctx := context.Background()
+	ctx := scope.System(context.Background())
 	c := enrolledAgent(t, e)
 	e.pki.setBundleVersion(3)
 	now := time.Now().UTC().Truncate(time.Second)
@@ -342,7 +343,7 @@ func TestPollComputedDirectives(t *testing.T) {
 
 func TestCounterReplay(t *testing.T) {
 	e := newEnv(t, envOpts{})
-	ctx := context.Background()
+	ctx := scope.System(context.Background())
 	c := enrolledAgent(t, e)
 	c.poll(t, nil)
 
@@ -387,7 +388,7 @@ func TestReportUpload(t *testing.T) {
 	if err != nil || resp.StatusCode != http.StatusAccepted {
 		t.Fatalf("upload: %v %v %s", resp, err, body)
 	}
-	var acc gen.ReportAccepted
+	var acc dto.ReportAccepted
 	if err := json.Unmarshal(body, &acc); err != nil || acc.ReportId != "report-1" {
 		t.Fatalf("accepted: %s %v", body, err)
 	}
@@ -402,7 +403,7 @@ func TestRevokedAgentRejected(t *testing.T) {
 	e := newEnv(t, envOpts{})
 	c := enrolledAgent(t, e)
 	c.poll(t, nil)
-	if err := e.db.RevokeAgent(context.Background(), c.id, time.Now()); err != nil {
+	if err := e.db.RevokeAgent(scope.System(context.Background()), c.id, time.Now()); err != nil {
 		t.Fatal(err)
 	}
 	// The open connection's certificate no longer verifies: the agent gets
@@ -450,7 +451,7 @@ func TestClientCertificateRequired(t *testing.T) {
 }
 
 func TestClientGone(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(scope.System(context.Background()))
 	r := httptest.NewRequestWithContext(ctx, http.MethodPost, "/agent/v1/poll", nil)
 	err := fmt.Errorf("agent counter: %w", context.Canceled)
 	if clientGone(r, err) {
@@ -468,21 +469,21 @@ func TestClientGone(t *testing.T) {
 func TestPollSendsDetectPaths(t *testing.T) {
 	e := newEnv(t, envOpts{})
 	c := enrolledAgent(t, e)
-	ctx := context.Background()
-	poll := func() gen.Policy {
+	ctx := scope.System(context.Background())
+	poll := func() dto.Policy {
 		t.Helper()
-		req := gen.PollRequest{
-			Version: "0.2.0", Os: gen.Linux, Arch: gen.Amd64, ConnectMode: gen.Connect, TlsMode: gen.Pinned,
-			Privilege:      gen.Privilege{Level: gen.PrivilegeLevel("non_root"), Uid: 1000},
+		req := dto.PollRequest{
+			Version: "0.2.0", Os: dto.Linux, Arch: dto.Amd64, ConnectMode: dto.Connect, TlsMode: dto.Pinned,
+			Privilege:      dto.Privilege{Level: dto.PrivilegeLevel("non_root"), Uid: 1000},
 			SectionDigests: map[string]string{}, TrustBundleSerial: 1,
-			Update: gen.UpdateStatus{State: gen.UpdateStateUpToDate},
+			Update: dto.UpdateStatus{State: dto.UpdateStateUpToDate},
 		}
 		b, _ := json.Marshal(req)
 		resp, body, err := c.do(t, http.MethodPost, "/agent/v1/poll", b)
 		if err != nil || resp.StatusCode != http.StatusOK {
 			t.Fatalf("poll: %v %v %s", resp, err, body)
 		}
-		var res gen.PollResult
+		var res dto.PollResult
 		if err := json.Unmarshal(body, &res); err != nil {
 			t.Fatal(err)
 		}
@@ -514,14 +515,14 @@ func TestPollSendsDetectPaths(t *testing.T) {
 func TestPollSendsIntegrity(t *testing.T) {
 	e := newEnv(t, envOpts{})
 	c := enrolledAgent(t, e)
-	ctx := context.Background()
-	poll := func(features ...string) *gen.IntegrityConfig {
+	ctx := scope.System(context.Background())
+	poll := func(features ...string) *dto.IntegrityConfig {
 		t.Helper()
-		req := gen.PollRequest{
-			Version: "0.2.0", Os: gen.Linux, Arch: gen.Amd64, ConnectMode: gen.Connect, TlsMode: gen.Pinned,
-			Privilege:      gen.Privilege{Level: gen.PrivilegeLevel("privileged"), Uid: 0},
+		req := dto.PollRequest{
+			Version: "0.2.0", Os: dto.Linux, Arch: dto.Amd64, ConnectMode: dto.Connect, TlsMode: dto.Pinned,
+			Privilege:      dto.Privilege{Level: dto.PrivilegeLevel("privileged"), Uid: 0},
 			SectionDigests: map[string]string{}, TrustBundleSerial: 1,
-			Update:   gen.UpdateStatus{State: gen.UpdateStateUpToDate},
+			Update:   dto.UpdateStatus{State: dto.UpdateStateUpToDate},
 			Features: &features,
 		}
 		b, _ := json.Marshal(req)
@@ -529,7 +530,7 @@ func TestPollSendsIntegrity(t *testing.T) {
 		if err != nil || resp.StatusCode != http.StatusOK {
 			t.Fatalf("poll: %v %v %s", resp, err, body)
 		}
-		var res gen.PollResult
+		var res dto.PollResult
 		if err := json.Unmarshal(body, &res); err != nil {
 			t.Fatal(err)
 		}

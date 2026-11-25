@@ -16,6 +16,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"net"
 	"net/http"
@@ -23,14 +24,12 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
+	"github.com/bomcensus/bomcensus/agentproto"
 	admingen "github.com/bomcensus/bomcensus/internal/gen/adminapi"
 	"github.com/bomcensus/bomcensus/internal/server/adminapi"
 	"github.com/bomcensus/bomcensus/internal/server/adminapi/inventoryapi"
 	"github.com/bomcensus/bomcensus/internal/server/adminapi/manageapi"
 	"github.com/bomcensus/bomcensus/internal/server/agentapi"
-	"github.com/bomcensus/bomcensus/internal/server/auth"
-	"github.com/bomcensus/bomcensus/internal/server/config"
-	"github.com/bomcensus/bomcensus/internal/server/console"
 	"github.com/bomcensus/bomcensus/internal/server/dispatch"
 	"github.com/bomcensus/bomcensus/internal/server/enrollsvc"
 	"github.com/bomcensus/bomcensus/internal/server/feedsvc"
@@ -38,10 +37,15 @@ import (
 	"github.com/bomcensus/bomcensus/internal/server/job"
 	"github.com/bomcensus/bomcensus/internal/server/pkisvc"
 	"github.com/bomcensus/bomcensus/internal/server/secret"
+	"github.com/bomcensus/bomcensus/internal/server/session"
 	"github.com/bomcensus/bomcensus/internal/server/store/postgres"
 	"github.com/bomcensus/bomcensus/internal/server/updatesvc"
 	"github.com/bomcensus/bomcensus/internal/server/vulnsvc"
 	"github.com/bomcensus/bomcensus/internal/version"
+	"github.com/bomcensus/bomcensus/server/auth"
+	"github.com/bomcensus/bomcensus/server/authz"
+	"github.com/bomcensus/bomcensus/server/config"
+	"github.com/bomcensus/bomcensus/server/scope"
 )
 
 // Defaults of Options.
@@ -67,6 +71,41 @@ type Options struct {
 	// FeedTransport sends the requests to feed servers; nil uses the
 	// network.
 	FeedTransport http.RoundTripper
+
+	// Console is the built console; nil serves the admin API only.
+	Console fs.FS
+	// Session enables the built-in login and cookie sessions; nil disables
+	// them.
+	Session *Session
+	// APIMiddleware, Authorizer and Mounts extend the admin API
+	// (adminapi.Options).
+	APIMiddleware []func(http.Handler) http.Handler
+	Authorizer    authz.Authorizer
+	Mounts        map[string]http.Handler
+	// WebListener and AgentListener replace the listeners on
+	// Config.WebListen and Config.AgentListen. Run owns them.
+	WebListener   net.Listener
+	AgentListener net.Listener
+
+	// NoAgentListener turns off the HTTP channel's agent listener; agents
+	// then reach the server through AgentGateways (or listen-mode
+	// targets) only.
+	NoAgentListener bool
+	// AgentGateways are further channels agents connect through. Each
+	// runs with the agent protocol operations until the server stops.
+	AgentGateways []agentproto.Gateway
+}
+
+// Session configures the built-in login.
+type Session struct {
+	// Provider checks passwords. Nil is the single user of
+	// Config.AdminUser and Config.AdminPasswordHash.
+	Provider auth.PasswordProvider
+	// Restore turns a stored session back into a principal
+	// (session.Config.Restore).
+	Restore func(ctx context.Context, id, name string) (auth.Principal, error)
+	// Lifetime defaults to session.DefaultSessionLifetime.
+	Lifetime time.Duration
 }
 
 // Addrs are the bound listener addresses.
@@ -100,10 +139,22 @@ func Run(ctx context.Context, cfg config.Config, log *slog.Logger, opts Options)
 	if err != nil {
 		return err
 	}
-	provider, err := auth.NewEnvProvider(log, cfg.AdminUser, cfg.AdminPasswordHash)
-	if err != nil {
-		return fmt.Errorf("%s: %w", config.EnvAdminPasswordHash, err)
+	var provider auth.PasswordProvider
+	if opts.Session != nil {
+		provider = opts.Session.Provider
+		if provider == nil {
+			env, err := session.NewEnvProvider(log, cfg.AdminUser, cfg.AdminPasswordHash)
+			if err != nil {
+				return fmt.Errorf("%s: %w", config.EnvAdminPasswordHash, err)
+			}
+			provider = env
+		}
 	}
+
+	// Startup and the background components act for no principal. Console
+	// requests do not derive from ctx; they get the scope of their
+	// authorization.
+	sys := scope.System(ctx)
 
 	db, err := postgres.Open(ctx, cfg.DatabaseURL.Reveal())
 	if err != nil {
@@ -127,7 +178,7 @@ func Run(ctx context.Context, cfg config.Config, log *slog.Logger, opts Options)
 	if err != nil {
 		return err
 	}
-	if err := pki.Bootstrap(ctx); err != nil {
+	if err := pki.Bootstrap(sys); err != nil {
 		return fmt.Errorf("pki bootstrap: %w", err)
 	}
 
@@ -136,17 +187,22 @@ func Run(ctx context.Context, cfg config.Config, log *slog.Logger, opts Options)
 		return err
 	}
 	if cfg.ReleaseDir != "" {
-		if err := upd.ImportDir(ctx, cfg.ReleaseDir); err != nil {
+		if err := upd.ImportDir(sys, cfg.ReleaseDir); err != nil {
 			return fmt.Errorf("%s: %w", config.EnvReleaseDir, err)
 		}
 	}
 
-	authSvc := auth.NewService(auth.Config{
-		Provider:   provider,
-		Sessions:   db,
-		Logger:     log.With("component", "auth"),
-		TrustProxy: cfg.TrustProxy,
-	})
+	var authSvc *session.Service
+	if opts.Session != nil {
+		authSvc = session.NewService(session.Config{
+			Provider:        provider,
+			Sessions:        db,
+			Restore:         opts.Session.Restore,
+			SessionLifetime: opts.Session.Lifetime,
+			Logger:          log.With("component", "auth"),
+			TrustProxy:      cfg.TrustProxy,
+		})
+	}
 	disp := dispatch.New(db)
 	enroll, err := enrollsvc.New(enrollsvc.Options{Store: db, PKI: pki, Logger: log.With("component", "enroll")})
 	if err != nil {
@@ -163,7 +219,7 @@ func Run(ctx context.Context, cfg config.Config, log *slog.Logger, opts Options)
 
 	queue := job.NewRiver(db.Pool(), log.With("component", "queue"), job.RiverConfig{})
 	jobLog := log.With("component", "job")
-	cleanup := cleanupStore{Store: db, auth: authSvc, enroll: enroll, dispatch: disp}
+	cleanup := cleanupStore{Store: db, sessions: authSvc, enroll: enroll, dispatch: disp}
 	refresher, err := vulnsvc.NewRefresher(db, queue, log.With("component", "findings"))
 	if err != nil {
 		return err
@@ -191,7 +247,7 @@ func Run(ctx context.Context, cfg config.Config, log *slog.Logger, opts Options)
 
 	var scans Scans
 	if opts.Scans != nil {
-		scans, err = opts.Scans(ctx, Services{
+		scans, err = opts.Scans(sys, Services{
 			Config: cfg, Store: db, Queue: queue, Dispatch: disp, Ingest: ing,
 			Updates: upd, PKI: pki, Secrets: box, Logger: log.With("component", "scans"),
 		})
@@ -204,24 +260,23 @@ func Run(ctx context.Context, cfg config.Config, log *slog.Logger, opts Options)
 	inv := inventoryapi.Config{
 		Store:        db,
 		Agents:       db,
-		Auth:         authSvc,
 		Collector:    collector{dispatch: disp, scans: scans},
 		Credentials:  inventoryapi.StoreCredentials{Store: db},
 		AgentAddress: agentAddress(cfg),
 		Logger:       log.With("component", "api"),
 	}
 	mgmt := manageapi.Config{
-		Store:   db,
-		PKI:     pki,
-		Updates: upd,
-		Secrets: box,
-		Feed:    feed,
-		Matcher: matcher,
-		PrincipalID: func(ctx context.Context) string {
-			p, _ := auth.FromContext(ctx)
-			return p.ID
-		},
-		Logger: log.With("component", "api"),
+		Store:       db,
+		PKI:         pki,
+		Updates:     upd,
+		Secrets:     box,
+		Feed:        feed,
+		Matcher:     matcher,
+		PrincipalID: auth.IDFrom,
+		Logger:      log.With("component", "api"),
+	}
+	if authSvc != nil {
+		inv.Auth = authSvc
 	}
 	if scans != nil {
 		inv.Syncer = scans
@@ -231,17 +286,23 @@ func Run(ctx context.Context, cfg config.Config, log *slog.Logger, opts Options)
 	if err != nil {
 		return err
 	}
-	consoleFS, consoleBuilt := console.FS()
-	api := adminapi.NewRouter(adminapi.Options{
-		Handlers: consoleAPI{Handlers: inventoryapi.New(inv), manageHandlers: manageHandlers{manage}},
-		Auth:     authSvc,
-		Logger:   log.With("component", "http"),
-		Console:  consoleFS,
+	api, err := adminapi.NewRouter(adminapi.Options{
+		Handlers:   consoleAPI{Handlers: inventoryapi.New(inv), manageHandlers: manageHandlers{manage}},
+		Session:    authSvc,
+		TrustProxy: cfg.TrustProxy,
+		Middleware: opts.APIMiddleware,
+		Authorizer: opts.Authorizer,
+		Mounts:     opts.Mounts,
+		Logger:     log.With("component", "http"),
+		Console:    opts.Console,
 	})
+	if err != nil {
+		return err
+	}
 	webHandler := withHealth(api, health{db: db, pki: pki, webTLS: webTLS})
 
 	// Agent API.
-	agentHandler, err := agentapi.NewHandler(agentapi.Options{
+	agentSvc, err := agentapi.New(agentapi.Options{
 		Store:    db,
 		PKI:      pki,
 		Enroll:   enroll,
@@ -253,6 +314,7 @@ func Run(ctx context.Context, cfg config.Config, log *slog.Logger, opts Options)
 	if err != nil {
 		return err
 	}
+	agentHandler := agentSvc.HTTP()
 	verifier := agentapi.NewAgentVerifier(pki)
 	reverse, err := agentapi.NewReverseManager(agentapi.ReverseOptions{
 		Store:             db,
@@ -267,20 +329,16 @@ func Run(ctx context.Context, cfg config.Config, log *slog.Logger, opts Options)
 
 	// Listeners are bound before the queue starts so that a taken port
 	// fails the start without side effects.
-	var lc net.ListenConfig
-	webLn, err := lc.Listen(ctx, "tcp", cfg.WebListen)
+	webLn, agentLn, err := listeners(ctx, cfg, opts)
 	if err != nil {
-		return fmt.Errorf("%s: %w", config.EnvWebListen, err)
-	}
-	agentLn, err := lc.Listen(ctx, "tcp", cfg.AgentListen)
-	if err != nil {
-		_ = webLn.Close()
-		return fmt.Errorf("%s: %w", config.EnvAgentListen, err)
+		return err
 	}
 
-	if err := queue.Start(ctx); err != nil {
+	if err := queue.Start(sys); err != nil {
 		_ = webLn.Close()
-		_ = agentLn.Close()
+		if agentLn != nil {
+			_ = agentLn.Close()
+		}
 		return err
 	}
 	defer func() {
@@ -309,15 +367,23 @@ func Run(ctx context.Context, cfg config.Config, log *slog.Logger, opts Options)
 
 	g, gctx := errgroup.WithContext(ctx)
 	g.Go(func() error { return serveWeb(gctx, webSrv, webLn, webTLS, opts.ShutdownTimeout) })
-	g.Go(func() error {
-		return agentapi.Serve(gctx, agentLn, agentapi.ServeOptions{
-			Handler:         agentHandler,
-			Certificate:     pki.AgentServerCertificate,
-			Verifier:        verifier,
-			ShutdownTimeout: opts.ShutdownTimeout,
-			Logger:          log.With("component", "agentapi"),
+	if agentLn != nil {
+		g.Go(func() error {
+			return agentapi.Serve(gctx, agentLn, agentapi.ServeOptions{
+				Handler:         agentHandler,
+				Certificate:     pki.AgentServerCertificate,
+				Verifier:        verifier,
+				ShutdownTimeout: opts.ShutdownTimeout,
+				Logger:          log.With("component", "agentapi"),
+			})
 		})
-	})
+	}
+	for i, gw := range opts.AgentGateways {
+		name := fmt.Sprintf("agent gateway %d", i)
+		g.Go(func() error {
+			return background(gctx, name, func(ctx context.Context) error { return gw.Run(ctx, agentSvc.Gateway()) })
+		})
+	}
 	g.Go(func() error { return background(gctx, "reverse dialing", reverse.Run) })
 	g.Go(func() error { return background(gctx, "pki maintenance", pki.Run) })
 	g.Go(func() error { return background(gctx, "feed connection", feed.Run) })
@@ -325,9 +391,13 @@ func Run(ctx context.Context, cfg config.Config, log *slog.Logger, opts Options)
 		g.Go(func() error { return background(gctx, "scan service", scans.Run) })
 	}
 
-	logStartup(ctx, log, pki, cfg, webLn.Addr(), agentLn.Addr(), consoleBuilt, scans != nil, reverse.Owner())
+	var agentAddr net.Addr
+	if agentLn != nil {
+		agentAddr = agentLn.Addr()
+	}
+	logStartup(sys, log, pki, cfg, webLn.Addr(), agentAddr, opts, scans != nil, reverse.Owner())
 	if opts.Ready != nil {
-		opts.Ready(Addrs{Web: webLn.Addr(), Agent: agentLn.Addr()})
+		opts.Ready(Addrs{Web: webLn.Addr(), Agent: agentAddr})
 	}
 
 	if err := g.Wait(); err != nil {
@@ -394,10 +464,10 @@ func serveWeb(ctx context.Context, srv *http.Server, ln net.Listener, useTLS boo
 	return nil
 }
 
-// background runs a component loop; ending because ctx ended is not an
-// error, ending before is.
+// background runs a component loop with the system data scope; ending
+// because ctx ended is not an error, ending before is.
 func background(ctx context.Context, name string, run func(context.Context) error) error {
-	err := run(ctx)
+	err := run(scope.System(ctx))
 	switch {
 	case ctx.Err() != nil:
 		return nil
@@ -409,7 +479,7 @@ func background(ctx context.Context, name string, run func(context.Context) erro
 
 // logStartup writes the one startup summary line. It names no secrets.
 func logStartup(ctx context.Context, log *slog.Logger, pki *pkisvc.Service, cfg config.Config,
-	web, agent net.Addr, consoleBuilt, scans bool, owner string) {
+	web, agent net.Addr, opts Options, scans bool, owner string) {
 	webMode, agentMode := string(config.WebTLSOff), "unknown"
 	st, err := pki.Status(ctx)
 	if err != nil {
@@ -428,16 +498,46 @@ func logStartup(ctx context.Context, log *slog.Logger, pki *pkisvc.Service, cfg 
 		"version", version.Version,
 		"web_listen", web.String(),
 		"web_tls", webMode,
-		"agent_listen", agent.String(),
+		"agent_listen", addrString(agent),
+		"agent_gateways", len(opts.AgentGateways),
 		"agent_tls", agentMode,
 		"agent_server_names", cfg.AgentServerNames,
-		"console", map[bool]string{true: "built", false: "placeholder"}[consoleBuilt],
-		"login", cfg.AdminUser != "",
+		"console", opts.Console != nil,
+		"login", opts.Session != nil && (opts.Session.Provider != nil || cfg.AdminUser != ""),
+		"api_middleware", len(opts.APIMiddleware),
+		"custom_authorizer", opts.Authorizer != nil,
 		"trust_proxy", cfg.TrustProxy,
 		"scan_service", scans,
 		"embedded_scanner", cfg.EmbeddedScanner && scans,
 		"replica", owner,
 	)
+}
+
+// listeners returns the listeners of Options or binds Config's addresses.
+func listeners(ctx context.Context, cfg config.Config, opts Options) (web, agent net.Listener, err error) {
+	var lc net.ListenConfig
+	web, agent = opts.WebListener, opts.AgentListener
+	if web == nil {
+		if web, err = lc.Listen(ctx, "tcp", cfg.WebListen); err != nil {
+			if agent != nil {
+				_ = agent.Close()
+			}
+			return nil, nil, fmt.Errorf("%s: %w", config.EnvWebListen, err)
+		}
+	}
+	if opts.NoAgentListener {
+		if agent != nil {
+			_ = agent.Close()
+		}
+		return web, nil, nil
+	}
+	if agent == nil {
+		if agent, err = lc.Listen(ctx, "tcp", cfg.AgentListen); err != nil {
+			_ = web.Close()
+			return nil, nil, fmt.Errorf("%s: %w", config.EnvAgentListen, err)
+		}
+	}
+	return web, agent, nil
 }
 
 // agentAddress is the address agents are told to connect to: the first
@@ -451,4 +551,11 @@ func agentAddress(cfg config.Config) string {
 		return ""
 	}
 	return net.JoinHostPort(cfg.AgentServerNames[0], port)
+}
+
+func addrString(a net.Addr) string {
+	if a == nil {
+		return "off"
+	}
+	return a.String()
 }

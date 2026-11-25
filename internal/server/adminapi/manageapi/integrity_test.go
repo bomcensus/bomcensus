@@ -13,11 +13,12 @@ import (
 	"github.com/bomcensus/bomcensus/internal/server/adminapi/apierr"
 	"github.com/bomcensus/bomcensus/internal/server/integritysvc"
 	"github.com/bomcensus/bomcensus/internal/server/store"
+	"github.com/bomcensus/bomcensus/server/scope"
 )
 
 func TestIntegrityModes(t *testing.T) {
 	e := newEnv(t, true)
-	ctx := context.Background()
+	ctx := scope.System(context.Background())
 	a, err := e.db.CreateAgent(ctx, store.Agent{Kind: store.AgentKindAgent, IdentityKey: []byte("agent-key"), State: store.AgentApproved})
 	if err != nil {
 		t.Fatal(err)

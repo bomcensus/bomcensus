@@ -31,7 +31,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bomcensus/bomcensus/internal/gen/agentapi"
+	"github.com/bomcensus/bomcensus/agentproto/dto"
 	"github.com/bomcensus/bomcensus/internal/report"
 	"github.com/bomcensus/bomcensus/internal/scanner/hpkebox"
 	"github.com/bomcensus/bomcensus/internal/scanner/kube"
@@ -42,6 +42,7 @@ import (
 	"github.com/bomcensus/bomcensus/internal/server/job"
 	"github.com/bomcensus/bomcensus/internal/server/secret"
 	"github.com/bomcensus/bomcensus/internal/server/store"
+	"github.com/bomcensus/bomcensus/server/scope"
 )
 
 // Errors of the request methods. They wrap store.ErrInvalidState (shown as
@@ -126,7 +127,7 @@ type Store interface {
 // Ingester applies what scanners produce (*ingest.Service).
 type Ingester interface {
 	IngestReport(ctx context.Context, sender ingest.Sender, raw []byte) error
-	IngestK8sInventory(ctx context.Context, sender ingest.Sender, clusterID string, inv agentapi.K8sInventory) error
+	IngestK8sInventory(ctx context.Context, sender ingest.Sender, clusterID string, inv dto.K8sInventory) error
 	RecordScanResult(ctx context.Context, sender ingest.Sender, targetID string, res ingest.ScanResult) error
 }
 
@@ -444,7 +445,7 @@ func seal(sc store.Agent, jobID, field string, plaintext []byte) ([]byte, error)
 // submitDirective takes the lease of the job and queues its directive for
 // the scanner. When a directive with the same dedupe key is still pending,
 // that one stays and the lease passes to its job.
-func (s *Service) submitDirective(ctx context.Context, sc store.Agent, lease, dedupe, jobID string, body agentapi.Directive, jobTimeout time.Duration) error {
+func (s *Service) submitDirective(ctx context.Context, sc store.Agent, lease, dedupe, jobID string, body dto.Directive, jobTimeout time.Duration) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	now := s.now().UTC()
@@ -489,7 +490,7 @@ func (s *Service) submitDirective(ctx context.Context, sc store.Agent, lease, de
 
 // directivePayload is the stored form of a directive: its JSON object
 // without the id (see dispatch.Payload).
-func directivePayload(d agentapi.Directive) (json.RawMessage, error) {
+func directivePayload(d dto.Directive) (json.RawMessage, error) {
 	raw, err := d.MarshalJSON()
 	if err != nil {
 		return nil, fmt.Errorf("scansvc: encode directive: %w", err)
@@ -521,13 +522,13 @@ func (s *Service) startEmbedded(ctx context.Context, lease, jobID string, fn fun
 	if !ok {
 		return ErrInFlight
 	}
-	err = s.pool.Submit(lease, func(ctx context.Context) {
+	err = s.pool.Submit(lease, embeddedJob(func(ctx context.Context) {
 		// The lease is renewed from the start: the job may wait for a
 		// worker longer than the lease lasts.
 		release := s.keepLease(ctx, lease, jobID)
 		defer release()
 		fn(ctx)
-	})
+	}))
 	if err != nil {
 		_ = s.leases.Release(ctx, lease, jobID)
 		switch {
@@ -539,6 +540,13 @@ func (s *Service) startEmbedded(ctx context.Context, lease, jobID string, fn fun
 		return err
 	}
 	return nil
+}
+
+// embeddedJob runs fn, a job of the embedded scanner, with the system data
+// scope: the pool's context carries none, and the job is server work even
+// when a console request started it.
+func embeddedJob(fn func(context.Context)) func(context.Context) {
+	return func(ctx context.Context) { fn(scope.System(ctx)) }
 }
 
 // ignorable are request errors a scheduler only logs at debug level.

@@ -12,7 +12,8 @@ import (
 	"net/http"
 
 	"github.com/bomcensus/bomcensus/internal/agent/state"
-	"github.com/bomcensus/bomcensus/internal/gen/agentapi"
+
+	"github.com/bomcensus/bomcensus/agentproto/dto"
 )
 
 // ReportMeta is stored with a spooled report and passed to OnUploaded
@@ -114,16 +115,12 @@ func (r *Runtime) uploaded(ctx context.Context, meta ReportMeta) {
 }
 
 func (r *Runtime) upload(ctx context.Context, data []byte, jobID string) (string, error) {
-	var params agentapi.UploadReportParams
+	var params dto.UploadReportParams
 	if jobID != "" {
 		params.JobId = &jobID
 	}
-	resp, err := r.client.UploadReportWithBodyWithResponse(ctx, &params, "application/octet-stream", bytes.NewReader(data))
+	acc, err := r.ch.UploadReport(ctx, params, bytes.NewReader(data))
 	if err != nil {
-		return "", err
-	}
-	var acc agentapi.ReportAccepted
-	if err := DecodeResponse(resp.HTTPResponse, resp.Body, http.StatusAccepted, &acc); err != nil {
 		return "", err
 	}
 	return acc.ReportId, nil

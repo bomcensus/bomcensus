@@ -13,11 +13,12 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/bomcensus/bomcensus/internal/server/store"
+	"github.com/bomcensus/bomcensus/server/scope"
 )
 
 func TestManageCredentialDeleteRefusedWhileReferenced(t *testing.T) {
 	db := newTestDB(t)
-	ctx := context.Background()
+	ctx := scope.System(context.Background())
 	c, err := db.CreateCredential(ctx, store.Credential{Name: "root key", Kind: store.CredentialSSHKey,
 		Username: "root", Secret: []byte("sealed"), CreatedBy: "admin"})
 	if err != nil {
@@ -62,7 +63,7 @@ func TestManageCredentialDeleteRefusedWhileReferenced(t *testing.T) {
 
 func TestManageScanTargets(t *testing.T) {
 	db := newTestDB(t)
-	ctx := context.Background()
+	ctx := scope.System(context.Background())
 	c, err := db.CreateCredential(ctx, store.Credential{Name: "pw", Kind: store.CredentialSSHPassword, Secret: []byte("s")})
 	if err != nil {
 		t.Fatal(err)

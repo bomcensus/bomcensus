@@ -77,6 +77,7 @@ func (v agentView) agent(a store.Agent) gen.Agent {
 		EnrolledAt:        a.EnrolledAt,
 		LastSeen:          a.EnrolledAt,
 		DetectDirIds:      orEmpty(a.DetectDirIDs),
+		ScopeId:           optString(a.ScopeID),
 	}
 	if a.LastSeen != nil {
 		out.LastSeen = *a.LastSeen
@@ -207,6 +208,11 @@ func (h *Handlers) UpdateAgent(ctx context.Context, req gen.UpdateAgentRequestOb
 	if err != nil {
 		return nil, err
 	}
+	if a.Kind == store.AgentKindScanner {
+		if err := sharedWrite(ctx); err != nil {
+			return nil, err
+		}
+	}
 	if b.Description != nil {
 		desc := strings.TrimSpace(*b.Description)
 		if utf8.RuneCountInString(desc) > maxAgentDescription {
@@ -260,6 +266,11 @@ func (h *Handlers) ApproveAgent(ctx context.Context, req gen.ApproveAgentRequest
 	if err != nil {
 		return nil, err
 	}
+	if a.Kind == store.AgentKindScanner {
+		if err := sharedWrite(ctx); err != nil {
+			return nil, err
+		}
+	}
 	if a.State != store.AgentPending {
 		return nil, apierr.New(409, apierr.CodeInvalidState, "the agent is not pending approval")
 	}
@@ -280,6 +291,11 @@ func (h *Handlers) RevokeAgent(ctx context.Context, req gen.RevokeAgentRequestOb
 	a, err := h.st.GetAgent(ctx, req.Id)
 	if err != nil {
 		return nil, err
+	}
+	if a.Kind == store.AgentKindScanner {
+		if err := sharedWrite(ctx); err != nil {
+			return nil, err
+		}
 	}
 	if a.State == store.AgentRevoked {
 		return nil, apierr.New(409, apierr.CodeInvalidState, "the agent is already revoked")
@@ -319,6 +335,7 @@ func listenTargetDTO(t store.ListenTarget) gen.ListenTarget {
 		LastError:       optString(t.LastError),
 		LastConnectedAt: t.LastConnectedAt,
 		CreatedAt:       t.CreatedAt,
+		ScopeId:         t.ScopeID,
 	}
 }
 
@@ -395,10 +412,16 @@ func (h *Handlers) CreateListenTarget(ctx context.Context, req gen.CreateListenT
 	}
 	t := store.ListenTarget{Address: addr}
 	if id := deref(req.Body.RegisterKeyId); id != "" {
+		// The target takes the scope of its key.
 		if err := h.checkListenKey(ctx, id); err != nil {
 			return nil, err
 		}
 		t.RegisterKeyID = id
+	} else {
+		var err error
+		if t.ScopeID, err = newScopeID(ctx, req.Body.ScopeId); err != nil {
+			return nil, err
+		}
 	}
 	created, err := h.st.CreateListenTarget(ctx, t)
 	if err != nil {

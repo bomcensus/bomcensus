@@ -10,18 +10,16 @@ import (
 	"crypto"
 	"crypto/tls"
 	"crypto/x509"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
-	"strconv"
 	"sync"
 	"time"
 
-	"github.com/bomcensus/bomcensus/internal/enroll"
-	gen "github.com/bomcensus/bomcensus/internal/gen/agentapi"
+	"github.com/bomcensus/bomcensus/agentproto"
+	"github.com/bomcensus/bomcensus/agentproto/dto"
 	"github.com/bomcensus/bomcensus/internal/link"
 	"github.com/bomcensus/bomcensus/internal/msgsig"
 	"github.com/bomcensus/bomcensus/internal/pki"
@@ -30,7 +28,10 @@ import (
 	"github.com/bomcensus/bomcensus/internal/server/store"
 )
 
-// Handlers implements the generated strict server interface.
+// Handlers is the server's implementation of the agent protocol
+// operations (agentproto.API). The channels in front of it authenticate the
+// caller; Handlers checks the agent's state and the operations reserved for
+// scanners, and runs the operation.
 type Handlers struct {
 	st         store.Store
 	pki        PKI
@@ -46,13 +47,16 @@ type Handlers struct {
 	maxRequest int64
 	maxReport  int64
 
+	// http is the handler stack of the HTTP channel.
+	http http.Handler
+
 	signerMu   sync.Mutex
 	signerKey  crypto.Signer
 	signerLeaf *x509.Certificate
 	signerVal  *msgsig.ServerSigner
 }
 
-var _ gen.StrictServerInterface = (*Handlers)(nil)
+var _ agentproto.API = (*Handlers)(nil)
 
 func newHandlers(o Options) (*Handlers, error) {
 	if o.Store == nil || o.PKI == nil || o.Enroll == nil || o.Dispatch == nil {
@@ -85,274 +89,319 @@ func newHandlers(o Options) (*Handlers, error) {
 	return h, nil
 }
 
-func apiError(code, msg string) gen.Error { return gen.Error{Code: code, Message: msg} }
+func apiError(status int, code, msg string) *agentproto.Error {
+	return &agentproto.Error{Status: status, Code: code, Message: msg}
+}
 
-var errUnavailable = apiError("unavailable", "service not available")
+func errUnavailable() *agentproto.Error {
+	return apiError(http.StatusServiceUnavailable, agentproto.CodeUnavailable, "service not available")
+}
+
+func errEmptyBody() *agentproto.Error {
+	return apiError(http.StatusBadRequest, agentproto.CodeInvalidRequest, "empty body")
+}
+
+// Operations with rules of their own.
+const (
+	opGetEnrollResult     = "GetEnrollResult"
+	opUploadK8sInventory  = "UploadK8sInventory"
+	opSubmitScanJobResult = "SubmitScanJobResult"
+	opDownloadProbe       = "DownloadProbe"
+)
+
+// Scanner-only operations.
+var scannerOnly = map[string]bool{
+	opUploadK8sInventory:  true,
+	opSubmitScanJobResult: true,
+	opDownloadProbe:       true,
+}
+
+// caller returns the authenticated agent of an operation: the record the
+// channel loaded while authenticating the request, or a fresh one. It
+// refuses agents whose state does not allow op, and scanner operations of
+// agents that are not scanners.
+func (h *Handlers) caller(ctx context.Context, op string) (store.Agent, error) {
+	id, ok := agentproto.AgentFrom(ctx)
+	if !ok {
+		return store.Agent{}, apiError(http.StatusUnauthorized, agentproto.CodeUnauthorized, "unauthenticated")
+	}
+	a, ok := requestInfoFrom(ctx).agent()
+	if !ok || a.ID != id {
+		var err error
+		a, err = h.st.GetAgent(ctx, id)
+		if errors.Is(err, store.ErrNotFound) {
+			return store.Agent{}, apiError(http.StatusUnauthorized, agentproto.CodeUnauthorized, "unknown agent")
+		}
+		if err != nil {
+			return store.Agent{}, fmt.Errorf("load agent %s: %w", id, err)
+		}
+	}
+	switch a.State {
+	case store.AgentApproved:
+	case store.AgentPending:
+		if op != opGetEnrollResult {
+			return store.Agent{}, apiError(http.StatusForbidden, agentproto.CodeAgentPending, "agent is pending approval")
+		}
+	default:
+		return store.Agent{}, apiError(http.StatusForbidden, agentproto.CodeAgentRevoked, "agent is revoked")
+	}
+	if scannerOnly[op] && a.Kind != store.AgentKindScanner {
+		h.log.WarnContext(ctx, "scanner operation refused", "operation", op, "agent_id", a.ID, "kind", a.Kind)
+		return store.Agent{}, apiError(http.StatusForbidden, agentproto.CodeForbidden, "operation is reserved for scanners")
+	}
+	return a, nil
+}
 
 // ── enrollment ──────────────────────────────────────────────────────────
 
-// serveEnroll handles POST /enroll/start and POST /enroll/finish on the
-// exact body bytes and writes the exact bytes that were signed.
-func (h *Handlers) serveEnroll(w http.ResponseWriter, r *http.Request, finish bool) {
-	ctx := r.Context()
-	info := requestInfoFrom(ctx)
-	body, err := io.ReadAll(io.LimitReader(r.Body, enrollsvc.MaxBodySize+1))
-	if err != nil {
-		writeJSONError(w, http.StatusBadRequest, msgsig.CodeInvalidRequest, "read body")
-		return
-	}
+// EnrollStart implements agentproto.API on the exact request body.
+func (h *Handlers) EnrollStart(ctx context.Context, body []byte) (*agentproto.SignedMessage, error) {
 	if len(body) > enrollsvc.MaxBodySize {
-		writeJSONError(w, http.StatusRequestEntityTooLarge, msgsig.CodeBodyTooLarge, "request body too large")
-		return
+		return nil, apiError(http.StatusRequestEntityTooLarge, agentproto.CodeBodyTooLarge, "request body too large")
 	}
-	reverse := info.reverse && info.target != nil
-	var resp []byte
-	var sig string
-	if finish {
-		resp, sig, err = h.enroll.Finish(ctx, body, info.remote)
-	} else {
-		if reverse {
-			if err := info.target.checkStart(body); err != nil {
-				h.log.WarnContext(ctx, "enrollment refused", "step", "start", "remote", info.remote.String(),
-					"listen_target", info.target.id, "reason", err.Error())
-				writeJSONError(w, http.StatusForbidden, "enrollment_refused", "enrollment refused")
-				return
-			}
-		}
-		resp, sig, err = h.enroll.Start(ctx, body, info.remote, reverse)
-	}
+	peer := agentproto.PeerFrom(ctx)
+	resp, sig, err := h.enroll.Start(ctx, body, peer.RemoteAddr, peer.Reverse)
 	if err != nil {
-		var rl *enrollsvc.RateLimitError
-		switch {
-		case errors.As(err, &rl):
-			w.Header().Set("Retry-After", strconv.Itoa(int(rl.RetryAfter/time.Second)+1))
-			writeJSONError(w, http.StatusTooManyRequests, "rate_limited", "too many failed attempts")
-		case errors.Is(err, enrollsvc.ErrRefused):
-			writeJSONError(w, http.StatusForbidden, "enrollment_refused", "enrollment refused")
-		case errors.Is(err, enrollsvc.ErrBadRequest):
-			writeJSONError(w, http.StatusBadRequest, msgsig.CodeInvalidRequest, "malformed enrollment request")
-		default:
-			writeJSONError(w, http.StatusInternalServerError, msgsig.CodeInternal, "internal error")
-		}
-		return
+		return nil, enrollError(err)
 	}
-	if finish && reverse {
-		h.afterReverseEnroll(ctx, info.target, resp)
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set(enroll.HeaderSignature, sig)
-	w.Header().Set("Content-Length", strconv.Itoa(len(resp)))
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(resp)
-	if finish && reverse {
-		info.target.maybeReconnect(w, resp)
-	}
+	return &agentproto.SignedMessage{Body: resp, Signature: sig}, nil
 }
 
-// afterReverseEnroll binds the listen target to the enrolled agent.
-func (h *Handlers) afterReverseEnroll(ctx context.Context, t *reverseTarget, resp []byte) {
-	var res gen.EnrollResult
-	if err := json.Unmarshal(resp, &res); err != nil || res.AgentId == "" {
-		return
+// EnrollFinish implements agentproto.API on the exact request body.
+func (h *Handlers) EnrollFinish(ctx context.Context, body []byte) (*agentproto.SignedMessage, error) {
+	if len(body) > enrollsvc.MaxBodySize {
+		return nil, apiError(http.StatusRequestEntityTooLarge, agentproto.CodeBodyTooLarge, "request body too large")
 	}
-	if err := t.bind(ctx, res.AgentId); err != nil {
-		h.log.ErrorContext(ctx, "bind listen target", "listen_target", t.id, "agent_id", res.AgentId, "error", err)
+	resp, sig, err := h.enroll.Finish(ctx, body, agentproto.PeerFrom(ctx).RemoteAddr)
+	if err != nil {
+		return nil, enrollError(err)
 	}
+	return &agentproto.SignedMessage{Body: resp, Signature: sig}, nil
 }
 
-// EnrollStart is served by serveEnroll; the strict wrapper re-encodes the
-// body, which would break the enrollment signatures.
-func (h *Handlers) EnrollStart(context.Context, gen.EnrollStartRequestObject) (gen.EnrollStartResponseObject, error) {
-	return gen.EnrollStartdefaultJSONResponse{StatusCode: http.StatusInternalServerError,
-		Body: apiError(msgsig.CodeInternal, "enroll/start is served on the raw body")}, nil
+// enrollError maps an enrollment failure to its answer.
+func enrollError(err error) error {
+	var rl *enrollsvc.RateLimitError
+	switch {
+	case errors.As(err, &rl):
+		e := apiError(http.StatusTooManyRequests, agentproto.CodeRateLimited, "too many failed attempts")
+		e.RetryAfter = rl.RetryAfter
+		return e
+	case errors.Is(err, enrollsvc.ErrRefused):
+		return apiError(http.StatusForbidden, agentproto.CodeEnrollmentRefused, "enrollment refused")
+	case errors.Is(err, enrollsvc.ErrBadRequest):
+		return apiError(http.StatusBadRequest, agentproto.CodeInvalidRequest, "malformed enrollment request")
+	}
+	return apiError(http.StatusInternalServerError, agentproto.CodeInternal, "internal error")
 }
 
-// EnrollFinish is served by serveEnroll, see EnrollStart.
-func (h *Handlers) EnrollFinish(context.Context, gen.EnrollFinishRequestObject) (gen.EnrollFinishResponseObject, error) {
-	return gen.EnrollFinishdefaultJSONResponse{StatusCode: http.StatusInternalServerError,
-		Body: apiError(msgsig.CodeInternal, "enroll/finish is served on the raw body")}, nil
-}
-
-// GetEnrollResult implements gen.StrictServerInterface.
-func (h *Handlers) GetEnrollResult(ctx context.Context, _ gen.GetEnrollResultRequestObject) (gen.GetEnrollResultResponseObject, error) {
-	a := agentFrom(ctx)
+// GetEnrollResult implements agentproto.API.
+func (h *Handlers) GetEnrollResult(ctx context.Context) (*dto.EnrollResult, error) {
+	a, err := h.caller(ctx, opGetEnrollResult)
+	if err != nil {
+		return nil, err
+	}
 	res, err := h.enroll.Result(ctx, a.ID)
 	if errors.Is(err, enrollsvc.ErrRefused) {
-		return gen.GetEnrollResult403JSONResponse{ForbiddenJSONResponse: gen.ForbiddenJSONResponse(apiError("enrollment_refused", "enrollment refused"))}, nil
+		return nil, apiError(http.StatusForbidden, agentproto.CodeEnrollmentRefused, "enrollment refused")
 	}
 	if err != nil {
 		return nil, err
 	}
-	if info := requestInfoFrom(ctx); info.unenrolled && info.target != nil && res.Status == gen.EnrollStatusApproved {
-		info.target.reconnectSoon()
-	}
-	return gen.GetEnrollResult200JSONResponse(res), nil
+	return &res, nil
 }
 
-// RenewCert implements gen.StrictServerInterface.
-func (h *Handlers) RenewCert(ctx context.Context, req gen.RenewCertRequestObject) (gen.RenewCertResponseObject, error) {
-	var csr []byte
-	if req.Body != nil && req.Body.Csr != nil {
-		csr = *req.Body.Csr
+// RenewCert implements agentproto.API.
+func (h *Handlers) RenewCert(ctx context.Context, req *dto.CertRenewRequest) (*dto.RenewedCert, error) {
+	a, err := h.caller(ctx, "RenewCert")
+	if err != nil {
+		return nil, err
 	}
-	res, err := h.enroll.Renew(ctx, agentFrom(ctx).ID, csr)
+	var csr []byte
+	if req != nil && req.Csr != nil {
+		csr = *req.Csr
+	}
+	res, err := h.enroll.Renew(ctx, a.ID, csr)
 	switch {
 	case errors.Is(err, enrollsvc.ErrKeyMismatch), errors.Is(err, enrollsvc.ErrBadRequest):
-		return gen.RenewCert400JSONResponse{BadRequestJSONResponse: gen.BadRequestJSONResponse(apiError(msgsig.CodeInvalidRequest, err.Error()))}, nil
+		return nil, apiError(http.StatusBadRequest, agentproto.CodeInvalidRequest, err.Error())
 	case errors.Is(err, store.ErrInvalidState):
-		return gen.RenewCert403JSONResponse{ForbiddenJSONResponse: gen.ForbiddenJSONResponse(apiError("forbidden", "agent is not approved"))}, nil
+		return nil, apiError(http.StatusForbidden, agentproto.CodeForbidden, "agent is not approved")
 	case err != nil:
 		return nil, err
 	}
-	return gen.RenewCert200JSONResponse(res), nil
+	return &res, nil
 }
 
-// GetTrustBundle implements gen.StrictServerInterface.
-func (h *Handlers) GetTrustBundle(ctx context.Context, _ gen.GetTrustBundleRequestObject) (gen.GetTrustBundleResponseObject, error) {
+// GetTrustBundle implements agentproto.API.
+func (h *Handlers) GetTrustBundle(ctx context.Context) (*dto.TrustBundle, error) {
+	if _, err := h.caller(ctx, "GetTrustBundle"); err != nil {
+		return nil, err
+	}
 	tb, err := h.enroll.TrustBundle(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return gen.GetTrustBundle200JSONResponse(tb), nil
+	return &tb, nil
 }
 
-// GetServerChain implements gen.StrictServerInterface.
-func (h *Handlers) GetServerChain(context.Context, gen.GetServerChainRequestObject) (gen.GetServerChainResponseObject, error) {
+// GetServerChain implements agentproto.API.
+func (h *Handlers) GetServerChain(context.Context) (*dto.ServerChain, error) {
 	_, chain := h.pki.Signer()
 	if len(chain) == 0 {
 		return nil, errors.New("no server signing key")
 	}
-	out := gen.ServerChain{ChainPem: make([]string, 0, len(chain))}
+	out := dto.ServerChain{ChainPem: make([]string, 0, len(chain))}
 	for _, cert := range chain {
 		out.ChainPem = append(out.ChainPem, string(pki.EncodeCertificatesPEM(cert)))
 	}
-	return gen.GetServerChain200JSONResponse(out), nil
+	return &out, nil
 }
 
 // ── uploads ─────────────────────────────────────────────────────────────
 
-// UploadReport implements gen.StrictServerInterface.
-func (h *Handlers) UploadReport(ctx context.Context, req gen.UploadReportRequestObject) (gen.UploadReportResponseObject, error) {
+// UploadReport implements agentproto.API.
+func (h *Handlers) UploadReport(ctx context.Context, params dto.UploadReportParams, report io.Reader) (*dto.ReportAccepted, error) {
+	a, err := h.caller(ctx, "UploadReport")
+	if err != nil {
+		return nil, err
+	}
 	if h.ingest == nil {
-		return gen.UploadReportdefaultJSONResponse{StatusCode: http.StatusServiceUnavailable, Body: errUnavailable}, nil
+		return nil, errUnavailable()
 	}
-	if req.Body == nil {
-		return gen.UploadReport400JSONResponse{BadRequestJSONResponse: gen.BadRequestJSONResponse(apiError(msgsig.CodeInvalidRequest, "empty body"))}, nil
+	if report == nil {
+		return nil, errEmptyBody()
 	}
-	raw, err := io.ReadAll(io.LimitReader(req.Body, h.maxReport+1))
+	raw, err := io.ReadAll(io.LimitReader(report, h.maxReport+1))
 	if err != nil {
 		return nil, fmt.Errorf("read report: %w", err)
 	}
 	if int64(len(raw)) > h.maxReport {
-		return gen.UploadReport413JSONResponse{PayloadTooLargeJSONResponse: gen.PayloadTooLargeJSONResponse(apiError(msgsig.CodeBodyTooLarge, "report too large"))}, nil
+		return nil, apiError(http.StatusRequestEntityTooLarge, agentproto.CodeBodyTooLarge, "report too large")
 	}
 	if len(raw) == 0 {
-		return gen.UploadReport400JSONResponse{BadRequestJSONResponse: gen.BadRequestJSONResponse(apiError(msgsig.CodeInvalidRequest, "empty body"))}, nil
+		return nil, errEmptyBody()
 	}
 	jobID := ""
-	if req.Params.JobId != nil {
-		jobID = *req.Params.JobId
+	if params.JobId != nil {
+		jobID = *params.JobId
 	}
-	a := agentFrom(ctx)
 	id, err := h.ingest.Submit(ctx, a, jobID, raw)
 	if invalidInput(err) {
 		h.log.WarnContext(ctx, "report rejected", "agent_id", a.ID, "error", err)
-		return gen.UploadReport400JSONResponse{BadRequestJSONResponse: gen.BadRequestJSONResponse(apiError(msgsig.CodeInvalidRequest, "invalid report"))}, nil
+		return nil, apiError(http.StatusBadRequest, agentproto.CodeInvalidRequest, "invalid report")
 	}
 	if err != nil {
 		return nil, fmt.Errorf("submit report: %w", err)
 	}
-	return gen.UploadReport202JSONResponse(gen.ReportAccepted{ReportId: id}), nil
+	return &dto.ReportAccepted{ReportId: id}, nil
 }
 
-// UploadK8sInventory implements gen.StrictServerInterface.
-func (h *Handlers) UploadK8sInventory(ctx context.Context, req gen.UploadK8sInventoryRequestObject) (gen.UploadK8sInventoryResponseObject, error) {
+// UploadK8sInventory implements agentproto.API.
+func (h *Handlers) UploadK8sInventory(ctx context.Context, inv *dto.K8sInventory) error {
+	a, err := h.caller(ctx, opUploadK8sInventory)
+	if err != nil {
+		return err
+	}
 	if h.ingest == nil {
-		return gen.UploadK8sInventorydefaultJSONResponse{StatusCode: http.StatusServiceUnavailable, Body: errUnavailable}, nil
+		return errUnavailable()
 	}
-	if req.Body == nil {
-		return gen.UploadK8sInventory400JSONResponse{BadRequestJSONResponse: gen.BadRequestJSONResponse(apiError(msgsig.CodeInvalidRequest, "empty body"))}, nil
+	if inv == nil {
+		return errEmptyBody()
 	}
-	err := h.ingest.IngestK8sInventory(ctx, agentFrom(ctx), *req.Body)
+	err = h.ingest.IngestK8sInventory(ctx, a, *inv)
 	if invalidInput(err) || errors.Is(err, store.ErrNotFound) {
-		return gen.UploadK8sInventory400JSONResponse{BadRequestJSONResponse: gen.BadRequestJSONResponse(apiError(msgsig.CodeInvalidRequest, err.Error()))}, nil
+		return apiError(http.StatusBadRequest, agentproto.CodeInvalidRequest, err.Error())
 	}
 	if err != nil {
-		return nil, fmt.Errorf("ingest inventory: %w", err)
+		return fmt.Errorf("ingest inventory: %w", err)
 	}
-	return gen.UploadK8sInventory204Response{}, nil
+	return nil
 }
 
-// SubmitScanJobResult implements gen.StrictServerInterface.
-func (h *Handlers) SubmitScanJobResult(ctx context.Context, req gen.SubmitScanJobResultRequestObject) (gen.SubmitScanJobResultResponseObject, error) {
+// SubmitScanJobResult implements agentproto.API.
+func (h *Handlers) SubmitScanJobResult(ctx context.Context, jobID string, res *dto.ScanJobResult) error {
+	a, err := h.caller(ctx, opSubmitScanJobResult)
+	if err != nil {
+		return err
+	}
 	if h.ingest == nil {
-		return gen.SubmitScanJobResultdefaultJSONResponse{StatusCode: http.StatusServiceUnavailable, Body: errUnavailable}, nil
+		return errUnavailable()
 	}
-	if req.Body == nil {
-		return gen.SubmitScanJobResult400JSONResponse{BadRequestJSONResponse: gen.BadRequestJSONResponse(apiError(msgsig.CodeInvalidRequest, "empty body"))}, nil
+	if res == nil {
+		return errEmptyBody()
 	}
-	err := h.ingest.RecordScanResult(ctx, agentFrom(ctx), req.Id, *req.Body)
+	err = h.ingest.RecordScanResult(ctx, a, jobID, *res)
 	switch {
 	case errors.Is(err, store.ErrNotFound):
-		return gen.SubmitScanJobResult404JSONResponse{NotFoundJSONResponse: gen.NotFoundJSONResponse(apiError("not_found", "unknown scan job"))}, nil
+		return apiError(http.StatusNotFound, agentproto.CodeNotFound, "unknown scan job")
 	case invalidInput(err):
-		return gen.SubmitScanJobResult400JSONResponse{BadRequestJSONResponse: gen.BadRequestJSONResponse(apiError(msgsig.CodeInvalidRequest, err.Error()))}, nil
+		return apiError(http.StatusBadRequest, agentproto.CodeInvalidRequest, err.Error())
 	case err != nil:
-		return nil, fmt.Errorf("record scan result: %w", err)
+		return fmt.Errorf("record scan result: %w", err)
 	}
-	return gen.SubmitScanJobResult204Response{}, nil
+	return nil
 }
 
 // ── update ──────────────────────────────────────────────────────────────
 
-// CheckUpdate implements gen.StrictServerInterface.
-func (h *Handlers) CheckUpdate(ctx context.Context, req gen.CheckUpdateRequestObject) (gen.CheckUpdateResponseObject, error) {
-	if !req.Params.Os.Valid() || !req.Params.Arch.Valid() {
-		return gen.CheckUpdate400JSONResponse{BadRequestJSONResponse: gen.BadRequestJSONResponse(apiError(msgsig.CodeInvalidRequest, "unsupported platform"))}, nil
+// CheckUpdate implements agentproto.API.
+func (h *Handlers) CheckUpdate(ctx context.Context, params dto.CheckUpdateParams) (*dto.UpdateCheck, error) {
+	a, err := h.caller(ctx, "CheckUpdate")
+	if err != nil {
+		return nil, err
+	}
+	if !params.Os.Valid() || !params.Arch.Valid() {
+		return nil, apiError(http.StatusBadRequest, agentproto.CodeInvalidRequest, "unsupported platform")
 	}
 	if h.updates == nil {
 		s, err := h.st.GetUpdateSettings(ctx)
 		if err != nil {
 			return nil, err
 		}
-		return gen.CheckUpdate200JSONResponse(gen.UpdateCheck{CheckIntervalMinutes: s.CheckIntervalMinutes}), nil
+		return &dto.UpdateCheck{CheckIntervalMinutes: s.CheckIntervalMinutes}, nil
 	}
-	res, err := h.updates.CheckUpdate(ctx, agentFrom(ctx).Version, string(req.Params.Os), string(req.Params.Arch))
+	res, err := h.updates.CheckUpdate(ctx, a.Version, string(params.Os), string(params.Arch))
 	if err != nil {
 		return nil, fmt.Errorf("check update: %w", err)
 	}
-	return gen.CheckUpdate200JSONResponse(res), nil
+	return &res, nil
 }
 
-// DownloadUpdateBundle implements gen.StrictServerInterface.
-func (h *Handlers) DownloadUpdateBundle(ctx context.Context, req gen.DownloadUpdateBundleRequestObject) (gen.DownloadUpdateBundleResponseObject, error) {
-	if h.updates == nil {
-		return gen.DownloadUpdateBundledefaultJSONResponse{StatusCode: http.StatusServiceUnavailable, Body: errUnavailable}, nil
+// DownloadUpdateBundle implements agentproto.API.
+func (h *Handlers) DownloadUpdateBundle(ctx context.Context, version string, params dto.DownloadUpdateBundleParams) (*agentproto.Download, error) {
+	if _, err := h.caller(ctx, "DownloadUpdateBundle"); err != nil {
+		return nil, err
 	}
-	rc, size, err := h.updates.Bundle(ctx, req.Version, string(req.Params.Os), string(req.Params.Arch))
+	if h.updates == nil {
+		return nil, errUnavailable()
+	}
+	rc, size, err := h.updates.Bundle(ctx, version, string(params.Os), string(params.Arch))
 	if errors.Is(err, store.ErrNotFound) {
-		return gen.DownloadUpdateBundle404JSONResponse{NotFoundJSONResponse: gen.NotFoundJSONResponse(apiError("not_found", "no such release"))}, nil
+		return nil, apiError(http.StatusNotFound, agentproto.CodeNotFound, "no such release")
 	}
 	if err != nil {
 		return nil, fmt.Errorf("open bundle: %w", err)
 	}
-	return gen.DownloadUpdateBundle200ApplicationxTarResponse{Body: rc, ContentLength: size}, nil
+	return &agentproto.Download{Body: rc, Size: size}, nil
 }
 
-// DownloadProbe implements gen.StrictServerInterface.
-func (h *Handlers) DownloadProbe(ctx context.Context, req gen.DownloadProbeRequestObject) (gen.DownloadProbeResponseObject, error) {
-	if h.updates == nil {
-		return gen.DownloadProbedefaultJSONResponse{StatusCode: http.StatusServiceUnavailable, Body: errUnavailable}, nil
+// DownloadProbe implements agentproto.API.
+func (h *Handlers) DownloadProbe(ctx context.Context, os dto.TargetOs, arch dto.TargetArch) (*agentproto.Download, error) {
+	if _, err := h.caller(ctx, opDownloadProbe); err != nil {
+		return nil, err
 	}
-	probe, version, err := h.updates.Probe(ctx, string(req.Os), string(req.Arch))
+	if h.updates == nil {
+		return nil, errUnavailable()
+	}
+	probe, version, err := h.updates.Probe(ctx, string(os), string(arch))
 	if errors.Is(err, store.ErrNotFound) {
-		return gen.DownloadProbe404JSONResponse{NotFoundJSONResponse: gen.NotFoundJSONResponse(apiError("not_found", "no probe for this platform"))}, nil
+		return nil, apiError(http.StatusNotFound, agentproto.CodeNotFound, "no probe for this platform")
 	}
 	if err != nil {
 		return nil, fmt.Errorf("open probe: %w", err)
 	}
-	return gen.DownloadProbe200ApplicationoctetStreamResponse{Body: bytes.NewReader(probe), ContentLength: int64(len(probe)),
-		Headers: gen.DownloadProbe200ResponseHeaders{BomcensusProbeVersion: version}}, nil
+	return &agentproto.Download{Body: io.NopCloser(bytes.NewReader(probe)), Size: int64(len(probe)), Version: version}, nil
 }
 
 // ── helpers ─────────────────────────────────────────────────────────────

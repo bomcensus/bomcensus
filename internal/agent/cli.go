@@ -18,10 +18,12 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/bomcensus/bomcensus/agentproto"
 	"github.com/bomcensus/bomcensus/internal/agent/core"
 	"github.com/bomcensus/bomcensus/internal/agent/probeexec"
 	"github.com/bomcensus/bomcensus/internal/agent/state"
 	"github.com/bomcensus/bomcensus/internal/agent/update"
+	"github.com/bomcensus/bomcensus/internal/sign"
 	"github.com/bomcensus/bomcensus/internal/version"
 )
 
@@ -44,22 +46,49 @@ commands:
 Run 'bomcensus-agent <command> -h' for the flags of a command.
 `
 
+// Extensions are the parts a build of the agent adds (package agent).
+type Extensions struct {
+	// Channels are further channels by name, chosen with
+	// "enroll --channel NAME".
+	Channels map[string]agentproto.ChannelFactory
+}
+
+// check refuses a build with extensions that is not signed with its own
+// release keys.
+func (e Extensions) check() error {
+	if len(e.Channels) == 0 {
+		return nil
+	}
+	return sign.RequireOwnTrust()
+}
+
 // Main is the bomcensus-agent command. It returns the exit status: 0 on
 // success, 1 on failure, 2 on usage errors. When an update switched the
 // current version, it replaces the process with the new executable.
 func Main(args []string, stdout, stderr io.Writer) int {
+	return MainWith(args, stdout, stderr, Extensions{})
+}
+
+// MainWith is Main with extensions.
+func MainWith(args []string, stdout, stderr io.Writer, ext Extensions) int {
 	if len(args) == 0 {
 		fmt.Fprint(stderr, usageText)
 		return 2
+	}
+	if args[0] == "enroll" || args[0] == "run" {
+		if err := ext.check(); err != nil {
+			fmt.Fprintln(stderr, "bomcensus-agent:", err)
+			return 1
+		}
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	var err error
 	switch args[0] {
 	case "enroll":
-		err = cmdEnroll(ctx, args[1:], stderr)
+		err = cmdEnroll(ctx, args[1:], stderr, ext)
 	case "run":
-		err = cmdRun(ctx, args[1:], stderr)
+		err = cmdRun(ctx, args[1:], stderr, ext)
 	case "init-state":
 		err = cmdInitState(args[1:], stderr)
 	case "version":
@@ -115,7 +144,7 @@ func newLogger(w io.Writer, level string) (*slog.Logger, error) {
 	return slog.New(slog.NewTextHandler(w, &slog.HandlerOptions{Level: l})), nil
 }
 
-func cmdEnroll(ctx context.Context, args []string, stderr io.Writer) error {
+func cmdEnroll(ctx context.Context, args []string, stderr io.Writer, ext Extensions) error {
 	fs := flag.NewFlagSet("enroll", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	server := fs.String("server", "", "server address, https://HOST:PORT (connect mode)")
@@ -129,6 +158,9 @@ func cmdEnroll(ctx context.Context, args []string, stderr io.Writer) error {
 	level := fs.String("log-level", envOr(EnvLogLevel, "info"), "log level: debug, info, warn, error")
 	ifNotEnrolled := fs.Bool("if-not-enrolled", false, "succeed without doing anything when the state directory holds an approved enrollment")
 	probeSock := fs.String("probe-socket", "", "take the host facts from the probe behind this socket instead of reading this system (container use)")
+	channel := fs.String("channel", "", "channel registered in this build (default: the HTTP channel of --connect-mode)")
+	settings := settingsFlag{}
+	fs.Var(settings, "channel-setting", "key=value setting of --channel (repeatable)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -148,16 +180,19 @@ func cmdEnroll(ctx context.Context, args []string, stderr io.Writer) error {
 		listenAddr = *listen
 	}
 	err = Enroll(ctx, EnrollOptions{
-		StateDir:       *stateDir,
-		ServerURL:      *server,
-		Token:          t,
-		ConnectMode:    *mode,
-		ListenAddress:  listenAddr,
-		ServerName:     *serverName,
-		TLSMode:        *tlsVerify,
-		ExtraRootsFile: *tlsCA,
-		ProbeSocket:    *probeSock,
-		Logger:         log,
+		StateDir:        *stateDir,
+		ServerURL:       *server,
+		Token:           t,
+		ConnectMode:     *mode,
+		ListenAddress:   listenAddr,
+		ServerName:      *serverName,
+		TLSMode:         *tlsVerify,
+		ExtraRootsFile:  *tlsCA,
+		ProbeSocket:     *probeSock,
+		Channel:         *channel,
+		ChannelSettings: settings,
+		Logger:          log,
+		Runtime:         core.Options{Channels: ext.Channels},
 	})
 	if *ifNotEnrolled && errors.Is(err, core.ErrAlreadyEnrolled) {
 		log.Info("already enrolled; nothing to do", "state_dir", *stateDir)
@@ -166,7 +201,7 @@ func cmdEnroll(ctx context.Context, args []string, stderr io.Writer) error {
 	return err
 }
 
-func cmdRun(ctx context.Context, args []string, stderr io.Writer) error {
+func cmdRun(ctx context.Context, args []string, stderr io.Writer, ext Extensions) error {
 	fs := flag.NewFlagSet("run", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	stateDir := fs.String("state-dir", envOr(EnvStateDir, state.DefaultDir), "state directory")
@@ -195,7 +230,22 @@ func cmdRun(ctx context.Context, args []string, stderr io.Writer) error {
 		ProbeRequireSocket: *requireSock,
 		DisableUpdates:     *noUpdates,
 		Logger:             log,
+		Runtime:            core.Options{Channels: ext.Channels},
 	})
+}
+
+// settingsFlag collects repeated key=value flags.
+type settingsFlag map[string]string
+
+func (s settingsFlag) String() string { return "" }
+
+func (s settingsFlag) Set(v string) error {
+	k, val, ok := strings.Cut(v, "=")
+	if !ok || k == "" {
+		return fmt.Errorf("want key=value, got %q", v)
+	}
+	s[k] = val
+	return nil
 }
 
 func cmdInitState(args []string, stderr io.Writer) error {

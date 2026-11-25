@@ -127,6 +127,12 @@ host=$work/bomcensus-release
 CGO_ENABLED=0 "$GO" build -trimpath -o "$host" ./cmd/bomcensus-release
 "$host" manifest-pub --manifest-key "$manifest_key" >"$keys/manifest.pub"
 log "manifest key $(sha256sum <"$keys/manifest.pub" | cut -c1-16)…"
+# Builds with their own channels refuse to trust the official keys, so an
+# official release must list its key in internal/sign/official.go.
+# ALLOW_UNOFFICIAL_KEYS=1 skips the check for local builds with other keys.
+if [ "${ALLOW_UNOFFICIAL_KEYS:-}" != 1 ]; then
+	"$host" check-official --keys "$keys" >&2
+fi
 trust=$("$host" print-ldflags --keys "$keys")
 ldflags="-s -w -buildid= -X github.com/bomcensus/bomcensus/internal/version.Version=$VERSION $trust"
 # Host build with the trust, for verifying the bundle below.

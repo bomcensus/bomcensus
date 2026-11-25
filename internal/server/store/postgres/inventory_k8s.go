@@ -43,13 +43,24 @@ func (d *DB) CreateCluster(ctx context.Context, c store.K8sClusterConfig) (store
 	if err != nil {
 		return store.K8sCluster{}, err
 	}
+	s, err := requireScope(ctx, op)
+	if err != nil {
+		return store.K8sCluster{}, err
+	}
+	if c.ScopeID, err = resolveScope(op, s, c.ScopeID); err != nil {
+		return store.K8sCluster{}, err
+	}
+	if err := d.mgCredentialIn(ctx, op, c.CredentialID, c.ScopeID); err != nil {
+		return store.K8sCluster{}, err
+	}
 	id := ivNewID()
 	now := ivNow()
 	_, err = d.q.Exec(ctx, `
 		INSERT INTO k8s_clusters (id, name, connection, credential_id, scanner_id, exec_enabled, filter,
-			created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $8)`,
-		id, c.Name, string(c.Connection), ivNull(c.CredentialID), ivNull(c.ScannerID), c.ExecEnabled, filter, now)
+			created_at, updated_at, scope_id)
+		VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $8, $9)`,
+		id, c.Name, string(c.Connection), ivNull(c.CredentialID), ivNull(c.ScannerID), c.ExecEnabled, filter, now,
+		c.ScopeID)
 	if err != nil {
 		return store.K8sCluster{}, ivErr(op, err)
 	}
@@ -64,13 +75,14 @@ const ivClusterFrom = `FROM (SELECT c.*,
 
 const ivClusterCols = `c.id::text, c.name, c.connection, COALESCE(c.credential_id::text, ''),
 	COALESCE(c.scanner_id::text, ''), c.exec_enabled, c.filter, c.version, c.last_sync, c.sync_status,
-	c.sync_message, c.workloads, c.excluded, c.created_at, c.updated_at`
+	c.sync_message, c.workloads, c.excluded, c.created_at, c.updated_at, c.scope_id`
 
 func ivScanCluster(row pgx.Row, extra ...any) (store.K8sCluster, error) {
 	var c store.K8sCluster
 	var filter []byte
 	dest := []any{&c.ID, &c.Name, &c.Connection, &c.CredentialID, &c.ScannerID, &c.ExecEnabled, &filter,
-		&c.Version, &c.LastSync, &c.SyncStatus, &c.SyncMessage, &c.Workloads, &c.Excluded, &c.CreatedAt, &c.UpdatedAt}
+		&c.Version, &c.LastSync, &c.SyncStatus, &c.SyncMessage, &c.Workloads, &c.Excluded, &c.CreatedAt, &c.UpdatedAt,
+		&c.ScopeID}
 	if err := row.Scan(append(dest, extra...)...); err != nil {
 		return c, err
 	}
@@ -86,10 +98,15 @@ func ivScanCluster(row pgx.Row, extra ...any) (store.K8sCluster, error) {
 // GetCluster implements store.K8sClusters.
 func (d *DB) GetCluster(ctx context.Context, id string) (store.K8sCluster, error) {
 	const op = "get cluster"
+	q, sc, err := scoped(ctx, op, id)
+	if err != nil {
+		return store.K8sCluster{}, err
+	}
 	if !ivValidID(id) {
 		return store.K8sCluster{}, ivNotFound(op)
 	}
-	c, err := ivScanCluster(d.q.QueryRow(ctx, `SELECT `+ivClusterCols+` `+ivClusterFrom+` WHERE c.id = $1`, id))
+	c, err := ivScanCluster(d.q.QueryRow(ctx, `SELECT `+ivClusterCols+` `+ivClusterFrom+` WHERE c.id = $1 AND `+
+		sc.col("c.scope_id"), q.args...))
 	return c, ivErr(op, err)
 }
 
@@ -104,14 +121,19 @@ func (d *DB) RecordClusterSync(ctx context.Context, id string, status store.K8sS
 	default:
 		return ivInvalid(op, "unknown sync status")
 	}
+	q, sc, err := scoped(ctx, op, id, string(status), message, ivAt(at))
+	if err != nil {
+		return err
+	}
+	cond := sc.col("scope_id")
 	var one int
-	err := d.q.QueryRow(ctx, `
+	err = d.q.QueryRow(ctx, `
 		WITH upd AS (
 			UPDATE k8s_clusters SET sync_status = $2, sync_message = $3, sync_status_at = $4
-			WHERE id = $1 AND (sync_status_at IS NULL OR sync_status_at <= $4)
+			WHERE id = $1 AND (sync_status_at IS NULL OR sync_status_at <= $4) AND `+cond+`
 			RETURNING 1
 		)
-		SELECT 1 FROM k8s_clusters WHERE id = $1`, id, string(status), message, ivAt(at)).Scan(&one)
+		SELECT 1 FROM k8s_clusters WHERE id = $1 AND `+cond, q.args...).Scan(&one)
 	return ivErr(op, err)
 }
 
@@ -125,11 +147,22 @@ func (d *DB) UpdateCluster(ctx context.Context, id string, c store.K8sClusterCon
 	if err != nil {
 		return store.K8sCluster{}, err
 	}
+	cur, err := d.GetCluster(ctx, id)
+	if err != nil {
+		return store.K8sCluster{}, err
+	}
+	if err := d.mgCredentialIn(ctx, op, c.CredentialID, cur.ScopeID); err != nil {
+		return store.K8sCluster{}, err
+	}
+	q, sc, err := scoped(ctx, op, id, c.Name, string(c.Connection), ivNull(c.CredentialID), ivNull(c.ScannerID),
+		c.ExecEnabled, filter, ivNow())
+	if err != nil {
+		return store.K8sCluster{}, err
+	}
 	tag, err := d.q.Exec(ctx, `
 		UPDATE k8s_clusters SET name = $2, connection = $3, credential_id = $4, scanner_id = $5,
 			exec_enabled = $6, filter = $7::jsonb, updated_at = $8
-		WHERE id = $1`,
-		id, c.Name, string(c.Connection), ivNull(c.CredentialID), ivNull(c.ScannerID), c.ExecEnabled, filter, ivNow())
+		WHERE id = $1 AND `+sc.col("scope_id"), q.args...)
 	if err != nil {
 		return store.K8sCluster{}, ivErr(op, err)
 	}
@@ -142,10 +175,14 @@ func (d *DB) UpdateCluster(ctx context.Context, id string, c store.K8sClusterCon
 // DeleteCluster implements store.K8sClusters.
 func (d *DB) DeleteCluster(ctx context.Context, id string) error {
 	const op = "delete cluster"
+	q, sc, err := scoped(ctx, op, id)
+	if err != nil {
+		return err
+	}
 	if !ivValidID(id) {
 		return ivNotFound(op)
 	}
-	tag, err := d.q.Exec(ctx, `DELETE FROM k8s_clusters WHERE id = $1`, id)
+	tag, err := d.q.Exec(ctx, `DELETE FROM k8s_clusters WHERE id = $1 AND `+sc.col("scope_id"), q.args...)
 	if err != nil {
 		return ivErr(op, err)
 	}
@@ -170,9 +207,16 @@ func (d *DB) ListClusters(ctx context.Context, f store.ClusterFilter, p store.Pa
 	if err != nil {
 		return nil, 0, err
 	}
-	q := &ivQuery{}
+	q, sc, err := scoped(ctx, op)
+	if err != nil {
+		return nil, 0, err
+	}
+	q.and(sc.col("c.scope_id"))
 	if f.Q != "" {
 		q.where("(c.name ILIKE %[1]s OR c.version ILIKE %[1]s)", ivLike(f.Q))
+	}
+	if f.ScopeID != "" {
+		q.where("c.scope_id = %s", f.ScopeID)
 	}
 	from := ivClusterFrom + q.whereSQL()
 	var out []store.K8sClusterRow
@@ -315,8 +359,9 @@ func (d *DB) ReplaceClusterInventory(ctx context.Context, clusterID string, inv 
 		// Assets of the workloads that are not excluded.
 		rows, err = d.q.Query(ctx, `
 			INSERT INTO assets (id, kind, name, method, cluster_id, namespace, workload_kind, workload_name,
-				first_seen, last_seen)
-			SELECT x.new_asset_id, 'workload', x.name, 'k8s_inventory', $1, x.namespace, x.kind, x.name, $3, $3
+				first_seen, last_seen, scope_id)
+			SELECT x.new_asset_id, 'workload', x.name, 'k8s_inventory', $1, x.namespace, x.kind, x.name, $3, $3,
+				(SELECT k.scope_id FROM k8s_clusters k WHERE k.id = $1)
 			FROM jsonb_to_recordset($2::jsonb) AS x(new_asset_id uuid, namespace text, kind text, name text,
 				excluded boolean)
 			WHERE NOT x.excluded
@@ -492,6 +537,9 @@ func (d *DB) SetPodContainerCoverage(ctx context.Context, clusterID, namespace, 
 	if !ivValidID(clusterID) {
 		return ivNotFound(op)
 	}
+	if err := d.ivScopeCluster(ctx, op, clusterID); err != nil {
+		return err
+	}
 	tag, err := d.q.Exec(ctx, `
 		UPDATE k8s_pod_containers pc SET coverage = $5, coverage_reason = $6
 		FROM k8s_pods p
@@ -519,11 +567,15 @@ func (d *DB) ListWorkloads(ctx context.Context, clusterID string, f store.Worklo
 	if err != nil {
 		return nil, 0, err
 	}
+	q, sc, err := scoped(ctx, op)
+	if err != nil {
+		return nil, 0, err
+	}
 	if !ivValidID(clusterID) {
 		return nil, 0, nil
 	}
-	q := &ivQuery{}
 	q.where("w.cluster_id = %s", clusterID)
+	q.and(sc.cluster("w.cluster_id"))
 	if !f.IncludeGone {
 		q.where("w.gone_at IS NULL")
 	}
@@ -571,13 +623,17 @@ func (d *DB) ListWorkloads(ctx context.Context, clusterID string, f store.Worklo
 func (d *DB) GetWorkload(ctx context.Context, id string) (store.K8sWorkload, error) {
 	const op = "get workload"
 	var w store.K8sWorkload
+	q, sc, err := scoped(ctx, op, id)
+	if err != nil {
+		return w, err
+	}
 	if !ivValidID(id) {
 		return w, ivNotFound(op)
 	}
-	err := d.q.QueryRow(ctx, `
+	err = d.q.QueryRow(ctx, `
 		SELECT id::text, cluster_id::text, namespace, kind, name, replicas, COALESCE(asset_id::text, ''),
 			excluded, excluded_by, first_seen, last_seen, gone_at
-		FROM k8s_workloads WHERE id = $1`, id).
+		FROM k8s_workloads WHERE id = $1 AND `+sc.cluster("cluster_id"), q.args...).
 		Scan(&w.ID, &w.ClusterID, &w.Namespace, &w.Kind, &w.Name, &w.Replicas, &w.AssetID,
 			&w.Excluded, &w.ExcludedBy, &w.FirstSeen, &w.LastSeen, &w.GoneAt)
 	if err != nil {
@@ -625,8 +681,9 @@ func (d *DB) ListAssetInstances(ctx context.Context, assetID string, f store.Pod
 	}, f, p)
 }
 
-// ivPods lists the pods selected by the conditions that scope adds and f.
-func (d *DB) ivPods(ctx context.Context, op string, scope func(*ivQuery), f store.PodFilter, p store.Page) ([]store.K8sPod, int, error) {
+// ivPods lists the pods selected by the conditions that sel adds and f, in
+// the clusters of the scope of ctx.
+func (d *DB) ivPods(ctx context.Context, op string, by func(*ivQuery), f store.PodFilter, p store.Page) ([]store.K8sPod, int, error) {
 	order, err := ivOrder(op, f.Sort, "name", map[string]string{
 		"name":       "p.name",
 		"node":       "p.node",
@@ -636,8 +693,12 @@ func (d *DB) ivPods(ctx context.Context, op string, scope func(*ivQuery), f stor
 	if err != nil {
 		return nil, 0, err
 	}
-	q := &ivQuery{}
-	scope(q)
+	q, sc, err := scoped(ctx, op)
+	if err != nil {
+		return nil, 0, err
+	}
+	by(q)
+	q.and(sc.cluster("p.cluster_id"))
 	if !f.IncludeGone {
 		q.where("p.gone_at IS NULL")
 	}
