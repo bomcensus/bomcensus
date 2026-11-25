@@ -20,8 +20,8 @@ import (
 
 	gen "github.com/bomcensus/bomcensus/internal/gen/adminapi"
 	"github.com/bomcensus/bomcensus/internal/server/adminapi/apierr"
-	"github.com/bomcensus/bomcensus/internal/server/secret"
 	"github.com/bomcensus/bomcensus/internal/server/integritysvc"
+	"github.com/bomcensus/bomcensus/internal/server/secret"
 	"github.com/bomcensus/bomcensus/internal/server/store"
 )
 

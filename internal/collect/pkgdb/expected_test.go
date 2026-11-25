@@ -172,8 +172,8 @@ Status: deinstall ok config-files
 Architecture: all
 Version: 1
 `,
-		"var/lib/dpkg/info/alpha.list":    "/.\n/etc\n/etc/alpha.conf\n/usr\n/usr/bin\n/usr/bin/alpha\n/usr/bin/tool\n",
-		"var/lib/dpkg/info/alpha.md5sums": sumA + "  usr/bin/alpha\n" + sumA + "  usr/bin/tool\n" + sumA + "  etc/alpha.conf\n" + sumA + "  usr/share/taken-over\nnot a line\n",
+		"var/lib/dpkg/info/alpha.list":         "/.\n/etc\n/etc/alpha.conf\n/usr\n/usr/bin\n/usr/bin/alpha\n/usr/bin/tool\n",
+		"var/lib/dpkg/info/alpha.md5sums":      sumA + "  usr/bin/alpha\n" + sumA + "  usr/bin/tool\n" + sumA + "  etc/alpha.conf\n" + sumA + "  usr/share/taken-over\nnot a line\n",
 		"var/lib/dpkg/info/beta:amd64.list":    "/usr/lib/libbeta.so.2\n",
 		"var/lib/dpkg/info/beta:amd64.md5sums": sumB + "  usr/lib/libbeta.so.2\n",
 		"var/lib/dpkg/info/half.list":          "/usr/bin/half\n",
