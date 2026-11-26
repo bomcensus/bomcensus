@@ -74,7 +74,9 @@ func LandlockCommand(abi int) string {
 // keeps it to reading, listing and executing files beneath root. Every
 // other file system right the kernel can control is denied; from ABI 4
 // TCP bind and connect, from ABI 6 signals to and abstract Unix sockets of
-// processes outside the domain. Being in a domain also denies ptrace
+// processes outside the domain. The TCP rights do not apply to other
+// stream protocols such as MPTCP; the command's seccomp filter denies
+// sockets of every family. Being in a domain also denies ptrace
 // access to processes outside it, on every ABI. The domain is kept across
 // execve. The caller must have set no_new_privs.
 //

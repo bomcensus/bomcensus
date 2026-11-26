@@ -8,6 +8,7 @@ package sandbox_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -208,15 +209,22 @@ func runLandlockChecks() map[string]string {
 	_, err = os.ReadFile(fmt.Sprintf("/proc/%d/environ", peer))
 	r["read environ of the sibling"] = errString(err)
 	r["truncate"] = errString(unix.Truncate(filepath.Join(dir, "truncate"), 0))
+	// Landlock's TCP rights cover IPPROTO_TCP sockets only, and Go
+	// listens with MPTCP by default where the kernel has it, so both
+	// checks ask for plain TCP.
 	r["tcp connect"] = errString(func() error {
-		c, err := net.Dial("tcp", os.Getenv(envLandlockTCP))
+		var d net.Dialer
+		d.SetMultipathTCP(false)
+		c, err := d.Dial("tcp", os.Getenv(envLandlockTCP))
 		if err == nil {
 			c.Close()
 		}
 		return err
 	}())
 	r["tcp bind"] = errString(func() error {
-		l, err := net.Listen("tcp", "127.0.0.1:0")
+		var lc net.ListenConfig
+		lc.SetMultipathTCP(false)
+		l, err := lc.Listen(context.Background(), "tcp", "127.0.0.1:0")
 		if err == nil {
 			l.Close()
 		}
