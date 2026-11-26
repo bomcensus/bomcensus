@@ -413,6 +413,8 @@ Around the command:
 - On Windows the same limits are to be applied with a restricted token and a job object (not implemented).
 - The output is treated as untrusted input. Standard output and standard error are kept separately, each truncated at 64 KiB, and parsed with RE2 regular expressions only.
 - `bomcensus-probe self-test` runs the probe binary itself through the helper as a version command and reports, from inside, what it could do: credentials, capabilities, descriptors, writes, sockets, process creation, signals, reading another process's environment and memory, ptrace, prlimit, keyrings and io_uring (`internal/collect/artifact/versionexec_check.go`).
+- `bomcensus-probe self-test` exits with status 1 when any check fails.
+- `scripts/sandbox-matrix.sh` (`make test-sandbox`, `make test-sandbox-host`) runs the sandbox tests under the privilege scenarios of the table in 6.2 and the systemd unit's user, in throwaway containers (with and without Docker's seccomp profile) and as root on a disposable host, and fails when a scenario's expectations do not hold (whom version commands run as, or that none runs; the network namespace; the protection the kernel's Landlock ABI gives). CI runs it on amd64 and arm64.
 
 What a malicious version command can still do:
 

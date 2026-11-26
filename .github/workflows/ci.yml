@@ -66,6 +66,47 @@ jobs:
           go test ./...
           GOOS=windows GOARCH=amd64 go build ./...
 
+  # The probe and version command sandbox under privilege scenarios that
+  # go test as the runner's user does not reach (scripts/sandbox-matrix.sh):
+  # in containers (root with Docker's default capabilities, with the two
+  # read capabilities, without capabilities, a non-root user, with
+  # CAP_SYS_ADMIN; each with and without Docker's seccomp profile), and on
+  # the runner itself through sudo (root, the systemd unit's user and
+  # capabilities, root without capabilities, the runner's user, and
+  # collect --host-root).
+  sandbox:
+    name: sandbox matrix (${{ matrix.mode }}, ${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [docker, host]
+        arch: [amd64, arm64]
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    env:
+      # Under /tmp: the scenarios run the binaries as other users.
+      SANDBOX_BIN: /tmp/bomcensus-sandbox
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - name: Matrix
+        run: make test-sandbox${{ matrix.mode == 'host' && '-host' || '' }}
+      - name: Logs
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: sandbox-logs-${{ matrix.mode }}-${{ matrix.arch }}
+          path: /tmp/bomcensus-sandbox/logs
+          if-no-files-found: ignore
+          retention-days: 7
+
   windows:
     name: go on windows (build, vet, test)
     runs-on: windows-2025
