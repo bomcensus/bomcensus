@@ -202,6 +202,15 @@ export const revokeTriageRule = (id: string) => call(sdk.revokeTriageRule({ path
 /** The active rules as an OpenVEX document. */
 export const exportVex = () => call(sdk.exportVex())
 
+// ── notices ─────────────────────────────────────────────
+
+export const listNotices = (query?: Query<gen.ListNoticesData>) => call(sdk.listNotices({ query }))
+export const getNoticeSummary = () => call(sdk.getNoticeSummary())
+export const getNotice = (noticeId: string) => call(sdk.getNotice({ path: { noticeId } }))
+export const listAssetNotices = (id: string) => call(sdk.listAssetNotices({ path: { id } }))
+export const markNoticesRead = (ids: string[]) => call(sdk.markNoticesRead({ body: { ids } }))
+export const markNoticesUnread = (ids: string[]) => call(sdk.markNoticesUnread({ body: { ids } }))
+
 // ── file integrity ──────────────────────────────────────
 
 export const getIntegritySummary = () => call(sdk.getIntegritySummary())

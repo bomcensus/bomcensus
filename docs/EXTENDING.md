@@ -89,6 +89,7 @@ Every scoped record belongs to one scope id, which you choose (tenant, team, org
 | components, processes, containers, findings, integrity results, reports | the scope of their asset |
 | images | visible to a scope when one of its assets or pods uses them |
 | triage rules, integrity allow rules | the scope they are created in; they apply only to findings and assets of that scope |
+| security notice read marks | the scopes of the matching assets the request sees; a mark in one scope does not hide the notice from another |
 | scanners and their Register Keys | shared: visible to every scope, changed only with `scope.All` |
 
 A new record gets the requested `scopeId` if it is in the request scope, else the only id of the scope, else `default` for `scope.All`; a request with several ids must name one. A request for a record outside its scope gets 404; creating a record outside it, or referring to a credential of another scope, gets 403. Records that existed before scopes are in `default`.

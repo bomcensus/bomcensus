@@ -34,6 +34,7 @@ type scFix struct {
 	CompID, ImgDigest            string
 	ListenID, TriageID, AllowID  string
 	ReportID, VulnID, Path       string
+	NoticeID                     string
 	idKey                        []byte
 }
 
@@ -67,7 +68,7 @@ func scFixture(t *testing.T, db *DB, id, mark string, sh scShared) scFix {
 	ctx := scope.With(ivCtx(t), scope.Of(id))
 	f := scFix{Mark: mark, Namespace: "ns-" + mark, Pod: "pod-" + mark, PodDigest: "sha256:pod-" + mark,
 		ImgDigest: "sha256:img-" + mark, VulnID: "CVE-" + strings.ToUpper(mark), Path: "/etc/" + mark + ".conf",
-		idKey: scRandKey()}
+		NoticeID: "kisa-" + mark, idKey: scRandKey()}
 	f.AgentKey = fmt.Sprintf("%x", f.idKey)
 	keyID := strings.Repeat(mark[2:], 11)
 	k, err := db.CreateRegisterKey(ctx, store.RegisterKey{ID: keyID, Name: "key-" + mark, PublicKey: scRandKey(),
@@ -118,9 +119,11 @@ func scFixture(t *testing.T, db *DB, id, mark string, sh scShared) scFix {
 	ivMust(t, err)
 	vuln := []store.ComponentVuln{{VulnID: f.VulnID, Method: "package", FixState: "fixed", Severity: "high"}}
 	ivMust(t, db.SaveMatches(ctx, store.MatchBatch{Epoch: store.MatchEpoch{ServerID: srv.ID, Revision: 1},
-		Components: []store.ComponentMatch{{ComponentID: f.CompID, Status: store.MatchChecked, Vulns: vuln},
+		Components: []store.ComponentMatch{{ComponentID: f.CompID, Status: store.MatchChecked, Vulns: vuln,
+			Notices: []string{f.NoticeID}},
 			{ComponentID: img[0], Status: store.MatchChecked, Vulns: vuln}},
-		Vulns: []store.VulnMeta{{ID: f.VulnID, Severity: "high"}}}))
+		Vulns:   []store.VulnMeta{{ID: f.VulnID, Severity: "high"}},
+		Notices: []store.Notice{{ID: f.NoticeID, Source: "kisa", Title: "notice-" + mark}}}))
 	in, err := db.FindingInputs(ctx, f.AssetID)
 	ivMust(t, err)
 	procs := []store.FindingProcessRef{{PID: 10, Exe: "/usr/bin/" + mark}}
@@ -207,8 +210,10 @@ func scSetup(t *testing.T) (*DB, scShared, scFix, scFix) {
 	ivMust(t, err)
 	ivMust(t, db.SaveMatches(all, store.MatchBatch{Epoch: store.MatchEpoch{ServerID: srv.ID, Revision: 1},
 		Components: []store.ComponentMatch{{ComponentID: sh.SharedComp, Status: store.MatchChecked,
-			Vulns: []store.ComponentVuln{{VulnID: sh.SharedVuln, Method: "package", FixState: "fixed", Severity: "critical"}}}},
-		Vulns: []store.VulnMeta{{ID: sh.SharedVuln, Severity: "critical"}}}))
+			Vulns:   []store.ComponentVuln{{VulnID: sh.SharedVuln, Method: "package", FixState: "fixed", Severity: "critical"}},
+			Notices: []string{"kisa-shared"}}},
+		Vulns:   []store.VulnMeta{{ID: sh.SharedVuln, Severity: "critical"}},
+		Notices: []store.Notice{{ID: "kisa-shared", Source: "kisa", Title: "shared notice"}}}))
 	fa := scFixture(t, db, "a", "zza", sh)
 	fb := scFixture(t, db, "b", "zzb", sh)
 	return db, sh, fa, fb
@@ -485,6 +490,38 @@ func scReads() []scRead {
 				t.Errorf("match counts %+v", c)
 			}
 		}},
+		{name: "ListNotices", wantOwn: true, call: ctxDB(func(ctx context.Context, db *DB, f F) (any, error) {
+			return two(db.ListNotices(ctx, store.NoticeFilter{IncludeRead: true}, scPage()))
+		}), check: func(t *testing.T, v any) {
+			for _, n := range v.([]store.NoticeRow) {
+				if n.Assets != 1 {
+					t.Errorf("notice %s on %d assets, want the scope's only", n.ID, n.Assets)
+				}
+			}
+		}},
+		{name: "GetNotice", wantOwn: true, byID: true, call: ctxDB(func(ctx context.Context, db *DB, f F) (any, error) {
+			return db.GetNotice(ctx, f.NoticeID)
+		})},
+		{name: "ListNoticeMatches", wantOwn: true, call: func(ctx context.Context, db *DB, f F, _ S) (any, error) {
+			own, err := db.ListNoticeMatches(ctx, store.NoticeMatchFilter{NoticeID: f.NoticeID})
+			if err != nil {
+				return nil, err
+			}
+			shared, err := db.ListNoticeMatches(ctx, store.NoticeMatchFilter{NoticeID: "kisa-shared"})
+			if err != nil {
+				return nil, err
+			}
+			asset, err := db.ListNoticeMatches(ctx, store.NoticeMatchFilter{AssetID: f.AssetID})
+			return []any{own, shared, asset}, err
+		}},
+		{name: "CountNotices", call: ctxDB(func(ctx context.Context, db *DB, f F) (any, error) {
+			return db.CountNotices(ctx)
+		}), check: func(t *testing.T, v any) {
+			// The scope's own notice and the shared one.
+			if c := v.(store.NoticeCounts); c.Total != 2 {
+				t.Errorf("notice counts %+v", c)
+			}
+		}},
 		{name: "ComponentsAtLocations", byID: true, call: ctxDB(func(ctx context.Context, db *DB, f F) (any, error) {
 			return db.ComponentsAtLocations(ctx, f.AssetID, []store.ComponentLocation{{Path: "/var/lib/dpkg/status"}})
 		})},
@@ -747,7 +784,22 @@ func scWrites() []scWrite {
 			_, err := db.ExpireTriageRules(ctx, ivT0)
 			return err
 		}),
+		// Notices of b are not visible: nothing is marked.
+		w("MarkNoticesRead", nf, func(ctx context.Context, db *DB, b F) error {
+			return scNone(db.MarkNoticesRead(ctx, []string{b.NoticeID}, "x", ivT0))
+		}),
+		w("MarkNoticesUnread", nf, func(ctx context.Context, db *DB, b F) error {
+			return scNone(db.MarkNoticesUnread(ctx, []string{b.NoticeID}))
+		}),
 	}
+}
+
+// scNone turns a call that changed nothing into ErrNotFound.
+func scNone(n int, err error) error {
+	if err == nil && n == 0 {
+		return store.ErrNotFound
+	}
+	return err
 }
 
 // scUnscoped are the methods that read or write no scoped data, with why.

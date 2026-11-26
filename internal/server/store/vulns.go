@@ -111,6 +111,9 @@ type ComponentMatch struct {
 	Status      string
 	Reason      string
 	Vulns       []ComponentVuln
+	// Notices are the ids of the notices whose software matches the
+	// component (details in MatchBatch.Notices).
+	Notices []string
 }
 
 // MatchBatch is what one match request produced.
@@ -119,6 +122,8 @@ type MatchBatch struct {
 	At         time.Time
 	Components []ComponentMatch
 	Vulns      []VulnMeta
+	// Notices describes the notices the components reference.
+	Notices []Notice
 }
 
 // MatchCounts counts the live components by match state for an epoch.
@@ -145,9 +150,10 @@ type Vulns interface {
 	// against e (a match against the same server with a revision at least
 	// e.Revision and the same rules counts), ordered by distro.
 	PendingMatches(ctx context.Context, e MatchEpoch, limit int) ([]Component, error)
-	// SaveMatches stores a batch in one transaction: the vulnerability
-	// details, and for each component its match state and vulnerabilities
-	// (replacing the previous ones).
+	// SaveMatches stores a batch in one transaction: the vulnerability and
+	// notice details, and for each component its match state,
+	// vulnerabilities and notices (replacing the previous ones; a notice
+	// link that stays keeps the time it was first made).
 	SaveMatches(ctx context.Context, b MatchBatch) error
 	// ResetMatches forgets the match states of the server's matches so that
 	// every component is matched again. Vulnerabilities stay until then.

@@ -2321,6 +2321,17 @@ type AssetList struct {
 	Total int            `json:"total"`
 }
 
+// AssetNotice defines model for AssetNotice.
+type AssetNotice struct {
+	Matches []NoticeMatch `json:"matches"`
+	Notice  Notice        `json:"notice"`
+}
+
+// AssetNoticeList defines model for AssetNoticeList.
+type AssetNoticeList struct {
+	Items []AssetNotice `json:"items"`
+}
+
 // AssetOs defines model for AssetOs.
 type AssetOs struct {
 	Arch string `json:"arch"`
@@ -3464,6 +3475,126 @@ type Meta struct {
 	Version      string   `json:"version"`
 }
 
+// Notice defines model for Notice.
+type Notice struct {
+	// AdvisoryIds Other ids (KVE-, vendor ids).
+	AdvisoryIds []string `json:"advisoryIds"`
+
+	// Assets Current assets in the scope with a matching component.
+	Assets int `json:"assets"`
+
+	// CveIds CVE ids printed in the notice.
+	CveIds []string `json:"cveIds"`
+
+	// FirstMatched The earliest time an asset started matching.
+	FirstMatched time.Time `json:"firstMatched"`
+
+	// LastMatched The latest time an asset started matching.
+	LastMatched time.Time `json:"lastMatched"`
+
+	// NewAssets Those of them that no read mark covers (never read in the asset's scope, or matching since after the mark).
+	NewAssets int `json:"newAssets"`
+
+	// NoticeId Source-prefixed id, for example `kisa-6219`.
+	NoticeId  string     `json:"noticeId"`
+	Published *time.Time `json:"published,omitempty"`
+
+	// ReadAt The latest read mark of the scopes of the matching assets. With `unread`, assets started matching after it.
+	ReadAt *time.Time `json:"readAt,omitempty"`
+	ReadBy *string    `json:"readBy,omitempty"`
+
+	// RelatedCveIds CVE ids the feed links to the notice (same software, published close to it) that the notice does not print.
+	RelatedCveIds []string         `json:"relatedCveIds"`
+	Software      []NoticeSoftware `json:"software"`
+
+	// Source `kisa`, `tmaxsoft`, ...
+	Source string `json:"source"`
+
+	// Summary Short English summary written by the feed; may be absent.
+	Summary *string `json:"summary,omitempty"`
+
+	// Title Original title.
+	Title string `json:"title"`
+
+	// Unread `newAssets` is not 0.
+	Unread bool `json:"unread"`
+
+	// Updated When the feed last changed the notice or its classification.
+	Updated *time.Time `json:"updated,omitempty"`
+
+	// Url Link to the original notice (http or https).
+	Url *string `json:"url,omitempty"`
+}
+
+// NoticeDetail defines model for NoticeDetail.
+type NoticeDetail struct {
+	// Matches By asset name.
+	Matches []NoticeMatch `json:"matches"`
+	Notice  Notice        `json:"notice"`
+}
+
+// NoticeIds defines model for NoticeIds.
+type NoticeIds struct {
+	Ids []string `json:"ids"`
+}
+
+// NoticeList defines model for NoticeList.
+type NoticeList struct {
+	Items []Notice `json:"items"`
+	Total int      `json:"total"`
+}
+
+// NoticeMatch defines model for NoticeMatch.
+type NoticeMatch struct {
+	AssetId          string    `json:"assetId"`
+	AssetKind        AssetKind `json:"assetKind"`
+	AssetName        string    `json:"assetName"`
+	ComponentId      string    `json:"componentId"`
+	ComponentName    string    `json:"componentName"`
+	ComponentType    string    `json:"componentType"`
+	ComponentVersion string    `json:"componentVersion"`
+
+	// Container Absent for the asset itself.
+	Container *string `json:"container,omitempty"`
+	Cpe       *string `json:"cpe,omitempty"`
+
+	// FirstSeen When the component started matching the notice here.
+	FirstSeen time.Time `json:"firstSeen"`
+	Locations []string  `json:"locations"`
+
+	// New No read mark covers the asset.
+	New  bool    `json:"new"`
+	Purl *string `json:"purl,omitempty"`
+}
+
+// NoticeSoftware defines model for NoticeSoftware.
+type NoticeSoftware struct {
+	// Affected Affected versions as printed; informational, not compared.
+	Affected   *string `json:"affected,omitempty"`
+	CpeProduct string  `json:"cpeProduct"`
+
+	// CpeVendor CPE vendor the feed matches components by.
+	CpeVendor string `json:"cpeVendor"`
+
+	// Fixed Fixed versions as printed; informational, not compared.
+	Fixed   *string `json:"fixed,omitempty"`
+	Product string  `json:"product"`
+
+	// Vendor As printed in the notice.
+	Vendor string `json:"vendor"`
+}
+
+// NoticeSummary defines model for NoticeSummary.
+type NoticeSummary struct {
+	Total  int `json:"total"`
+	Unread int `json:"unread"`
+}
+
+// NoticeUpdate defines model for NoticeUpdate.
+type NoticeUpdate struct {
+	Updated int `json:"updated"`
+}
+
 // PendingAnchor defines model for PendingAnchor.
 type PendingAnchor struct {
 	ExpiresAt  time.Time `json:"expiresAt"`
@@ -4367,6 +4498,9 @@ type PathDigest = string
 // PathId defines model for PathId.
 type PathId = string
 
+// PathNoticeId defines model for PathNoticeId.
+type PathNoticeId = string
+
 // QueryExposure `listening`: a process that loaded the component listens on a
 // non-loopback address. `running`: a process loaded it.
 // `installed`: no process did. `unknown`: the processes were not fully
@@ -4712,6 +4846,20 @@ type ListListenTargetsParams struct {
 // ListListenTargetsParamsSort defines parameters for ListListenTargets.
 type ListListenTargetsParamsSort string
 
+// ListNoticesParams defines parameters for ListNotices.
+type ListNoticesParams struct {
+	// Q Free-text search, case-insensitive substring match.
+	Q *QueryQ `form:"q,omitempty" json:"q,omitempty"`
+
+	// Source Keep the notices of this source (`kisa`, `tmaxsoft`).
+	Source *string `form:"source,omitempty" json:"source,omitempty"`
+
+	// IncludeRead Keep notices that are read.
+	IncludeRead *bool        `form:"includeRead,omitempty" json:"includeRead,omitempty"`
+	Limit       *QueryLimit  `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset      *QueryOffset `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
 // ListProcessesParams defines parameters for ListProcesses.
 type ListProcessesParams struct {
 	// Q Free-text search, case-insensitive substring match.
@@ -4911,6 +5059,12 @@ type CreateListenTargetJSONRequestBody = ListenTargetCreate
 // UpdateListenTargetJSONRequestBody defines body for UpdateListenTarget for application/json ContentType.
 type UpdateListenTargetJSONRequestBody = ListenTargetUpdate
 
+// MarkNoticesReadJSONRequestBody defines body for MarkNoticesRead for application/json ContentType.
+type MarkNoticesReadJSONRequestBody = NoticeIds
+
+// MarkNoticesUnreadJSONRequestBody defines body for MarkNoticesUnread for application/json ContentType.
+type MarkNoticesUnreadJSONRequestBody = NoticeIds
+
 // CreateRegisterKeyJSONRequestBody defines body for CreateRegisterKey for application/json ContentType.
 type CreateRegisterKeyJSONRequestBody = RegisterKeyCreate
 
@@ -5100,6 +5254,13 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /assets/{id}/integrity (the `GetAssetIntegrity` operationId).
 	GetAssetIntegrity(ctx context.Context, id PathId, params *GetAssetIntegrityParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListAssetNotices Notices that match components of an asset, read ones included
+	//
+	// Unread first, then the newest. `assets` and `newAssets` of each notice count this asset only.
+	//
+	// Corresponds with GET /assets/{id}/notices (the `ListAssetNotices` operationId).
+	ListAssetNotices(ctx context.Context, id PathId, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListAssetProcesses Processes of an asset
 	//
@@ -5557,6 +5718,77 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /meta (the `GetMeta` operationId).
 	GetMeta(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListNotices Security notices whose software is installed on an asset
+	//
+	// Notices (KISA, vendors) that the feed server matched to installed
+	// components by CPE vendor and product. Versions are not compared:
+	// the administrator decides whether a notice applies. A notice is
+	// never a vulnerability finding.
+	//
+	// Only notices that match a current asset in the request's scope are
+	// listed, with the counts of those assets. Read notices are left out
+	// unless `includeRead` is set; a read notice is unread again when an
+	// asset starts matching it after it was read (`newAssets`). Unread
+	// notices come first, then the newest. `q` matches the id, title,
+	// summary, the CVE and advisory ids and the software names.
+	//
+	// Corresponds with GET /notices (the `ListNotices` operationId).
+	ListNotices(ctx context.Context, params *ListNoticesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// MarkNoticesReadWithBody Mark notices read
+	//
+	// Marks each notice read for the data scopes of the matching assets
+	// the request sees, so that a mark never hides a notice from another
+	// scope. Ids the request does not see are ignored; `updated` counts
+	// the notices marked.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /notices/read (the `MarkNoticesRead` operationId).
+	MarkNoticesReadWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// MarkNoticesRead Mark notices read
+	//
+	// Marks each notice read for the data scopes of the matching assets
+	// the request sees, so that a mark never hides a notice from another
+	// scope. Ids the request does not see are ignored; `updated` counts
+	// the notices marked.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /notices/read (the `MarkNoticesRead` operationId).
+	MarkNoticesRead(ctx context.Context, body MarkNoticesReadJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetNoticeSummary How many notices match assets in the scope, and how many are unread
+	//
+	// Corresponds with GET /notices/summary (the `GetNoticeSummary` operationId).
+	GetNoticeSummary(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// MarkNoticesUnreadWithBody Mark notices unread
+	//
+	// Removes the read marks of the notices in the request's scope; `updated` counts the notices that had one.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /notices/unread (the `MarkNoticesUnread` operationId).
+	MarkNoticesUnreadWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// MarkNoticesUnread Mark notices unread
+	//
+	// Removes the read marks of the notices in the request's scope; `updated` counts the notices that had one.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /notices/unread (the `MarkNoticesUnread` operationId).
+	MarkNoticesUnread(ctx context.Context, body MarkNoticesUnreadJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetNotice One notice with the installed components it names
+	//
+	// `404` when no current asset in the scope matches it.
+	//
+	// Corresponds with GET /notices/{noticeId} (the `GetNotice` operationId).
+	GetNotice(ctx context.Context, noticeId PathNoticeId, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListProcesses Processes across all assets
 	//
@@ -6126,6 +6358,23 @@ func (c *Client) ListAssetInstances(ctx context.Context, id PathId, params *List
 // Corresponds with GET /assets/{id}/integrity (the `GetAssetIntegrity` operationId).
 func (c *Client) GetAssetIntegrity(ctx context.Context, id PathId, params *GetAssetIntegrityParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetAssetIntegrityRequest(c.Server, id, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListAssetNotices Notices that match components of an asset, read ones included
+//
+// Unread first, then the newest. `assets` and `newAssets` of each notice count this asset only.
+//
+// Corresponds with GET /assets/{id}/notices (the `ListAssetNotices` operationId).
+func (c *Client) ListAssetNotices(ctx context.Context, id PathId, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListAssetNoticesRequest(c.Server, id)
 	if err != nil {
 		return nil, err
 	}
@@ -7193,6 +7442,147 @@ func (c *Client) UpdateListenTarget(ctx context.Context, id PathId, body UpdateL
 // Corresponds with GET /meta (the `GetMeta` operationId).
 func (c *Client) GetMeta(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetMetaRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListNotices Security notices whose software is installed on an asset
+//
+// Notices (KISA, vendors) that the feed server matched to installed
+// components by CPE vendor and product. Versions are not compared:
+// the administrator decides whether a notice applies. A notice is
+// never a vulnerability finding.
+//
+// Only notices that match a current asset in the request's scope are
+// listed, with the counts of those assets. Read notices are left out
+// unless `includeRead` is set; a read notice is unread again when an
+// asset starts matching it after it was read (`newAssets`). Unread
+// notices come first, then the newest. `q` matches the id, title,
+// summary, the CVE and advisory ids and the software names.
+//
+// Corresponds with GET /notices (the `ListNotices` operationId).
+func (c *Client) ListNotices(ctx context.Context, params *ListNoticesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListNoticesRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// MarkNoticesReadWithBody Mark notices read
+//
+// Marks each notice read for the data scopes of the matching assets
+// the request sees, so that a mark never hides a notice from another
+// scope. Ids the request does not see are ignored; `updated` counts
+// the notices marked.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /notices/read (the `MarkNoticesRead` operationId).
+func (c *Client) MarkNoticesReadWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewMarkNoticesReadRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// MarkNoticesRead Mark notices read
+//
+// Marks each notice read for the data scopes of the matching assets
+// the request sees, so that a mark never hides a notice from another
+// scope. Ids the request does not see are ignored; `updated` counts
+// the notices marked.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /notices/read (the `MarkNoticesRead` operationId).
+func (c *Client) MarkNoticesRead(ctx context.Context, body MarkNoticesReadJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewMarkNoticesReadRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetNoticeSummary How many notices match assets in the scope, and how many are unread
+//
+// Corresponds with GET /notices/summary (the `GetNoticeSummary` operationId).
+func (c *Client) GetNoticeSummary(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetNoticeSummaryRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// MarkNoticesUnreadWithBody Mark notices unread
+//
+// Removes the read marks of the notices in the request's scope; `updated` counts the notices that had one.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /notices/unread (the `MarkNoticesUnread` operationId).
+func (c *Client) MarkNoticesUnreadWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewMarkNoticesUnreadRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// MarkNoticesUnread Mark notices unread
+//
+// Removes the read marks of the notices in the request's scope; `updated` counts the notices that had one.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /notices/unread (the `MarkNoticesUnread` operationId).
+func (c *Client) MarkNoticesUnread(ctx context.Context, body MarkNoticesUnreadJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewMarkNoticesUnreadRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetNotice One notice with the installed components it names
+//
+// `404` when no current asset in the scope matches it.
+//
+// Corresponds with GET /notices/{noticeId} (the `GetNotice` operationId).
+func (c *Client) GetNotice(ctx context.Context, noticeId PathNoticeId, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetNoticeRequest(c.Server, noticeId)
 	if err != nil {
 		return nil, err
 	}
@@ -8967,6 +9357,40 @@ func NewGetAssetIntegrityRequest(server string, id PathId, params *GetAssetInteg
 			rawQueryFragments = append(rawQueryFragments, encoded)
 		}
 		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListAssetNoticesRequest constructs an http.Request for the ListAssetNotices method
+func NewListAssetNoticesRequest(server string, id PathId) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/assets/%s/notices", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
 	}
 
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
@@ -11721,6 +12145,249 @@ func NewGetMetaRequest(server string) (*http.Request, error) {
 	return req, nil
 }
 
+// NewListNoticesRequest constructs an http.Request for the ListNotices method
+func NewListNoticesRequest(server string, params *ListNoticesParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/notices")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Q != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "q", *params.Q, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Source != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "source", *params.Source, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.IncludeRead != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "includeRead", *params.IncludeRead, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "boolean", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Offset != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "offset", *params.Offset, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewMarkNoticesReadRequest calls the generic MarkNoticesRead builder with application/json body
+func NewMarkNoticesReadRequest(server string, body MarkNoticesReadJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewMarkNoticesReadRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewMarkNoticesReadRequestWithBody constructs an http.Request for the MarkNoticesRead method, with any body, and a specified content type
+func NewMarkNoticesReadRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/notices/read")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetNoticeSummaryRequest constructs an http.Request for the GetNoticeSummary method
+func NewGetNoticeSummaryRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/notices/summary")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewMarkNoticesUnreadRequest calls the generic MarkNoticesUnread builder with application/json body
+func NewMarkNoticesUnreadRequest(server string, body MarkNoticesUnreadJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewMarkNoticesUnreadRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewMarkNoticesUnreadRequestWithBody constructs an http.Request for the MarkNoticesUnread method, with any body, and a specified content type
+func NewMarkNoticesUnreadRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/notices/unread")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetNoticeRequest constructs an http.Request for the GetNotice method
+func NewGetNoticeRequest(server string, noticeId PathNoticeId) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "noticeId", noticeId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/notices/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewListProcessesRequest constructs an http.Request for the ListProcesses method
 func NewListProcessesRequest(server string, params *ListProcessesParams) (*http.Request, error) {
 	var err error
@@ -13800,6 +14467,15 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /assets/{id}/integrity (the `GetAssetIntegrity` operationId).
 	GetAssetIntegrityWithResponse(ctx context.Context, id PathId, params *GetAssetIntegrityParams, reqEditors ...RequestEditorFn) (*GetAssetIntegrityResponse, error)
 
+	// ListAssetNoticesWithResponse Notices that match components of an asset, read ones included
+	//
+	// Unread first, then the newest. `assets` and `newAssets` of each notice count this asset only.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /assets/{id}/notices (the `ListAssetNotices` operationId).
+	ListAssetNoticesWithResponse(ctx context.Context, id PathId, reqEditors ...RequestEditorFn) (*ListAssetNoticesResponse, error)
+
 	// ListAssetProcessesWithResponse Processes of an asset
 	//
 	// `q` matches executable path, user, command line and pid.
@@ -14326,6 +15002,83 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /meta (the `GetMeta` operationId).
 	GetMetaWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetMetaResponse, error)
+
+	// ListNoticesWithResponse Security notices whose software is installed on an asset
+	//
+	// Notices (KISA, vendors) that the feed server matched to installed
+	// components by CPE vendor and product. Versions are not compared:
+	// the administrator decides whether a notice applies. A notice is
+	// never a vulnerability finding.
+	//
+	// Only notices that match a current asset in the request's scope are
+	// listed, with the counts of those assets. Read notices are left out
+	// unless `includeRead` is set; a read notice is unread again when an
+	// asset starts matching it after it was read (`newAssets`). Unread
+	// notices come first, then the newest. `q` matches the id, title,
+	// summary, the CVE and advisory ids and the software names.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /notices (the `ListNotices` operationId).
+	ListNoticesWithResponse(ctx context.Context, params *ListNoticesParams, reqEditors ...RequestEditorFn) (*ListNoticesResponse, error)
+
+	// MarkNoticesReadWithBodyWithResponse Mark notices read
+	//
+	// Marks each notice read for the data scopes of the matching assets
+	// the request sees, so that a mark never hides a notice from another
+	// scope. Ids the request does not see are ignored; `updated` counts
+	// the notices marked.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /notices/read (the `MarkNoticesRead` operationId).
+	MarkNoticesReadWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*MarkNoticesReadResponse, error)
+
+	// MarkNoticesReadWithResponse Mark notices read
+	//
+	// Marks each notice read for the data scopes of the matching assets
+	// the request sees, so that a mark never hides a notice from another
+	// scope. Ids the request does not see are ignored; `updated` counts
+	// the notices marked.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /notices/read (the `MarkNoticesRead` operationId).
+	MarkNoticesReadWithResponse(ctx context.Context, body MarkNoticesReadJSONRequestBody, reqEditors ...RequestEditorFn) (*MarkNoticesReadResponse, error)
+
+	// GetNoticeSummaryWithResponse How many notices match assets in the scope, and how many are unread
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /notices/summary (the `GetNoticeSummary` operationId).
+	GetNoticeSummaryWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetNoticeSummaryResponse, error)
+
+	// MarkNoticesUnreadWithBodyWithResponse Mark notices unread
+	//
+	// Removes the read marks of the notices in the request's scope; `updated` counts the notices that had one.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /notices/unread (the `MarkNoticesUnread` operationId).
+	MarkNoticesUnreadWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*MarkNoticesUnreadResponse, error)
+
+	// MarkNoticesUnreadWithResponse Mark notices unread
+	//
+	// Removes the read marks of the notices in the request's scope; `updated` counts the notices that had one.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /notices/unread (the `MarkNoticesUnread` operationId).
+	MarkNoticesUnreadWithResponse(ctx context.Context, body MarkNoticesUnreadJSONRequestBody, reqEditors ...RequestEditorFn) (*MarkNoticesUnreadResponse, error)
+
+	// GetNoticeWithResponse One notice with the installed components it names
+	//
+	// `404` when no current asset in the scope matches it.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /notices/{noticeId} (the `GetNotice` operationId).
+	GetNoticeWithResponse(ctx context.Context, noticeId PathNoticeId, reqEditors ...RequestEditorFn) (*GetNoticeResponse, error)
 
 	// ListProcessesWithResponse Processes across all assets
 	//
@@ -15514,6 +16267,68 @@ func (r GetAssetIntegrityResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r GetAssetIntegrityResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListAssetNoticesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *AssetNoticeList
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *UnexpectedError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListAssetNoticesResponse) GetJSON200() *AssetNoticeList {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ListAssetNoticesResponse) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r ListAssetNoticesResponse) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r ListAssetNoticesResponse) GetJSONDefault() *UnexpectedError {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ListAssetNoticesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListAssetNoticesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListAssetNoticesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListAssetNoticesResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -18601,6 +19416,323 @@ func (r GetMetaResponse) ContentType() string {
 	return ""
 }
 
+type ListNoticesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *NoticeList
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *BadRequest
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *UnexpectedError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListNoticesResponse) GetJSON200() *NoticeList {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r ListNoticesResponse) GetJSON400() *BadRequest {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ListNoticesResponse) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r ListNoticesResponse) GetJSONDefault() *UnexpectedError {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ListNoticesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListNoticesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListNoticesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListNoticesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type MarkNoticesReadResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *NoticeUpdate
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *BadRequest
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Forbidden
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *UnexpectedError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r MarkNoticesReadResponse) GetJSON200() *NoticeUpdate {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r MarkNoticesReadResponse) GetJSON400() *BadRequest {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r MarkNoticesReadResponse) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r MarkNoticesReadResponse) GetJSON403() *Forbidden {
+	return r.JSON403
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r MarkNoticesReadResponse) GetJSONDefault() *UnexpectedError {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r MarkNoticesReadResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r MarkNoticesReadResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r MarkNoticesReadResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r MarkNoticesReadResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetNoticeSummaryResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *NoticeSummary
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *UnexpectedError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetNoticeSummaryResponse) GetJSON200() *NoticeSummary {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetNoticeSummaryResponse) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r GetNoticeSummaryResponse) GetJSONDefault() *UnexpectedError {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetNoticeSummaryResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetNoticeSummaryResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetNoticeSummaryResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetNoticeSummaryResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type MarkNoticesUnreadResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *NoticeUpdate
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *BadRequest
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Forbidden
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *UnexpectedError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r MarkNoticesUnreadResponse) GetJSON200() *NoticeUpdate {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r MarkNoticesUnreadResponse) GetJSON400() *BadRequest {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r MarkNoticesUnreadResponse) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r MarkNoticesUnreadResponse) GetJSON403() *Forbidden {
+	return r.JSON403
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r MarkNoticesUnreadResponse) GetJSONDefault() *UnexpectedError {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r MarkNoticesUnreadResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r MarkNoticesUnreadResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r MarkNoticesUnreadResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r MarkNoticesUnreadResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetNoticeResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *NoticeDetail
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *UnexpectedError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetNoticeResponse) GetJSON200() *NoticeDetail {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetNoticeResponse) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetNoticeResponse) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r GetNoticeResponse) GetJSONDefault() *UnexpectedError {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetNoticeResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetNoticeResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetNoticeResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetNoticeResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type ListProcessesResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -20878,6 +22010,21 @@ func (c *ClientWithResponses) GetAssetIntegrityWithResponse(ctx context.Context,
 	return ParseGetAssetIntegrityResponse(rsp)
 }
 
+// ListAssetNoticesWithResponse Notices that match components of an asset, read ones included
+//
+// Unread first, then the newest. `assets` and `newAssets` of each notice count this asset only.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /assets/{id}/notices (the `ListAssetNotices` operationId).
+func (c *ClientWithResponses) ListAssetNoticesWithResponse(ctx context.Context, id PathId, reqEditors ...RequestEditorFn) (*ListAssetNoticesResponse, error) {
+	rsp, err := c.ListAssetNotices(ctx, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListAssetNoticesResponse(rsp)
+}
+
 // ListAssetProcessesWithResponse Processes of an asset
 //
 // `q` matches executable path, user, command line and pid.
@@ -21769,6 +22916,125 @@ func (c *ClientWithResponses) GetMetaWithResponse(ctx context.Context, reqEditor
 		return nil, err
 	}
 	return ParseGetMetaResponse(rsp)
+}
+
+// ListNoticesWithResponse Security notices whose software is installed on an asset
+//
+// Notices (KISA, vendors) that the feed server matched to installed
+// components by CPE vendor and product. Versions are not compared:
+// the administrator decides whether a notice applies. A notice is
+// never a vulnerability finding.
+//
+// Only notices that match a current asset in the request's scope are
+// listed, with the counts of those assets. Read notices are left out
+// unless `includeRead` is set; a read notice is unread again when an
+// asset starts matching it after it was read (`newAssets`). Unread
+// notices come first, then the newest. `q` matches the id, title,
+// summary, the CVE and advisory ids and the software names.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /notices (the `ListNotices` operationId).
+func (c *ClientWithResponses) ListNoticesWithResponse(ctx context.Context, params *ListNoticesParams, reqEditors ...RequestEditorFn) (*ListNoticesResponse, error) {
+	rsp, err := c.ListNotices(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListNoticesResponse(rsp)
+}
+
+// MarkNoticesReadWithBodyWithResponse Mark notices read
+//
+// Marks each notice read for the data scopes of the matching assets
+// the request sees, so that a mark never hides a notice from another
+// scope. Ids the request does not see are ignored; `updated` counts
+// the notices marked.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /notices/read (the `MarkNoticesRead` operationId).
+func (c *ClientWithResponses) MarkNoticesReadWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*MarkNoticesReadResponse, error) {
+	rsp, err := c.MarkNoticesReadWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseMarkNoticesReadResponse(rsp)
+}
+
+// MarkNoticesReadWithResponse Mark notices read
+//
+// Marks each notice read for the data scopes of the matching assets
+// the request sees, so that a mark never hides a notice from another
+// scope. Ids the request does not see are ignored; `updated` counts
+// the notices marked.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /notices/read (the `MarkNoticesRead` operationId).
+func (c *ClientWithResponses) MarkNoticesReadWithResponse(ctx context.Context, body MarkNoticesReadJSONRequestBody, reqEditors ...RequestEditorFn) (*MarkNoticesReadResponse, error) {
+	rsp, err := c.MarkNoticesRead(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseMarkNoticesReadResponse(rsp)
+}
+
+// GetNoticeSummaryWithResponse How many notices match assets in the scope, and how many are unread
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /notices/summary (the `GetNoticeSummary` operationId).
+func (c *ClientWithResponses) GetNoticeSummaryWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetNoticeSummaryResponse, error) {
+	rsp, err := c.GetNoticeSummary(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetNoticeSummaryResponse(rsp)
+}
+
+// MarkNoticesUnreadWithBodyWithResponse Mark notices unread
+//
+// Removes the read marks of the notices in the request's scope; `updated` counts the notices that had one.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /notices/unread (the `MarkNoticesUnread` operationId).
+func (c *ClientWithResponses) MarkNoticesUnreadWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*MarkNoticesUnreadResponse, error) {
+	rsp, err := c.MarkNoticesUnreadWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseMarkNoticesUnreadResponse(rsp)
+}
+
+// MarkNoticesUnreadWithResponse Mark notices unread
+//
+// Removes the read marks of the notices in the request's scope; `updated` counts the notices that had one.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /notices/unread (the `MarkNoticesUnread` operationId).
+func (c *ClientWithResponses) MarkNoticesUnreadWithResponse(ctx context.Context, body MarkNoticesUnreadJSONRequestBody, reqEditors ...RequestEditorFn) (*MarkNoticesUnreadResponse, error) {
+	rsp, err := c.MarkNoticesUnread(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseMarkNoticesUnreadResponse(rsp)
+}
+
+// GetNoticeWithResponse One notice with the installed components it names
+//
+// `404` when no current asset in the scope matches it.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /notices/{noticeId} (the `GetNotice` operationId).
+func (c *ClientWithResponses) GetNoticeWithResponse(ctx context.Context, noticeId PathNoticeId, reqEditors ...RequestEditorFn) (*GetNoticeResponse, error) {
+	rsp, err := c.GetNotice(ctx, noticeId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetNoticeResponse(rsp)
 }
 
 // ListProcessesWithResponse Processes across all assets
@@ -22998,6 +24264,53 @@ func ParseGetAssetIntegrityResponse(rsp *http.Response) (*GetAssetIntegrityRespo
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest AssetIntegrity
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest UnexpectedError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListAssetNoticesResponse parses an HTTP response from a ListAssetNoticesWithResponse call
+func ParseListAssetNoticesResponse(rsp *http.Response) (*ListAssetNoticesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListAssetNoticesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AssetNoticeList
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -25432,6 +26745,248 @@ func ParseGetMetaResponse(rsp *http.Response) (*GetMetaResponse, error) {
 	return response, nil
 }
 
+// ParseListNoticesResponse parses an HTTP response from a ListNoticesWithResponse call
+func ParseListNoticesResponse(rsp *http.Response) (*ListNoticesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListNoticesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest NoticeList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest UnexpectedError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseMarkNoticesReadResponse parses an HTTP response from a MarkNoticesReadWithResponse call
+func ParseMarkNoticesReadResponse(rsp *http.Response) (*MarkNoticesReadResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &MarkNoticesReadResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest NoticeUpdate
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest UnexpectedError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetNoticeSummaryResponse parses an HTTP response from a GetNoticeSummaryWithResponse call
+func ParseGetNoticeSummaryResponse(rsp *http.Response) (*GetNoticeSummaryResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetNoticeSummaryResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest NoticeSummary
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest UnexpectedError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseMarkNoticesUnreadResponse parses an HTTP response from a MarkNoticesUnreadWithResponse call
+func ParseMarkNoticesUnreadResponse(rsp *http.Response) (*MarkNoticesUnreadResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &MarkNoticesUnreadResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest NoticeUpdate
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest UnexpectedError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetNoticeResponse parses an HTTP response from a GetNoticeWithResponse call
+func ParseGetNoticeResponse(rsp *http.Response) (*GetNoticeResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetNoticeResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest NoticeDetail
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest UnexpectedError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseListProcessesResponse parses an HTTP response from a ListProcessesWithResponse call
 func ParseListProcessesResponse(rsp *http.Response) (*ListProcessesResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -27075,6 +28630,9 @@ type ServerInterface interface {
 	// GetAssetIntegrity File integrity of one asset
 	// (GET /assets/{id}/integrity)
 	GetAssetIntegrity(w http.ResponseWriter, r *http.Request, id PathId, params GetAssetIntegrityParams)
+	// ListAssetNotices Notices that match components of an asset, read ones included
+	// (GET /assets/{id}/notices)
+	ListAssetNotices(w http.ResponseWriter, r *http.Request, id PathId)
 	// ListAssetProcesses Processes of an asset
 	// (GET /assets/{id}/processes)
 	ListAssetProcesses(w http.ResponseWriter, r *http.Request, id PathId, params ListAssetProcessesParams)
@@ -27219,6 +28777,21 @@ type ServerInterface interface {
 	// GetMeta Server version and enabled features
 	// (GET /meta)
 	GetMeta(w http.ResponseWriter, r *http.Request)
+	// ListNotices Security notices whose software is installed on an asset
+	// (GET /notices)
+	ListNotices(w http.ResponseWriter, r *http.Request, params ListNoticesParams)
+	// MarkNoticesRead Mark notices read
+	// (POST /notices/read)
+	MarkNoticesRead(w http.ResponseWriter, r *http.Request)
+	// GetNoticeSummary How many notices match assets in the scope, and how many are unread
+	// (GET /notices/summary)
+	GetNoticeSummary(w http.ResponseWriter, r *http.Request)
+	// MarkNoticesUnread Mark notices unread
+	// (POST /notices/unread)
+	MarkNoticesUnread(w http.ResponseWriter, r *http.Request)
+	// GetNotice One notice with the installed components it names
+	// (GET /notices/{noticeId})
+	GetNotice(w http.ResponseWriter, r *http.Request, noticeId PathNoticeId)
 	// ListProcesses Processes across all assets
 	// (GET /processes)
 	ListProcesses(w http.ResponseWriter, r *http.Request, params ListProcessesParams)
@@ -27393,6 +28966,12 @@ func (_ Unimplemented) ListAssetInstances(w http.ResponseWriter, r *http.Request
 // GetAssetIntegrity File integrity of one asset
 // (GET /assets/{id}/integrity)
 func (_ Unimplemented) GetAssetIntegrity(w http.ResponseWriter, r *http.Request, id PathId, params GetAssetIntegrityParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListAssetNotices Notices that match components of an asset, read ones included
+// (GET /assets/{id}/notices)
+func (_ Unimplemented) ListAssetNotices(w http.ResponseWriter, r *http.Request, id PathId) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -27681,6 +29260,36 @@ func (_ Unimplemented) UpdateListenTarget(w http.ResponseWriter, r *http.Request
 // GetMeta Server version and enabled features
 // (GET /meta)
 func (_ Unimplemented) GetMeta(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListNotices Security notices whose software is installed on an asset
+// (GET /notices)
+func (_ Unimplemented) ListNotices(w http.ResponseWriter, r *http.Request, params ListNoticesParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// MarkNoticesRead Mark notices read
+// (POST /notices/read)
+func (_ Unimplemented) MarkNoticesRead(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetNoticeSummary How many notices match assets in the scope, and how many are unread
+// (GET /notices/summary)
+func (_ Unimplemented) GetNoticeSummary(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// MarkNoticesUnread Mark notices unread
+// (POST /notices/unread)
+func (_ Unimplemented) MarkNoticesUnread(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetNotice One notice with the installed components it names
+// (GET /notices/{noticeId})
+func (_ Unimplemented) GetNotice(w http.ResponseWriter, r *http.Request, noticeId PathNoticeId) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -28744,6 +30353,32 @@ func (siw *ServerInterfaceWrapper) GetAssetIntegrity(w http.ResponseWriter, r *h
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetAssetIntegrity(w, r, id, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListAssetNotices operation middleware
+func (siw *ServerInterfaceWrapper) ListAssetNotices(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id PathId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListAssetNotices(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -30780,6 +32415,159 @@ func (siw *ServerInterfaceWrapper) GetMeta(w http.ResponseWriter, r *http.Reques
 	handler.ServeHTTP(w, r)
 }
 
+// ListNotices operation middleware
+func (siw *ServerInterfaceWrapper) ListNotices(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListNoticesParams
+
+	// ------------- Optional query parameter "q" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "q", r.URL.Query(), &params.Q, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "q"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "q", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "source" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "source", r.URL.Query(), &params.Source, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "source"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "source", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "includeRead" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "includeRead", r.URL.Query(), &params.IncludeRead, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "includeRead"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "includeRead", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "offset" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "offset", r.URL.Query(), &params.Offset, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "offset"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "offset", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListNotices(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// MarkNoticesRead operation middleware
+func (siw *ServerInterfaceWrapper) MarkNoticesRead(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.MarkNoticesRead(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetNoticeSummary operation middleware
+func (siw *ServerInterfaceWrapper) GetNoticeSummary(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetNoticeSummary(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// MarkNoticesUnread operation middleware
+func (siw *ServerInterfaceWrapper) MarkNoticesUnread(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.MarkNoticesUnread(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetNotice operation middleware
+func (siw *ServerInterfaceWrapper) GetNotice(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "noticeId" -------------
+	var noticeId PathNoticeId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "noticeId", chi.URLParam(r, "noticeId"), &noticeId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "noticeId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetNotice(w, r, noticeId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListProcesses operation middleware
 func (siw *ServerInterfaceWrapper) ListProcesses(w http.ResponseWriter, r *http.Request) {
 
@@ -32545,6 +34333,24 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Get(options.BaseURL+"/triage-events", wrapper.ListTriageEvents)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/notices", wrapper.ListNotices)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/notices/summary", wrapper.GetNoticeSummary)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/notices/{noticeId}", wrapper.GetNotice)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/notices/read", wrapper.MarkNoticesRead)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/notices/unread", wrapper.MarkNoticesUnread)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/assets/{id}/notices", wrapper.ListAssetNotices)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/vex", wrapper.ExportVex)
 	})
 	r.Group(func(r chi.Router) {
@@ -33482,6 +35288,73 @@ type GetAssetIntegritydefaultJSONResponse struct {
 }
 
 func (response GetAssetIntegritydefaultJSONResponse) VisitGetAssetIntegrityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAssetNoticesRequestObject struct {
+	Id PathId `json:"id"`
+}
+
+type ListAssetNoticesResponseObject interface {
+	VisitListAssetNoticesResponse(w http.ResponseWriter) error
+}
+
+type ListAssetNotices200JSONResponse AssetNoticeList
+
+func (response ListAssetNotices200JSONResponse) VisitListAssetNoticesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAssetNotices401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response ListAssetNotices401JSONResponse) VisitListAssetNoticesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAssetNotices404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ListAssetNotices404JSONResponse) VisitListAssetNoticesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAssetNoticesdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ListAssetNoticesdefaultJSONResponse) VisitListAssetNoticesResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -36972,6 +38845,354 @@ func (response GetMetadefaultJSONResponse) VisitGetMetaResponse(w http.ResponseW
 	return err
 }
 
+type ListNoticesRequestObject struct {
+	Params ListNoticesParams
+}
+
+type ListNoticesResponseObject interface {
+	VisitListNoticesResponse(w http.ResponseWriter) error
+}
+
+type ListNotices200JSONResponse NoticeList
+
+func (response ListNotices200JSONResponse) VisitListNoticesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListNotices400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response ListNotices400JSONResponse) VisitListNoticesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListNotices401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response ListNotices401JSONResponse) VisitListNoticesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListNoticesdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ListNoticesdefaultJSONResponse) VisitListNoticesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MarkNoticesReadRequestObject struct {
+	Body *MarkNoticesReadJSONRequestBody
+}
+
+type MarkNoticesReadResponseObject interface {
+	VisitMarkNoticesReadResponse(w http.ResponseWriter) error
+}
+
+type MarkNoticesRead200JSONResponse NoticeUpdate
+
+func (response MarkNoticesRead200JSONResponse) VisitMarkNoticesReadResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MarkNoticesRead400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response MarkNoticesRead400JSONResponse) VisitMarkNoticesReadResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MarkNoticesRead401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response MarkNoticesRead401JSONResponse) VisitMarkNoticesReadResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MarkNoticesRead403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response MarkNoticesRead403JSONResponse) VisitMarkNoticesReadResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MarkNoticesReaddefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response MarkNoticesReaddefaultJSONResponse) VisitMarkNoticesReadResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetNoticeSummaryRequestObject struct {
+}
+
+type GetNoticeSummaryResponseObject interface {
+	VisitGetNoticeSummaryResponse(w http.ResponseWriter) error
+}
+
+type GetNoticeSummary200JSONResponse NoticeSummary
+
+func (response GetNoticeSummary200JSONResponse) VisitGetNoticeSummaryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetNoticeSummary401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response GetNoticeSummary401JSONResponse) VisitGetNoticeSummaryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetNoticeSummarydefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetNoticeSummarydefaultJSONResponse) VisitGetNoticeSummaryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MarkNoticesUnreadRequestObject struct {
+	Body *MarkNoticesUnreadJSONRequestBody
+}
+
+type MarkNoticesUnreadResponseObject interface {
+	VisitMarkNoticesUnreadResponse(w http.ResponseWriter) error
+}
+
+type MarkNoticesUnread200JSONResponse NoticeUpdate
+
+func (response MarkNoticesUnread200JSONResponse) VisitMarkNoticesUnreadResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MarkNoticesUnread400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response MarkNoticesUnread400JSONResponse) VisitMarkNoticesUnreadResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MarkNoticesUnread401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response MarkNoticesUnread401JSONResponse) VisitMarkNoticesUnreadResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MarkNoticesUnread403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response MarkNoticesUnread403JSONResponse) VisitMarkNoticesUnreadResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MarkNoticesUnreaddefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response MarkNoticesUnreaddefaultJSONResponse) VisitMarkNoticesUnreadResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetNoticeRequestObject struct {
+	NoticeId PathNoticeId `json:"noticeId"`
+}
+
+type GetNoticeResponseObject interface {
+	VisitGetNoticeResponse(w http.ResponseWriter) error
+}
+
+type GetNotice200JSONResponse NoticeDetail
+
+func (response GetNotice200JSONResponse) VisitGetNoticeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetNotice401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response GetNotice401JSONResponse) VisitGetNoticeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetNotice404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetNotice404JSONResponse) VisitGetNoticeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetNoticedefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetNoticedefaultJSONResponse) VisitGetNoticeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListProcessesRequestObject struct {
 	Params ListProcessesParams
 }
@@ -39314,6 +41535,9 @@ type StrictServerInterface interface {
 	// GetAssetIntegrity File integrity of one asset
 	// (GET /assets/{id}/integrity)
 	GetAssetIntegrity(ctx context.Context, request GetAssetIntegrityRequestObject) (GetAssetIntegrityResponseObject, error)
+	// ListAssetNotices Notices that match components of an asset, read ones included
+	// (GET /assets/{id}/notices)
+	ListAssetNotices(ctx context.Context, request ListAssetNoticesRequestObject) (ListAssetNoticesResponseObject, error)
 	// ListAssetProcesses Processes of an asset
 	// (GET /assets/{id}/processes)
 	ListAssetProcesses(ctx context.Context, request ListAssetProcessesRequestObject) (ListAssetProcessesResponseObject, error)
@@ -39458,6 +41682,21 @@ type StrictServerInterface interface {
 	// GetMeta Server version and enabled features
 	// (GET /meta)
 	GetMeta(ctx context.Context, request GetMetaRequestObject) (GetMetaResponseObject, error)
+	// ListNotices Security notices whose software is installed on an asset
+	// (GET /notices)
+	ListNotices(ctx context.Context, request ListNoticesRequestObject) (ListNoticesResponseObject, error)
+	// MarkNoticesRead Mark notices read
+	// (POST /notices/read)
+	MarkNoticesRead(ctx context.Context, request MarkNoticesReadRequestObject) (MarkNoticesReadResponseObject, error)
+	// GetNoticeSummary How many notices match assets in the scope, and how many are unread
+	// (GET /notices/summary)
+	GetNoticeSummary(ctx context.Context, request GetNoticeSummaryRequestObject) (GetNoticeSummaryResponseObject, error)
+	// MarkNoticesUnread Mark notices unread
+	// (POST /notices/unread)
+	MarkNoticesUnread(ctx context.Context, request MarkNoticesUnreadRequestObject) (MarkNoticesUnreadResponseObject, error)
+	// GetNotice One notice with the installed components it names
+	// (GET /notices/{noticeId})
+	GetNotice(ctx context.Context, request GetNoticeRequestObject) (GetNoticeResponseObject, error)
 	// ListProcesses Processes across all assets
 	// (GET /processes)
 	ListProcesses(ctx context.Context, request ListProcessesRequestObject) (ListProcessesResponseObject, error)
@@ -39913,6 +42152,32 @@ func (sh *strictHandler) GetAssetIntegrity(w http.ResponseWriter, r *http.Reques
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetAssetIntegrityResponseObject); ok {
 		if err := validResponse.VisitGetAssetIntegrityResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListAssetNotices operation middleware
+func (sh *strictHandler) ListAssetNotices(w http.ResponseWriter, r *http.Request, id PathId) {
+	var request ListAssetNoticesRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListAssetNotices(ctx, request.(ListAssetNoticesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListAssetNotices")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListAssetNoticesResponseObject); ok {
+		if err := validResponse.VisitListAssetNoticesResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -41226,6 +43491,144 @@ func (sh *strictHandler) GetMeta(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetMetaResponseObject); ok {
 		if err := validResponse.VisitGetMetaResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListNotices operation middleware
+func (sh *strictHandler) ListNotices(w http.ResponseWriter, r *http.Request, params ListNoticesParams) {
+	var request ListNoticesRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListNotices(ctx, request.(ListNoticesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListNotices")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListNoticesResponseObject); ok {
+		if err := validResponse.VisitListNoticesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// MarkNoticesRead operation middleware
+func (sh *strictHandler) MarkNoticesRead(w http.ResponseWriter, r *http.Request) {
+	var request MarkNoticesReadRequestObject
+
+	var body MarkNoticesReadJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.MarkNoticesRead(ctx, request.(MarkNoticesReadRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "MarkNoticesRead")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(MarkNoticesReadResponseObject); ok {
+		if err := validResponse.VisitMarkNoticesReadResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetNoticeSummary operation middleware
+func (sh *strictHandler) GetNoticeSummary(w http.ResponseWriter, r *http.Request) {
+	var request GetNoticeSummaryRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetNoticeSummary(ctx, request.(GetNoticeSummaryRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetNoticeSummary")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetNoticeSummaryResponseObject); ok {
+		if err := validResponse.VisitGetNoticeSummaryResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// MarkNoticesUnread operation middleware
+func (sh *strictHandler) MarkNoticesUnread(w http.ResponseWriter, r *http.Request) {
+	var request MarkNoticesUnreadRequestObject
+
+	var body MarkNoticesUnreadJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.MarkNoticesUnread(ctx, request.(MarkNoticesUnreadRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "MarkNoticesUnread")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(MarkNoticesUnreadResponseObject); ok {
+		if err := validResponse.VisitMarkNoticesUnreadResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetNotice operation middleware
+func (sh *strictHandler) GetNotice(w http.ResponseWriter, r *http.Request, noticeId PathNoticeId) {
+	var request GetNoticeRequestObject
+
+	request.NoticeId = noticeId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetNotice(ctx, request.(GetNoticeRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetNotice")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetNoticeResponseObject); ok {
+		if err := validResponse.VisitGetNoticeResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

@@ -52,6 +52,9 @@ type matchResult struct {
 	} `json:"data"`
 	Targets         []targetResult           `json:"targets"`
 	Vulnerabilities map[string]vulnerability `json:"vulnerabilities"`
+	// Notices describes the notices components reference; servers
+	// before notices leave it out.
+	Notices []notice `json:"notices"`
 }
 
 type targetResult struct {
@@ -66,6 +69,9 @@ type componentResult struct {
 	Status  string  `json:"status"`
 	Reason  string  `json:"reason"`
 	Matches []match `json:"matches"`
+	// Notices are the ids of the notices whose software matches the
+	// component.
+	Notices []string `json:"notices"`
 }
 
 type match struct {
@@ -187,6 +193,8 @@ func convert(res *matchResult, comps []store.Component, epoch store.MatchEpoch, 
 	}
 	b := store.MatchBatch{Epoch: epoch, At: at}
 	used := map[string]bool{}
+	notices := noticesByID(res.Notices)
+	usedNotices := map[string]bool{}
 	for _, t := range res.Targets {
 		for _, cr := range t.Components {
 			if !sent[cr.Ref] {
@@ -215,6 +223,7 @@ func convert(res *matchResult, comps []store.Component, epoch store.MatchEpoch, 
 				}
 				cm.Vulns = append(cm.Vulns, cv)
 			}
+			cm.Notices = noticeRefs(cr.Notices, notices, usedNotices)
 			b.Components = append(b.Components, cm)
 		}
 	}
@@ -223,6 +232,9 @@ func convert(res *matchResult, comps []store.Component, epoch store.MatchEpoch, 
 	}
 	for id := range used {
 		b.Vulns = append(b.Vulns, vulnMeta(id, res.Vulnerabilities[id]))
+	}
+	for id := range usedNotices {
+		b.Notices = append(b.Notices, notices[id])
 	}
 	return b, nil
 }

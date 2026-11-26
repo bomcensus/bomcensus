@@ -197,6 +197,9 @@ func (d *DB) SaveMatches(ctx context.Context, b store.MatchBatch) error {
 		if err != nil {
 			return mgErr("save component matches", err)
 		}
+		if err := tx.ntSave(ctx, b, ids, at); err != nil {
+			return err
+		}
 		return tx.markVulnsChanged(ctx, changed)
 	})
 }

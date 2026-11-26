@@ -31,6 +31,7 @@ type Store interface {
 	store.K8sClusters
 	store.AssetRequests
 	store.VulnQuery
+	store.Notices
 	store.Triage
 	store.Integrity
 	GetActiveFeedServer(ctx context.Context) (store.FeedServer, error)

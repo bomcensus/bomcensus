@@ -29,6 +29,7 @@ type Store interface {
 	Inventory
 	Manage
 	Vulns
+	Notices
 	Findings
 	Triage
 	GoSymbols

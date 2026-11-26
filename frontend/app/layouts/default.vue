@@ -6,7 +6,7 @@
 
 <script setup lang="ts">
 import type { Component as VueComponent } from 'vue'
-import { logout } from '~/api'
+import { getNoticeSummary, logout } from '~/api'
 import {
   Activity,
   Boxes,
@@ -16,6 +16,7 @@ import {
   KeyRound,
   LayoutDashboard,
   LogOut,
+  Megaphone,
   Menu,
   Moon,
   Network,
@@ -50,6 +51,7 @@ const nav: { title?: string; items: NavItem[] }[] = [
     title: '위험',
     items: [
       { to: '/vulnerabilities', label: '취약점', icon: ShieldAlert },
+      { to: '/notices', label: '보안 공지', icon: Megaphone },
       { to: '/processes', label: '프로세스', icon: Activity },
       { to: '/integrity', label: '파일 무결성', icon: FileCheck },
     ],
@@ -69,6 +71,14 @@ const nav: { title?: string; items: NavItem[] }[] = [
 const route = useRoute()
 const meta = useMeta()
 const user = useCurrentUser()
+
+// Unread security notices, shown next to the menu item; reloaded on navigation.
+const { data: noticeSummary, refresh: refreshNoticeSummary } = useLoad('notices:summary', getNoticeSummary)
+watch(
+  () => route.path,
+  () => refreshNoticeSummary(),
+)
+const navCount = computed<Record<string, number | undefined>>(() => ({ '/notices': noticeSummary.value?.unread || undefined }))
 
 async function signOut() {
   try {
@@ -131,6 +141,7 @@ function toggleTheme() {
           >
             <component :is="item.icon" :size="15" aria-hidden="true" />
             {{ item.label }}
+            <span v-if="navCount[item.to]" class="mono ml-auto rounded-sm bg-accent-soft px-1 text-2xs leading-4 text-accent">{{ navCount[item.to] }}</span>
           </NuxtLink>
         </div>
       </nav>

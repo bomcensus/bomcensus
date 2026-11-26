@@ -2096,6 +2096,153 @@ export type TriageEventList = {
     items: Array<TriageEvent>;
 };
 
+export type NoticeSoftware = {
+    /**
+     * As printed in the notice.
+     */
+    vendor: string;
+    product: string;
+    /**
+     * CPE vendor the feed matches components by.
+     */
+    cpeVendor: string;
+    cpeProduct: string;
+    /**
+     * Affected versions as printed; informational, not compared.
+     */
+    affected?: string;
+    /**
+     * Fixed versions as printed; informational, not compared.
+     */
+    fixed?: string;
+};
+
+export type Notice = {
+    /**
+     * Source-prefixed id, for example `kisa-6219`.
+     */
+    noticeId: string;
+    /**
+     * `kisa`, `tmaxsoft`, ...
+     */
+    source: string;
+    /**
+     * Original title.
+     */
+    title: string;
+    /**
+     * Link to the original notice (http or https).
+     */
+    url?: string;
+    published?: string;
+    /**
+     * Short English summary written by the feed; may be absent.
+     */
+    summary?: string;
+    /**
+     * CVE ids printed in the notice.
+     */
+    cveIds: Array<string>;
+    /**
+     * CVE ids the feed links to the notice (same software, published close to it) that the notice does not print.
+     */
+    relatedCveIds: Array<string>;
+    /**
+     * Other ids (KVE-, vendor ids).
+     */
+    advisoryIds: Array<string>;
+    software: Array<NoticeSoftware>;
+    /**
+     * When the feed last changed the notice or its classification.
+     */
+    updated?: string;
+    /**
+     * Current assets in the scope with a matching component.
+     */
+    assets: number;
+    /**
+     * Those of them that no read mark covers (never read in the asset's scope, or matching since after the mark).
+     */
+    newAssets: number;
+    /**
+     * `newAssets` is not 0.
+     */
+    unread: boolean;
+    /**
+     * The earliest time an asset started matching.
+     */
+    firstMatched: string;
+    /**
+     * The latest time an asset started matching.
+     */
+    lastMatched: string;
+    /**
+     * The latest read mark of the scopes of the matching assets. With `unread`, assets started matching after it.
+     */
+    readAt?: string;
+    readBy?: string;
+};
+
+export type NoticeList = {
+    items: Array<Notice>;
+    total: number;
+};
+
+export type NoticeSummary = {
+    total: number;
+    unread: number;
+};
+
+export type NoticeMatch = {
+    assetId: string;
+    assetName: string;
+    assetKind: AssetKind;
+    /**
+     * Absent for the asset itself.
+     */
+    container?: string;
+    componentId: string;
+    componentName: string;
+    componentVersion: string;
+    componentType: string;
+    cpe?: string;
+    purl?: string;
+    locations: Array<string>;
+    /**
+     * When the component started matching the notice here.
+     */
+    firstSeen: string;
+    /**
+     * No read mark covers the asset.
+     */
+    new: boolean;
+};
+
+export type NoticeDetail = {
+    notice: Notice;
+    /**
+     * By asset name.
+     */
+    matches: Array<NoticeMatch>;
+};
+
+export type AssetNotice = {
+    notice: Notice;
+    matches: Array<NoticeMatch>;
+};
+
+export type AssetNoticeList = {
+    items: Array<AssetNotice>;
+};
+
+export type NoticeIds = {
+    ids: Array<string>;
+};
+
+export type NoticeUpdate = {
+    updated: number;
+};
+
 export type VulnProcess = {
     exe: string;
     assets: number;
@@ -2281,6 +2428,11 @@ export type PathId = string;
  * Image digest, for example `sha256:0123…`.
  */
 export type PathDigest = string;
+
+/**
+ * Notice id, for example `kisa-6219`.
+ */
+export type PathNoticeId = string;
 
 export type GetMetaData = {
     body?: never;
@@ -5585,6 +5737,230 @@ export type ListTriageEventsResponses = {
 };
 
 export type ListTriageEventsResponse = ListTriageEventsResponses[keyof ListTriageEventsResponses];
+
+export type ListNoticesData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Free-text search, case-insensitive substring match.
+         */
+        q?: string;
+        /**
+         * Keep the notices of this source (`kisa`, `tmaxsoft`).
+         */
+        source?: string;
+        /**
+         * Keep notices that are read.
+         */
+        includeRead?: boolean;
+        limit?: number;
+        offset?: number;
+    };
+    url: '/notices';
+};
+
+export type ListNoticesErrors = {
+    /**
+     * The request is malformed or a value is invalid.
+     */
+    400: Error;
+    /**
+     * No valid session, or wrong credentials on login.
+     */
+    401: Error;
+    /**
+     * Unexpected error.
+     */
+    default: Error;
+};
+
+export type ListNoticesError = ListNoticesErrors[keyof ListNoticesErrors];
+
+export type ListNoticesResponses = {
+    /**
+     * Notices
+     */
+    200: NoticeList;
+};
+
+export type ListNoticesResponse = ListNoticesResponses[keyof ListNoticesResponses];
+
+export type GetNoticeSummaryData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/notices/summary';
+};
+
+export type GetNoticeSummaryErrors = {
+    /**
+     * No valid session, or wrong credentials on login.
+     */
+    401: Error;
+    /**
+     * Unexpected error.
+     */
+    default: Error;
+};
+
+export type GetNoticeSummaryError = GetNoticeSummaryErrors[keyof GetNoticeSummaryErrors];
+
+export type GetNoticeSummaryResponses = {
+    /**
+     * Counts
+     */
+    200: NoticeSummary;
+};
+
+export type GetNoticeSummaryResponse = GetNoticeSummaryResponses[keyof GetNoticeSummaryResponses];
+
+export type GetNoticeData = {
+    body?: never;
+    path: {
+        /**
+         * Notice id, for example `kisa-6219`.
+         */
+        noticeId: string;
+    };
+    query?: never;
+    url: '/notices/{noticeId}';
+};
+
+export type GetNoticeErrors = {
+    /**
+     * No valid session, or wrong credentials on login.
+     */
+    401: Error;
+    /**
+     * The resource does not exist.
+     */
+    404: Error;
+    /**
+     * Unexpected error.
+     */
+    default: Error;
+};
+
+export type GetNoticeError = GetNoticeErrors[keyof GetNoticeErrors];
+
+export type GetNoticeResponses = {
+    /**
+     * Notice
+     */
+    200: NoticeDetail;
+};
+
+export type GetNoticeResponse = GetNoticeResponses[keyof GetNoticeResponses];
+
+export type MarkNoticesReadData = {
+    body: NoticeIds;
+    path?: never;
+    query?: never;
+    url: '/notices/read';
+};
+
+export type MarkNoticesReadErrors = {
+    /**
+     * The request is malformed or a value is invalid.
+     */
+    400: Error;
+    /**
+     * No valid session, or wrong credentials on login.
+     */
+    401: Error;
+    /**
+     * Not allowed, for example a data scope outside the request's.
+     */
+    403: Error;
+    /**
+     * Unexpected error.
+     */
+    default: Error;
+};
+
+export type MarkNoticesReadError = MarkNoticesReadErrors[keyof MarkNoticesReadErrors];
+
+export type MarkNoticesReadResponses = {
+    /**
+     * Marked
+     */
+    200: NoticeUpdate;
+};
+
+export type MarkNoticesReadResponse = MarkNoticesReadResponses[keyof MarkNoticesReadResponses];
+
+export type MarkNoticesUnreadData = {
+    body: NoticeIds;
+    path?: never;
+    query?: never;
+    url: '/notices/unread';
+};
+
+export type MarkNoticesUnreadErrors = {
+    /**
+     * The request is malformed or a value is invalid.
+     */
+    400: Error;
+    /**
+     * No valid session, or wrong credentials on login.
+     */
+    401: Error;
+    /**
+     * Not allowed, for example a data scope outside the request's.
+     */
+    403: Error;
+    /**
+     * Unexpected error.
+     */
+    default: Error;
+};
+
+export type MarkNoticesUnreadError = MarkNoticesUnreadErrors[keyof MarkNoticesUnreadErrors];
+
+export type MarkNoticesUnreadResponses = {
+    /**
+     * Marked
+     */
+    200: NoticeUpdate;
+};
+
+export type MarkNoticesUnreadResponse = MarkNoticesUnreadResponses[keyof MarkNoticesUnreadResponses];
+
+export type ListAssetNoticesData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/assets/{id}/notices';
+};
+
+export type ListAssetNoticesErrors = {
+    /**
+     * No valid session, or wrong credentials on login.
+     */
+    401: Error;
+    /**
+     * The resource does not exist.
+     */
+    404: Error;
+    /**
+     * Unexpected error.
+     */
+    default: Error;
+};
+
+export type ListAssetNoticesError = ListAssetNoticesErrors[keyof ListAssetNoticesErrors];
+
+export type ListAssetNoticesResponses = {
+    /**
+     * Notices with the matching components
+     */
+    200: AssetNoticeList;
+};
+
+export type ListAssetNoticesResponse = ListAssetNoticesResponses[keyof ListAssetNoticesResponses];
 
 export type ExportVexData = {
     body?: never;

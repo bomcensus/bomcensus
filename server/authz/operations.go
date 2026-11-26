@@ -66,6 +66,10 @@ const (
 	OpGetK8sCluster = "GetK8sCluster"
 	// OpGetMeta is GET /meta.
 	OpGetMeta = "GetMeta"
+	// OpGetNotice is GET /notices/{noticeId}.
+	OpGetNotice = "GetNotice"
+	// OpGetNoticeSummary is GET /notices/summary.
+	OpGetNoticeSummary = "GetNoticeSummary"
 	// OpGetRegisterKey is GET /register-keys/{id}.
 	OpGetRegisterKey = "GetRegisterKey"
 	// OpGetTlsSettings is GET /settings/tls.
@@ -90,6 +94,8 @@ const (
 	OpListAssetGroups = "ListAssetGroups"
 	// OpListAssetInstances is GET /assets/{id}/instances.
 	OpListAssetInstances = "ListAssetInstances"
+	// OpListAssetNotices is GET /assets/{id}/notices.
+	OpListAssetNotices = "ListAssetNotices"
 	// OpListAssetProcesses is GET /assets/{id}/processes.
 	OpListAssetProcesses = "ListAssetProcesses"
 	// OpListAssetVulnerabilities is GET /assets/{id}/vulnerabilities.
@@ -126,6 +132,8 @@ const (
 	OpListListenPorts = "ListListenPorts"
 	// OpListListenTargets is GET /listen-targets.
 	OpListListenTargets = "ListListenTargets"
+	// OpListNotices is GET /notices.
+	OpListNotices = "ListNotices"
 	// OpListProcesses is GET /processes.
 	OpListProcesses = "ListProcesses"
 	// OpListRegisterKeys is GET /register-keys.
@@ -150,6 +158,10 @@ const (
 	OpLogin = "Login"
 	// OpLogout is POST /auth/logout.
 	OpLogout = "Logout"
+	// OpMarkNoticesRead is POST /notices/read.
+	OpMarkNoticesRead = "MarkNoticesRead"
+	// OpMarkNoticesUnread is POST /notices/unread.
+	OpMarkNoticesUnread = "MarkNoticesUnread"
 	// OpPutIntegrityPolicy is PUT /settings/integrity.
 	OpPutIntegrityPolicy = "PutIntegrityPolicy"
 	// OpRematchFeedServer is POST /feed-servers/{id}/rematch.
@@ -230,6 +242,8 @@ var operations = []string{
 	OpGetIntegritySummary,
 	OpGetK8sCluster,
 	OpGetMeta,
+	OpGetNotice,
+	OpGetNoticeSummary,
 	OpGetRegisterKey,
 	OpGetTlsSettings,
 	OpGetUpdateSettings,
@@ -242,6 +256,7 @@ var operations = []string{
 	OpListAssetComponents,
 	OpListAssetGroups,
 	OpListAssetInstances,
+	OpListAssetNotices,
 	OpListAssetProcesses,
 	OpListAssetVulnerabilities,
 	OpListAssets,
@@ -260,6 +275,7 @@ var operations = []string{
 	OpListK8sWorkloads,
 	OpListListenPorts,
 	OpListListenTargets,
+	OpListNotices,
 	OpListProcesses,
 	OpListRegisterKeys,
 	OpListReleases,
@@ -272,6 +288,8 @@ var operations = []string{
 	OpListVulnerableProcesses,
 	OpLogin,
 	OpLogout,
+	OpMarkNoticesRead,
+	OpMarkNoticesUnread,
 	OpPutIntegrityPolicy,
 	OpRematchFeedServer,
 	OpRevokeAgent,

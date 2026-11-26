@@ -146,6 +146,13 @@ export type {
   VulnImageCve,
   VulnImageComponent,
   VulnImageDetail,
+  // notices
+  Notice,
+  NoticeSoftware,
+  NoticeMatch,
+  NoticeDetail,
+  NoticeSummary,
+  AssetNotice,
   // file integrity
   IntegrityStatus,
   IntegrityMode,

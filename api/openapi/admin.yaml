@@ -65,6 +65,8 @@ tags:
     description: Vulnerability feed servers and the instance key
   - name: vulnerabilities
     description: Findings by update action and by vulnerability
+  - name: notices
+    description: Security notices matched to installed software, and their read state
   - name: integrity
     description: Package files that differ from their package database, and the rules that allow them
 
@@ -2468,6 +2470,174 @@ paths:
         default:
           $ref: "#/components/responses/UnexpectedError"
 
+  /notices:
+    get:
+      tags: [notices]
+      operationId: listNotices
+      summary: Security notices whose software is installed on an asset
+      description: |
+        Notices (KISA, vendors) that the feed server matched to installed
+        components by CPE vendor and product. Versions are not compared:
+        the administrator decides whether a notice applies. A notice is
+        never a vulnerability finding.
+
+        Only notices that match a current asset in the request's scope are
+        listed, with the counts of those assets. Read notices are left out
+        unless `includeRead` is set; a read notice is unread again when an
+        asset starts matching it after it was read (`newAssets`). Unread
+        notices come first, then the newest. `q` matches the id, title,
+        summary, the CVE and advisory ids and the software names.
+      parameters:
+        - $ref: "#/components/parameters/QueryQ"
+        - name: source
+          in: query
+          description: Keep the notices of this source (`kisa`, `tmaxsoft`).
+          schema:
+            type: string
+            maxLength: 32
+        - name: includeRead
+          in: query
+          description: Keep notices that are read.
+          schema:
+            type: boolean
+            default: false
+        - $ref: "#/components/parameters/QueryLimit"
+        - $ref: "#/components/parameters/QueryOffset"
+      responses:
+        "200":
+          description: Notices
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NoticeList"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /notices/summary:
+    get:
+      tags: [notices]
+      operationId: getNoticeSummary
+      summary: How many notices match assets in the scope, and how many are unread
+      responses:
+        "200":
+          description: Counts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NoticeSummary"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /notices/{noticeId}:
+    parameters:
+      - $ref: "#/components/parameters/PathNoticeId"
+    get:
+      tags: [notices]
+      operationId: getNotice
+      summary: One notice with the installed components it names
+      description: "`404` when no current asset in the scope matches it."
+      responses:
+        "200":
+          description: Notice
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NoticeDetail"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /notices/read:
+    post:
+      tags: [notices]
+      operationId: markNoticesRead
+      summary: Mark notices read
+      description: |
+        Marks each notice read for the data scopes of the matching assets
+        the request sees, so that a mark never hides a notice from another
+        scope. Ids the request does not see are ignored; `updated` counts
+        the notices marked.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NoticeIds"
+      responses:
+        "200":
+          description: Marked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NoticeUpdate"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /notices/unread:
+    post:
+      tags: [notices]
+      operationId: markNoticesUnread
+      summary: Mark notices unread
+      description: Removes the read marks of the notices in the request's scope; `updated` counts the notices that had one.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NoticeIds"
+      responses:
+        "200":
+          description: Marked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NoticeUpdate"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /assets/{id}/notices:
+    parameters:
+      - $ref: "#/components/parameters/PathId"
+    get:
+      tags: [notices]
+      operationId: listAssetNotices
+      summary: Notices that match components of an asset, read ones included
+      description: Unread first, then the newest. `assets` and `newAssets` of each notice count this asset only.
+      responses:
+        "200":
+          description: Notices with the matching components
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssetNoticeList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
   /vex:
     get:
       tags: [vulnerabilities]
@@ -2813,6 +2983,14 @@ components:
       schema:
         type: string
         pattern: "^sha256:[0-9a-f]{64}$"
+    PathNoticeId:
+      name: noticeId
+      in: path
+      required: true
+      description: Notice id, for example `kisa-6219`.
+      schema:
+        type: string
+        maxLength: 128
 
   responses:
     BadRequest:
@@ -5998,6 +6176,194 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/TriageEvent"
+    NoticeSoftware:
+      type: object
+      required: [vendor, product, cpeVendor, cpeProduct]
+      properties:
+        vendor:
+          description: As printed in the notice.
+          type: string
+        product:
+          type: string
+        cpeVendor:
+          description: CPE vendor the feed matches components by.
+          type: string
+        cpeProduct:
+          type: string
+        affected:
+          description: Affected versions as printed; informational, not compared.
+          type: string
+        fixed:
+          description: Fixed versions as printed; informational, not compared.
+          type: string
+    Notice:
+      type: object
+      required: [noticeId, source, title, cveIds, relatedCveIds, advisoryIds, software, assets, newAssets, unread, firstMatched, lastMatched]
+      properties:
+        noticeId:
+          description: Source-prefixed id, for example `kisa-6219`.
+          type: string
+        source:
+          description: "`kisa`, `tmaxsoft`, ..."
+          type: string
+        title:
+          description: Original title.
+          type: string
+        url:
+          description: Link to the original notice (http or https).
+          type: string
+        published:
+          type: string
+          format: date-time
+        summary:
+          description: Short English summary written by the feed; may be absent.
+          type: string
+        cveIds:
+          description: CVE ids printed in the notice.
+          type: array
+          items:
+            type: string
+        relatedCveIds:
+          description: CVE ids the feed links to the notice (same software, published close to it) that the notice does not print.
+          type: array
+          items:
+            type: string
+        advisoryIds:
+          description: Other ids (KVE-, vendor ids).
+          type: array
+          items:
+            type: string
+        software:
+          type: array
+          items:
+            $ref: "#/components/schemas/NoticeSoftware"
+        updated:
+          description: When the feed last changed the notice or its classification.
+          type: string
+          format: date-time
+        assets:
+          description: Current assets in the scope with a matching component.
+          type: integer
+        newAssets:
+          description: Those of them that no read mark covers (never read in the asset's scope, or matching since after the mark).
+          type: integer
+        unread:
+          description: "`newAssets` is not 0."
+          type: boolean
+        firstMatched:
+          description: The earliest time an asset started matching.
+          type: string
+          format: date-time
+        lastMatched:
+          description: The latest time an asset started matching.
+          type: string
+          format: date-time
+        readAt:
+          description: The latest read mark of the scopes of the matching assets. With `unread`, assets started matching after it.
+          type: string
+          format: date-time
+        readBy:
+          type: string
+    NoticeList:
+      type: object
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Notice"
+        total:
+          type: integer
+    NoticeSummary:
+      type: object
+      required: [total, unread]
+      properties:
+        total:
+          type: integer
+        unread:
+          type: integer
+    NoticeMatch:
+      type: object
+      required: [assetId, assetName, assetKind, componentId, componentName, componentVersion, componentType, locations, firstSeen, new]
+      properties:
+        assetId:
+          type: string
+        assetName:
+          type: string
+        assetKind:
+          $ref: "#/components/schemas/AssetKind"
+        container:
+          description: Absent for the asset itself.
+          type: string
+        componentId:
+          type: string
+        componentName:
+          type: string
+        componentVersion:
+          type: string
+        componentType:
+          type: string
+        cpe:
+          type: string
+        purl:
+          type: string
+        locations:
+          type: array
+          items:
+            type: string
+        firstSeen:
+          description: When the component started matching the notice here.
+          type: string
+          format: date-time
+        new:
+          description: No read mark covers the asset.
+          type: boolean
+    NoticeDetail:
+      type: object
+      required: [notice, matches]
+      properties:
+        notice:
+          $ref: "#/components/schemas/Notice"
+        matches:
+          description: By asset name.
+          type: array
+          items:
+            $ref: "#/components/schemas/NoticeMatch"
+    AssetNotice:
+      type: object
+      required: [notice, matches]
+      properties:
+        notice:
+          $ref: "#/components/schemas/Notice"
+        matches:
+          type: array
+          items:
+            $ref: "#/components/schemas/NoticeMatch"
+    AssetNoticeList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AssetNotice"
+    NoticeIds:
+      type: object
+      required: [ids]
+      properties:
+        ids:
+          type: array
+          minItems: 1
+          maxItems: 1000
+          items:
+            type: string
+            maxLength: 128
+    NoticeUpdate:
+      type: object
+      required: [updated]
+      properties:
+        updated:
+          type: integer
     VulnProcess:
       type: object
       required: [exe, assets, processes, listening, components, cves, kev, severityCounts]

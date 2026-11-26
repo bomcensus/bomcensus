@@ -18,6 +18,7 @@ import {
   listAssetInstances,
   listAssetProcesses,
   listAssetVulnerabilities,
+  listAssetNotices,
   optional,
   toApiError,
 } from '~/api'
@@ -279,10 +280,17 @@ const {
   error: vulnsError,
   refresh: refreshVulns,
 } = useLoad(`asset:${id}:vulns`, async () => (await listAssetVulnerabilities(id)).items, () => [])
+const {
+  data: notices,
+  pending: noticesPending,
+  error: noticesError,
+  refresh: refreshNotices,
+} = useLoad(`asset:${id}:notices`, async () => (await listAssetNotices(id)).items, () => [])
 
 const tabs = computed(() => [
   { key: 'overview', label: '개요' },
   { key: 'vulnerabilities', label: '취약점', count: countOf(vulnsPending.value, vulns.value) },
+  { key: 'notices', label: '보안 공지', count: countOf(noticesPending.value, notices.value) },
   { key: 'components', label: '컴포넌트', count: countOf(componentsPending.value, componentRows.value) },
   { key: 'processes', label: '프로세스', count: countOf(procsPending.value, procs.value) },
   ...(assetContainers.value.length > 0 ? [{ key: 'containers', label: '컨테이너', count: assetContainers.value.length }] : []),
@@ -657,6 +665,14 @@ const tabs = computed(() => [
         :pending="vulnsPending"
         :error="vulnsError"
         @retry="refreshVulns"
+      />
+
+      <AssetNoticePanel
+        v-else-if="tab === 'notices'"
+        :items="notices"
+        :pending="noticesPending"
+        :error="noticesError"
+        @retry="refreshNotices"
       />
 
       <AssetIntegrityPanel v-else-if="tab === 'integrity'" :asset-id="asset.id" />
