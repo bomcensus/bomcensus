@@ -5,6 +5,9 @@
 package sign_test
 
 import (
+	"crypto/ed25519"
+	"crypto/x509"
+	"encoding/base64"
 	"errors"
 	"testing"
 
@@ -15,7 +18,11 @@ import (
 func TestRequireOwnTrust(t *testing.T) {
 	own := signtest.NewTrust(t)
 	official := signtest.NewTrust(t)
-	sign.SetOfficialKeys(t, official.ReleaseKeys())
+	officialKeys, err := sign.ParseReleaseKeys(official.ReleaseKeys())
+	if err != nil {
+		t.Fatal(err)
+	}
+	sign.SetOfficialKeys(t, sign.OfficialKeyEntry(officialKeys[0]))
 
 	signtest.SetTrust(t, "", "")
 	if err := sign.RequireOwnTrust(); !errors.Is(err, sign.ErrNoReleaseKeys) {
@@ -32,5 +39,25 @@ func TestRequireOwnTrust(t *testing.T) {
 	signtest.SetTrust(t, own.ReleaseKeys()+","+official.ReleaseKeys(), own.CodeSigningRoots())
 	if err := sign.RequireOwnTrust(); !errors.Is(err, sign.ErrOfficialTrust) {
 		t.Fatalf("official key trusted: %v", err)
+	}
+}
+
+func TestOfficialKeysFormat(t *testing.T) {
+	for i, s := range sign.OfficialKeys() {
+		der, err := base64.StdEncoding.DecodeString(s)
+		if err != nil {
+			t.Fatalf("official key %d %q: %v", i, s, err)
+		}
+		k, err := x509.ParsePKIXPublicKey(der)
+		if err != nil {
+			t.Fatalf("official key %d %q: want base64 of an SPKI DER: %v", i, s, err)
+		}
+		ek, ok := k.(ed25519.PublicKey)
+		if !ok {
+			t.Fatalf("official key %d %q: not an Ed25519 key", i, s)
+		}
+		if !sign.IsOfficialKey(ek) {
+			t.Fatalf("official key %d %q: not matched by IsOfficialKey", i, s)
+		}
 	}
 }

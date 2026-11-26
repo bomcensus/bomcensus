@@ -12,3 +12,6 @@ func SetOfficialKeys(t testing.TB, keys ...string) {
 	officialReleaseKeys = keys
 	t.Cleanup(func() { officialReleaseKeys = prev })
 }
+
+// OfficialKeys returns the official release keys.
+func OfficialKeys() []string { return officialReleaseKeys }

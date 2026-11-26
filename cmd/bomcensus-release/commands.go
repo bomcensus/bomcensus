@@ -12,7 +12,6 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/x509"
-	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -411,7 +410,7 @@ func runCheckOfficial(_ context.Context, args []string, stdout io.Writer) error 
 		}
 		if !sign.IsOfficialKey(k) {
 			return fmt.Errorf("check-official: %s (%s) is not listed in internal/sign/official.go",
-				filepath.Base(f), base64.StdEncoding.EncodeToString(k))
+				filepath.Base(f), sign.OfficialKeyEntry(k))
 		}
 	}
 	fmt.Fprintln(stdout, "all manifest keys are official")
