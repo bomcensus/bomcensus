@@ -11,7 +11,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -241,9 +240,8 @@ func versionsThroughCollector(spec string) []versionRun {
 }
 
 // versionThroughHelper runs the detector's version command for the file at
-// p through the exec helper of the artifact package, the way its version
-// execution does (exechelper.go): the binary re-executed with the helper
-// argument, limits, the file on fd 3 and a status pipe on fd 4.
+// p through the exec helper of the artifact package, with the limits and
+// the sandbox of the collector but without its checks of the file.
 func versionThroughHelper(detector, p string) versionRun {
 	v := versionRun{Path: p}
 	var det *artifact.Detector
@@ -262,47 +260,19 @@ func versionThroughHelper(detector, p string) versionRun {
 		return v
 	}
 	defer exe.Close()
-	statusR, statusW, err := os.Pipe()
-	if err != nil {
-		v.Err = err.Error()
-		return v
+	var env []string
+	for _, e := range det.Env {
+		env = append(env, e.Name+"="+parentN(p, e.Up))
 	}
-	defer statusR.Close()
-	as := uint64(2 << 30)
-	if det.AddressSpaceMB > 0 {
-		as = uint64(det.AddressSpaceMB) << 20
-	}
-	var nproc unix.Rlimit
-	unix.Getrlimit(unix.RLIMIT_NPROC, &nproc)
-	args := []string{"__bomcensus_exec_helper", "10", strconv.FormatUint(as, 10), "64", strconv.FormatUint(nproc.Max, 10), "--", p}
-	args = append(args, det.Exec...)
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "/proc/self/exe", args...)
-	cmd.Env = []string{}
-	for _, e := range det.Env {
-		cmd.Env = append(cmd.Env, e.Name+"="+parentN(p, e.Up))
-	}
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout, cmd.Stderr = &stdout, &stderr
-	cmd.ExtraFiles = []*os.File{exe, statusW}
-	err = cmd.Start()
-	statusW.Close()
+	out, err := artifact.RunCommand(ctx, exe, append([]string{p}, det.Exec...), env, det.AddressSpaceMB)
 	if err != nil {
-		v.Err = err.Error()
+		v.Err = "helper: " + err.Error()
 		return v
 	}
-	msg, _ := io.ReadAll(statusR)
-	err = cmd.Wait()
-	v.Output = stdout.String() + stderr.String()
-	if cmd.ProcessState != nil {
-		v.ExitCode = cmd.ProcessState.ExitCode()
-	}
-	if len(msg) > 0 {
-		v.Err = "helper: " + string(msg)
-	} else if err != nil && v.ExitCode < 0 {
-		v.Err = err.Error()
-	}
+	v.Output = out.Stdout + out.Stderr
+	v.ExitCode = out.ExitCode
 	return v
 }
 
@@ -491,9 +461,13 @@ func checkDenied(t *testing.T, r childResult) {
 func checkVersions(t *testing.T, r childResult, allowStatic bool) {
 	t.Helper()
 	for name, v := range r.Helper {
-		if v.Err != "" || v.ExitCode != 0 || v.Output == "" {
+		switch {
+		case allowStatic && v.Err != "" && v.Output == "":
+			// A root probe that cannot switch users runs nothing.
+			t.Logf("%s through the exec helper: not run: %s", name, v.Err)
+		case v.Err != "" || v.ExitCode != 0 || v.Output == "":
 			t.Errorf("%s through the exec helper: exit %d err %q output %q", name, v.ExitCode, v.Err, v.Output)
-		} else {
+		default:
 			t.Logf("%s through the exec helper: %s%s", name, firstLine(v.Output), fakeIdentity(v.Output))
 		}
 	}
@@ -607,7 +581,11 @@ func TestSandboxRoot(t *testing.T) {
 	// command does not run (static extraction is used instead).
 	canSwitch := drop || (before.effective.has(unix.CAP_SETUID) && before.effective.has(unix.CAP_SETGID))
 	checkVersions(t, r, !canSwitch)
-	for _, v := range r.Artifacts {
+	runs := slices.Clone(r.Artifacts)
+	for _, v := range r.Helper {
+		runs = append(runs, v)
+	}
+	for _, v := range runs {
 		uid := strings.Fields(statusField(v.Output, "Uid"))
 		if len(uid) > 0 && (uid[0] != strconv.Itoa(unprivilegedID) || statusField(v.Output, "CapEff") != "0000000000000000") {
 			t.Errorf("version command of %s ran as %s", v.Path, fakeIdentity(v.Output))

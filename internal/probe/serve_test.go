@@ -163,28 +163,6 @@ func TestServeReplacesOnlySockets(t *testing.T) {
 	}
 }
 
-func TestListenerSeccompRules(t *testing.T) {
-	full, lst := seccompRules(), listenerSeccompRules()
-	if len(lst) != len(full)-1 {
-		t.Fatalf("listener rules: %d, full: %d", len(lst), len(full))
-	}
-	prog, err := buildFilter(lst)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if r := evalFilter(t, prog, auditArch, unix.SYS_CHROOT); r != retAllow {
-		t.Errorf("chroot under the listener filter: %#x", r)
-	}
-	for _, nr := range []int{unix.SYS_PTRACE, unix.SYS_SETNS, unix.SYS_MOUNT} {
-		if r := evalFilter(t, prog, auditArch, nr); r == retAllow {
-			t.Errorf("syscall %d allowed under the listener filter", nr)
-		}
-	}
-	if r := evalFilter(t, prog, auditArch, unix.SYS_SOCKET, unix.AF_INET); r == retAllow {
-		t.Error("AF_INET socket allowed under the listener filter")
-	}
-}
-
 func TestVerifyHostRootSandbox(t *testing.T) {
 	good := func() *SandboxResult {
 		two := []string{"CAP_DAC_READ_SEARCH", "CAP_SYS_PTRACE"}

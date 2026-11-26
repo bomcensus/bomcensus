@@ -13,26 +13,36 @@ package artifact
 // the current binary that restricts itself and then executes the target
 // from an inherited file descriptor:
 //
+//   - only native 64-bit ELF files on a mount of the probe's own mount
+//     namespace are executed (not files of other mount namespaces that the
+//     probe reaches through /proc/<pid>/exe, such as container processes)
 //   - argv is fixed by the detector; the environment holds only the
-//     detector's variables; stdin is /dev/null
-//   - its own process group, killed as a whole after the timeout and after
-//     the command exits
+//     detector's variables; stdin is /dev/null; cwd is /; no descriptor
+//     but 0 to 2 survives
+//   - its own session and process group, killed as a whole after the
+//     timeout and after the command exits
 //   - uid/gid nobody without supplementary groups when the probe is root,
 //     and a new network namespace where that is permitted
 //   - in the helper: rlimits, no_new_privs, ambient and bounding
-//     capabilities cleared, all capabilities dropped
+//     capabilities cleared, all capabilities dropped, a Landlock domain
+//     (read and execute only, no access to other processes) where the
+//     kernel has Landlock, and a seccomp filter of its own
+//     (internal/sandbox CommandRules) on top of the probe's
 //   - stdout and stderr captured separately, each truncated at 64 KiB
 
 import (
 	"bufio"
 	"bytes"
 	"context"
+	"debug/elf"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
@@ -77,7 +87,7 @@ type execResult struct {
 // versionCommand runs the version command of d for the open file f, whose
 // logical path is logical, or returns the cached result for this file.
 func (c *collector) versionCommand(ctx context.Context, d *Detector, logical string, f *os.File, fi os.FileInfo) execResult {
-	key := fmt.Sprintf("artifact.exec.v1.%s.u%d", d.ID, os.Geteuid())
+	key := fmt.Sprintf("artifact.exec.v2.%s.u%d", d.ID, os.Geteuid())
 	var res execResult
 	if c.env.Cache.Extra(fi, key, &res) {
 		return res
@@ -91,10 +101,20 @@ func (c *collector) versionCommand(ctx context.Context, d *Detector, logical str
 	if d.AddressSpaceMB > 0 {
 		lim.AddressSpace = uint64(d.AddressSpaceMB) << 20
 	}
+	if err := executable(f); err != nil {
+		res = execResult{Err: "not executed: " + err.Error()}
+		c.log.Debug("version command", "path", logical, "detector", d.ID, "err", res.Err)
+		c.env.Cache.SetExtra(fi, key, res)
+		return res
+	}
 	res = runVersion(ctx, f, argv, env, lim)
 	if ctx.Err() != nil {
 		// Cancelled from outside: not a property of the file.
 		return res
+	}
+	if now, err := f.Stat(); err != nil || changedSince(fi, now) {
+		// The output may not belong to the content that was hashed.
+		return execResult{Err: "file changed while it was inspected"}
 	}
 	if !res.Ran {
 		c.log.Debug("version command", "path", logical, "detector", d.ID, "err", res.Err)
@@ -110,7 +130,13 @@ func runVersion(ctx context.Context, exe *os.File, argv, env []string, lim execL
 	if asNobody {
 		uid = nobodyID
 	}
-	nproc := countTasks("/proc", uid) + lim.NProcMargin
+	margin := lim.NProcMargin
+	if !initPIDNamespace("/proc") {
+		// RLIMIT_NPROC counts the user's tasks in every PID namespace,
+		// and /proc shows only those of its own.
+		margin = max(margin, hiddenTasksMargin)
+	}
+	nproc := countTasks("/proc", uid) + margin
 	res, err := startVersion(ctx, exe, argv, env, lim, nproc, asNobody, asNobody)
 	if err != nil && asNobody && (errors.Is(err, syscall.EPERM) || errors.Is(err, syscall.EINVAL)) {
 		// A new network namespace is not permitted here (for example in a
@@ -143,11 +169,14 @@ func startVersion(ctx context.Context, exe *os.File, argv, env []string, lim exe
 	cmd := exec.CommandContext(ctx, "/proc/self/exe", append(args, argv...)...)
 	cmd.Args[0] = "bomcensus-exec-helper"
 	cmd.Env = append([]string{}, env...) // never nil: nil inherits ours
+	cmd.Dir = "/"
 	stdout := &capped{limit: lim.OutputLimit}
 	stderr := &capped{limit: lim.OutputLimit}
 	cmd.Stdout, cmd.Stderr = stdout, stderr
 	cmd.ExtraFiles = []*os.File{exe, statusW} // fd 3 and 4 in the helper
-	attr := &syscall.SysProcAttr{Setpgid: true, Pdeathsig: syscall.SIGKILL}
+	// A new session: its own process group, and no controlling terminal
+	// that the command could open or inject input into.
+	attr := &syscall.SysProcAttr{Setsid: true, Pdeathsig: syscall.SIGKILL}
 	if asNobody {
 		attr.Credential = &syscall.Credential{Uid: nobodyID, Gid: nobodyID, Groups: []uint32{}}
 	}
@@ -266,4 +295,95 @@ func countTasks(proc string, uid int) uint64 {
 		}
 	}
 	return n
+}
+
+// nativeMachine is the ELF machine of the probe's architecture.
+var nativeMachine = map[string]elf.Machine{"amd64": elf.EM_X86_64, "arm64": elf.EM_AARCH64}[runtime.GOARCH]
+
+// executable checks that f may be executed as a version command: a 64-bit
+// ELF file of the probe's architecture (anything else would fail in the
+// seccomp architecture check, or run through an emulator registered with
+// binfmt_misc), on a mount of the probe's own mount namespace. A file of
+// a container process reached through /proc/<pid>/exe is on a mount of the
+// container's namespace and is identified by static extraction only.
+func executable(f *os.File) error {
+	var hdr [20]byte
+	if _, err := f.ReadAt(hdr[:], 0); err != nil {
+		return fmt.Errorf("read ELF header: %w", err)
+	}
+	machine := elf.Machine(binary.LittleEndian.Uint16(hdr[18:]))
+	if string(hdr[:4]) != elf.ELFMAG || elf.Class(hdr[elf.EI_CLASS]) != elf.ELFCLASS64 ||
+		elf.Data(hdr[elf.EI_DATA]) != elf.ELFDATA2LSB || nativeMachine == 0 || machine != nativeMachine {
+		return fmt.Errorf("not a native 64-bit ELF file (class %d, machine %v)", hdr[elf.EI_CLASS], machine)
+	}
+	id, err := mountID(f)
+	if err != nil {
+		return err
+	}
+	own, err := ownMounts()
+	if err != nil {
+		return err
+	}
+	if !own[id] {
+		return fmt.Errorf("file is on mount %d, not in the probe's mount namespace", id)
+	}
+	return nil
+}
+
+// mountID returns the id of the mount that holds f.
+func mountID(f *os.File) (int, error) {
+	b, err := os.ReadFile("/proc/self/fdinfo/" + strconv.Itoa(int(f.Fd())))
+	if err != nil {
+		return 0, err
+	}
+	if v := procField(string(b), "mnt_id"); v != "" {
+		return strconv.Atoi(v)
+	}
+	return 0, errors.New("no mnt_id in fdinfo")
+}
+
+// ownMounts returns the ids of the mounts in the probe's mount namespace
+// that are reachable from its root.
+func ownMounts() (map[int]bool, error) {
+	f, err := os.Open("/proc/self/mountinfo")
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	ids := map[int]bool{}
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 0, 64<<10), 1<<20)
+	for sc.Scan() {
+		first, _, _ := strings.Cut(sc.Text(), " ")
+		if id, err := strconv.Atoi(first); err == nil {
+			ids[id] = true
+		}
+	}
+	return ids, sc.Err()
+}
+
+// changedSince reports whether the file was written to or replaced in
+// place between the two stats: size, modification or change time differ.
+// The change time cannot be set by the file's owner.
+func changedSince(before, after os.FileInfo) bool {
+	a, ok1 := before.Sys().(*syscall.Stat_t)
+	b, ok2 := after.Sys().(*syscall.Stat_t)
+	if !ok1 || !ok2 {
+		return true
+	}
+	return a.Size != b.Size || a.Mtim != b.Mtim || a.Ctim != b.Ctim || a.Ino != b.Ino || a.Dev != b.Dev
+}
+
+// hiddenTasksMargin is the process limit margin where /proc does not show
+// every task of the user: tasks in other PID namespaces count against
+// RLIMIT_NPROC but cannot be counted. A command cannot create processes
+// (internal/sandbox CommandRules), so the limit only bounds its threads.
+const hiddenTasksMargin = 4096
+
+// initPIDNamespace reports whether the proc file system at proc belongs to
+// the initial PID namespace, the only one in which kernel threads, such as
+// kthreadd with pid 2, are visible.
+func initPIDNamespace(proc string) bool {
+	b, err := os.ReadFile(filepath.Join(proc, "2", "status"))
+	return err == nil && procField(string(b), "Name") == "kthreadd"
 }

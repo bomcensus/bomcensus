@@ -35,6 +35,8 @@ import (
 	"time"
 
 	"golang.org/x/sys/unix"
+
+	"github.com/bomcensus/bomcensus/internal/sandbox"
 )
 
 // Serve defaults.
@@ -195,7 +197,7 @@ func restrictListener(log *slog.Logger) error {
 	if s := setNoNewPrivs(); s.Status != StepApplied {
 		return fmt.Errorf("serve: no_new_privs: %s", s.Detail)
 	}
-	s := applySeccompRules(listenerSeccompRules())
+	s := applySeccompRules(sandbox.ListenerRules())
 	if s.Status != StepApplied {
 		return fmt.Errorf("serve: seccomp: %s", s.Detail)
 	}

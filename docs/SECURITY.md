@@ -2,7 +2,7 @@
 
 This document describes the security design of bomcensus: how components authenticate each other, how executables are verified, which privileges each component holds, and what is and is not protected.
 
-Status: implemented for Linux hosts, agentless SSH collection and Kubernetes (stages 1 to 3). Not implemented: vulnerability matching, Windows (6.4, 7.2), the exec helper (6.3), PROXY protocol on the agent listener (4.4) and Landlock (6.2). Sections that describe something not implemented say so. Section 12 lists the questions that are still open. The exact bytes signed on the agent protocol are specified in [PROTOCOL.md](PROTOCOL.md).
+Status: implemented for Linux hosts, agentless SSH collection and Kubernetes (stages 1 to 3). Not implemented: Windows collection (6.4, 7.2), the exec helper that runs files as their owner (6.3) and PROXY protocol on the agent listener (4.4). Landlock is used for version commands (6.6), not for the probe itself, which is confined by its seccomp filter (6.2). Sections that describe something not implemented say so. Section 12 lists the questions that are still open. The exact bytes signed on the agent protocol are specified in [PROTOCOL.md](PROTOCOL.md).
 
 ## 1. Goals and non-goals
 
@@ -45,8 +45,9 @@ Release signing keys are held by the build pipeline. They are not present on the
 | Server is compromised and pushes a malicious update | Updates need a manifest signature from an offline key and a code signature. The server holds neither key | 5.1 |
 | Probe binary is tampered with in the scanner's store | Code signature verified immediately before every transfer | 5.3 |
 | Agent process is compromised over the network | Unprivileged user, no capabilities. Can only send fixed collection requests to the probe. Cannot write to the install directory | 6.1 |
-| Probe is compromised by a malicious file | No network, no writable path, ptrace-family system calls blocked. Its only output is a report | 6.2 |
-| Planted binary named like a known program | Version commands never run as root: an unprivileged user with no capabilities, under the probe's seccomp filter and resource and time limits | 6.6 |
+| Probe is compromised by a malicious file | seccomp deny list: no network sockets, no writes anywhere, no ptrace-family calls, no user namespaces, `bpf` or `io_uring`. Its only output is a report | 6.2 |
+| Planted binary named like a known program | Version commands run only for built-in detectors, only for native ELF files on the probe's own mounts, never as root and without capabilities. Each is a single process with its own seccomp filter (no new processes, no sockets, signals only to itself), a Landlock domain where the kernel has one (read and execute only, no access to other processes), resource and time limits | 6.6 |
+| Server or administrator supplies a malicious detector table | The probe checks the table itself. Version commands run only for entries identical to its built-in table in what decides what runs. Other entries read side files only near the matched file, without following links and outside a deny list, and report only version-shaped captures. RE2 patterns, size and count limits | 6.8 |
 | Unauthorized connection to a listen-mode agent | Client certificate required. Failed verification ends the handshake. Pre-authentication connections are limited | 4.5 |
 | Stolen agent identity | An agent certificate only authorizes uploads for its own asset. It cannot read other assets. Certificates are short-lived and can be revoked | 4.8 |
 | Secrets inside collected data | Command lines are masked. Environment variables are not collected | 8 |
@@ -309,7 +310,7 @@ The Linux agent is installed as separate components. Root is needed only at inst
 
 **The probe's two capabilities are equivalent to root for reading.** What is removed is the ability to write and to tamper. Left alone, `CAP_SYS_PTRACE` would allow code injection into other processes and from there full root, so that path is closed.
 
-The probe applies the restrictions to itself at start, before it reads anything (`internal/probe/sandbox*.go`), so a probe started by a scanner over SSH or in a pod is restricted the same way as one started by the systemd unit. The unit sets its own restrictions on top (see [DEPLOYMENT.md](DEPLOYMENT.md) §4.4). Each step is best effort and logged; `bomcensus-probe self-test` shows what took effect.
+The probe applies the restrictions to itself at start, before it reads anything (`internal/probe/sandbox*.go`; the seccomp rules and the Landlock ruleset of version commands are in `internal/sandbox`), so a probe started by a scanner over SSH or in a pod is restricted the same way as one started by the systemd unit. The unit sets its own restrictions on top (see [DEPLOYMENT.md](DEPLOYMENT.md) §4.4). Each step is best effort and logged; `bomcensus-probe self-test` shows what took effect.
 
 The seccomp filter is a deny list. Denied calls fail with an error instead of killing the process, except calls of a foreign architecture (i386, x32), which kill it. It denies:
 
@@ -323,11 +324,11 @@ The seccomp filter is a deny list. Denied calls fail with an error instead of ki
 
 Further restrictions:
 
-- `no_new_privs` is set on every thread. The filter and `no_new_privs` are inherited by every child, including version commands (6.6).
+- `no_new_privs` is set on every thread. The filter and `no_new_privs` are inherited by every child, including version commands (6.6), which add a stricter filter and a Landlock domain of their own.
 - Memory, CPU parallelism and scheduling priority are limited by the probe itself (memory limit, lowest nice value, idle I/O class); the systemd unit adds memory, CPU, task and I/O limits.
 - `PrivateTmp` is not used, because the probe must see the host's `/tmp`.
 
-**Landlock is not used.** A Landlock domain also restricts access to processes outside the domain, which includes `/proc/<pid>/{exe,maps,fd,root}`. Every other process on the host is outside the probe's domain, so process and container collection would see almost nothing (measured: 342 of 343 processes unreadable). The seccomp filter enforces read-only access instead, also on kernels without Landlock.
+**Landlock is not used for the probe.** A Landlock domain also restricts access to processes outside the domain, which includes `/proc/<pid>/{exe,maps,fd,root}`. Every other process on the host is outside the probe's domain, so process and container collection would see almost nothing (measured: 342 of 343 processes unreadable). The seccomp filter enforces read-only access instead, also on kernels without Landlock. That same property is what version commands need, so the helper puts every command into a Landlock domain (6.6).
 
 Privileges at start:
 
@@ -338,7 +339,7 @@ Privileges at start:
 | root without the two capabilities (a container with the default capability set: Kubernetes exec, SSH into a container) | stays uid 0 with its capability set, under `no_new_privs` and the seccomp filter. Switching to 65534 or reducing the set would hide what root can read: a process may read `/proc/<pid>/exe` of another process of the same uid only when its permitted set covers the other's |
 | root with all capabilities dropped | stays uid 0 under `no_new_privs` and the seccomp filter. Without `CAP_SETUID` a version command cannot be started as another user, so version commands are not executed and static extraction is used (6.6): nothing found on a target is ever executed as root |
 
-When the probe switches to uid 65534 and its own binary is not executable by that user (a scanner uploads it with mode 0700), it copies itself into a sealed memory file and re-executes from there before reading the request, so that it can still start version commands. This needs `memfd_create` and execution of memory files; if that fails, version commands fall back to static extraction.
+When the probe switches to uid 65534 and its own binary is not executable by that user (a scanner uploads it with mode 0700), it copies itself into a sealed memory file and re-executes from there before reading the request, so that it can still start version commands. This needs `memfd_create` and execution of memory files (the file is created with `MFD_EXEC` where the kernel knows it, so that `vm.memfd_noexec` = 1 does not prevent it); if that fails, version commands fall back to static extraction.
 
 ### 6.3 Exec helper
 
@@ -377,21 +378,52 @@ Reduced coverage is never presented as a clean result. Each report states the pr
 
 ### 6.6 Version command execution
 
-The probe runs version commands of known software (for example `java -version`, `php -v`) to identify versions. These are files found on the target and are not trusted.
+The probe runs version commands of known software (for example `java -version`, `php -v`) to identify versions. These are files found on the target and are not trusted: a planted file named like a known program may be anything.
+
+Which files are executed:
 
 - Only arguments fixed in a detector are used. A file that matches no detector is not executed.
 - Only files on the probe's own root are executed. Inside a container root seen through `/proc/<pid>/root`, only static extraction is used. A probe in host root mode (6.7) has changed its root to the host's, so the host's files are executed as on a host installation.
-- The command is started through a helper process, a re-execution of the probe binary (`internal/collect/artifact/exechelper.go`). The probe passes the exact file it opened and inspected as an inherited file descriptor, and the helper executes that descriptor, so the file cannot be swapped between inspection and execution.
-- Nothing is executed as root. When the probe is root, the command runs as uid/gid 65534 without supplementary groups; otherwise it runs as the probe's own user. In the helper the ambient and bounding capability sets are cleared, all capabilities are dropped and `no_new_privs` is set, so setuid bits and file capabilities have no effect. The probe's seccomp filter (6.2) is inherited: no writes to the file system and no network sockets. A root probe that cannot switch users does not run version commands (6.2).
-- The environment is empty except for variables named by the detector and derived from the install path (such as `JAVA_HOME`). The environment of the target process is not copied.
-- Standard input is `/dev/null`. When the probe is root, the command also gets a new, empty network namespace where the kernel permits it.
-- rlimits: no core files, CPU time 10 seconds, address space 2 GiB (a detector may set another value), file size 0 (no file writes), 64 open files, and a process count of what the user already runs plus 64.
-- The command runs in its own process group with `SIGKILL` as parent-death signal. After the time limit (10 seconds) or after it exits, the whole group is killed.
-- 32-bit executables are killed by the seccomp architecture check and fall back to static extraction.
-- On Windows the same limits are applied with a restricted token and a job object (not implemented).
-- The output is treated as untrusted input. Standard output and standard error are kept separately, each truncated at 64 KiB.
+- Only files on a mount of the probe's own mount namespace are executed (checked with the `mnt_id` of the open file against `/proc/self/mountinfo`). The executable of a container process, which the probe reaches through `/proc/<pid>/exe` when the walk did not see it, is on a mount of the container's namespace and is identified by static extraction only.
+- Only 64-bit little-endian ELF files of the probe's own architecture are executed. 32-bit and x32 files would be killed by the seccomp architecture check, and files of other architectures could run through an emulator registered with `binfmt_misc`; both fall back to static extraction.
+- The command is started through a helper process, a re-execution of the probe binary (`internal/collect/artifact/exechelper.go`). The probe passes the exact file it opened and inspected as an inherited file descriptor, and the helper executes that descriptor, so the file cannot be swapped between inspection and execution. Its content can still be changed in place by whoever may write it; when the size, modification time or change time of the file differs after the command from what was inspected, the output is discarded.
 
-A planted file named `java` is therefore executed only as an isolated, unprivileged process. Execution can be disabled by the collection policy (`exec_version`); static extraction is used instead. The policy is a single server-wide setting; per-group policies are not implemented.
+How the command is confined. The probe starts the helper; the helper restricts itself in this order and then executes the target:
+
+1. Descriptors: only standard input, output and error reach the command. Every other descriptor, including any the probe inherited without close-on-exec and the descriptor of the target itself, is marked close-on-exec (`close_range`, or `/proc/self/fd` on kernels before 5.11). Standard input is `/dev/null`; standard output and standard error are pipes.
+2. Session: the command runs in a new session (`setsid`), so it has its own process group and no controlling terminal it could open or inject input into. The working directory is `/` and the umask 077.
+3. Credentials: nothing is executed as root. When the probe is root, the command runs as uid/gid 65534 without supplementary groups; otherwise it runs as the probe's own user, with that user's groups. The helper refuses to continue as uid 0. A root probe that cannot switch users does not run version commands (6.2).
+4. rlimits: no core files, CPU time 10 seconds, file size 0, 64 open files, address space 2 GiB (a detector may set another value), and a task count of what the user already runs plus 64. RLIMIT_NPROC counts every task of the uid in the user namespace, including those of other services running as 65534. Where `/proc` does not show every task (a probe in a PID namespace other than the initial one, recognized by `kthreadd` not being pid 2), the margin is 4,096, so that tasks the probe cannot count do not make every command fail. Limits are never raised above the current hard limit.
+5. Capabilities: `no_new_privs` is set, so setuid bits and file capabilities have no effect; the ambient and bounding sets are cleared and all capabilities dropped.
+6. Landlock, where the kernel has it (5.13 and later): the command can only read, list and execute files beneath the probe's root. Every other file system right the kernel's ABI knows is denied (writing, creating, removing, renaming, linking, truncating, device ioctls); from ABI 4, TCP bind and connect; from ABI 6, signals to and abstract Unix sockets of processes outside the domain. On every ABI a process in a Landlock domain also cannot ptrace processes outside it, which covers `/proc/<pid>/mem`, `environ`, `maps` and the other files the kernel guards with ptrace access checks. Landlock is applied to the command only, never to the probe (6.2). When the kernel has no Landlock, or a container runtime's seccomp profile denies it, the command runs without it.
+7. seccomp: the helper installs a filter of its own (`internal/sandbox/rules.go`, `CommandRules`) on top of the probe's inherited one. It repeats the probe's rules, so the command is confined the same way even where the probe's own filter is missing, and adds:
+   - no new processes: `fork`, `vfork`, `clone` without `CLONE_THREAD` and `clone` with namespace flags fail, as do `setsid` and `setpgid`. The command stays a single process in the session the helper created; it cannot fork-bomb, leave its process group or leave anything running after it exits.
+   - signals only to itself: `kill` only for its own pid, its own process group and 0; `tgkill`, `rt_sigqueueinfo` and `rt_tgsigqueueinfo` only for its own thread group; `tkill`, `pidfd_open` and `pidfd_send_signal` not at all. `kill(-1)` and signals to other processes of the same uid, the probe among them, fail.
+   - no changes to other processes that a shared uid would permit: `prlimit64`, `setpriority`, `ioprio_set`, the `sched_set*` calls, `migrate_pages` and `move_pages` only for itself (no `PRIO_USER`); `kcmp` and `process_mrelease` not at all.
+   - no sockets of any family; `socketpair` works. Abstract Unix sockets of the host's network namespace and path sockets the command's groups may write (a container runtime socket, when a non-root probe's user is in its group) are therefore out of reach, also on kernels without Landlock.
+   - no kernel keyrings (`add_key`, `keyctl`, `request_key`), which every process of a user shares; no System V IPC and no POSIX message queues.
+   - `personality` only for `PER_LINUX`, `PER_LINUX32` and the query; no `TIOCSTI` and `TIOCLINUX` ioctls; on amd64 no `modify_ldt` and `uselib`.
+
+   If the filter cannot be installed, the command is not run.
+8. When the probe is root and the kernel permits it, the command also gets a new, empty network namespace.
+
+Around the command:
+
+- The parent-death signal is `SIGKILL`: a command does not outlive a probe that is killed. After the time limit (10 seconds) or after the command exits, its whole process group is killed; the exited command is not reaped before that, so its process group id cannot be reused in between.
+- On Windows the same limits are to be applied with a restricted token and a job object (not implemented).
+- The output is treated as untrusted input. Standard output and standard error are kept separately, each truncated at 64 KiB, and parsed with RE2 regular expressions only.
+- `bomcensus-probe self-test` runs the probe binary itself through the helper as a version command and reports, from inside, what it could do: credentials, capabilities, descriptors, writes, sockets, process creation, signals, reading another process's environment and memory, ptrace, prlimit, keyrings and io_uring (`internal/collect/artifact/versionexec_check.go`).
+
+What a malicious version command can still do:
+
+- Read every file its uid can read, and run for 10 seconds of wall clock and CPU time with up to the address space limit of memory. Its output becomes part of the report.
+- Use the system calls that remain allowed, which is the kernel's attack surface for an unprivileged process minus the calls listed above and in 6.2.
+- Without Landlock (kernels before 5.13, or Landlock disabled): read `/proc/<pid>/environ` and the other ptrace-read-guarded files of dumpable processes of the same uid. For a probe started as root this is uid 65534, whose other processes are usually few; the probe itself is not readable, because it holds capabilities the command does not have and is not dumpable after its uid change. For a non-root probe it is that user's processes; Yama (`ptrace_scope` 1 or higher) still protects `/proc/<pid>/mem`.
+- Without Landlock ABI 6 (kernels before 6.12): nothing more with signals, which the seccomp filter limits on every kernel.
+- With a probe that runs as a non-root user: whatever that user's files and groups allow for reading.
+- A PID namespace is not used: creating one needs `CAP_SYS_ADMIN`, which the probe does not keep, and Go's parent-death signal check does not work across one. Signals are confined by the seccomp filter and Landlock instead.
+
+A planted file named `java` is therefore executed only as an isolated, unprivileged, single process. Execution can be disabled by the collection policy (`exec_version`); static extraction is used instead. The policy is a single server-wide setting; per-group policies are not implemented.
 
 ### 6.7 Kubernetes node agent
 

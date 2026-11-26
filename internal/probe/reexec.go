@@ -83,7 +83,13 @@ func reexecFromMemory() error {
 		return err
 	}
 	defer src.Close()
-	fd, err := unix.MemfdCreate("bomcensus-probe", unix.MFD_CLOEXEC|unix.MFD_ALLOW_SEALING)
+	// MFD_EXEC keeps the file executable where vm.memfd_noexec makes
+	// memory files non-executable by default (kernel 6.3 and later);
+	// older kernels reject the flag.
+	fd, err := unix.MemfdCreate("bomcensus-probe", unix.MFD_CLOEXEC|unix.MFD_ALLOW_SEALING|unix.MFD_EXEC)
+	if err == unix.EINVAL {
+		fd, err = unix.MemfdCreate("bomcensus-probe", unix.MFD_CLOEXEC|unix.MFD_ALLOW_SEALING)
+	}
 	if err != nil {
 		return fmt.Errorf("memfd_create: %w", err)
 	}

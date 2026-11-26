@@ -16,6 +16,9 @@ import (
 	"time"
 
 	"golang.org/x/sys/unix"
+
+	"github.com/bomcensus/bomcensus/internal/collect/artifact"
+	"github.com/bomcensus/bomcensus/internal/sandbox"
 )
 
 // SandboxCheck is the result of trying one operation after the sandbox was
@@ -97,6 +100,33 @@ func CheckSandbox(selfArgs ...string) []SandboxCheck {
 		return err
 	}())
 	works("run child process", runSelf(selfArgs))
+	return append(out, checkCommands(caps)...)
+}
+
+// checkCommands runs the own binary as a version command, through the
+// exec helper, and reports what it could do from inside (see
+// artifact.CheckCommandSandbox). A root probe that cannot switch users
+// must not run version commands at all.
+func checkCommands(caps capState) []SandboxCheck {
+	const name = "version command"
+	self, err := os.Open("/proc/self/exe")
+	if err != nil {
+		return []SandboxCheck{{Name: name, Detail: err.Error()}}
+	}
+	defer self.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	checks, err := artifact.CheckCommandSandbox(ctx, self)
+	if err != nil {
+		if os.Geteuid() == 0 && (!caps.effective.has(unix.CAP_SETUID) || !caps.effective.has(unix.CAP_SETGID)) {
+			return []SandboxCheck{{Name: name, OK: true, Detail: "not run (root without CAP_SETUID/CAP_SETGID): " + err.Error()}}
+		}
+		return []SandboxCheck{{Name: name, Detail: err.Error()}}
+	}
+	out := []SandboxCheck{{Name: name, OK: true, Detail: "ran; landlock " + sandbox.LandlockCommand(sandbox.LandlockABI())}}
+	for _, c := range checks {
+		out = append(out, SandboxCheck{Name: "command: " + c.Name, OK: c.OK, Detail: c.Detail})
+	}
 	return out
 }
 

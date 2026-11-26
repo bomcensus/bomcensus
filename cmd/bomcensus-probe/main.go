@@ -268,7 +268,7 @@ func runSelfTest(_ context.Context, args []string, _ io.Reader, stdout, stderr i
 	fmt.Fprint(stdout, res.String())
 	fmt.Fprintln(stdout, "checks:")
 	for _, c := range checks {
-		fmt.Fprintf(stdout, "  %-22s %-6s %s\n", c.Name, map[bool]string{true: "ok", false: "FAIL"}[c.OK], strings.TrimSpace(c.Detail))
+		fmt.Fprintf(stdout, "  %-45s %-4s %s\n", c.Name, map[bool]string{true: "ok", false: "FAIL"}[c.OK], strings.TrimSpace(c.Detail))
 	}
 	return nil
 }
