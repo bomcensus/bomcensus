@@ -176,11 +176,10 @@ func Run(ctx context.Context, c Command) (*Result, error) {
 		return nil, fmt.Errorf("token: %w", err)
 	}
 	defer tok.Close()
-	sid, err := appContainerSID(AppContainerName, "bomcensus version command")
+	sid, err := commandContainer()
 	if err != nil {
 		return nil, fmt.Errorf("appcontainer: %w", err)
 	}
-	defer windows.FreeSid(sid)
 
 	var lastErr error
 	for _, lpac := range containerOrder {
@@ -199,6 +198,28 @@ func Run(ctx context.Context, c Command) (*Result, error) {
 		return res, nil
 	}
 	return nil, fmt.Errorf("not started in an AppContainer: %w", lastErr)
+}
+
+var (
+	containerMu  sync.Mutex
+	containerSID *windows.SID
+)
+
+// commandContainer returns the SID of the AppContainer of commands,
+// creating its profile on the first call of the process. The SID is kept:
+// CreateAppContainerProfile takes milliseconds and fails when called
+// concurrently (E_UNEXPECTED, ERROR_KEY_DELETED).
+func commandContainer() (*windows.SID, error) {
+	containerMu.Lock()
+	defer containerMu.Unlock()
+	if containerSID == nil {
+		sid, err := appContainerSID(AppContainerName, "bomcensus version command")
+		if err != nil {
+			return nil, err
+		}
+		containerSID = sid
+	}
+	return containerSID, nil
 }
 
 // openLocked opens path for reading, sharing only reading, without
