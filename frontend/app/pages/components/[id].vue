@@ -76,7 +76,7 @@ function showRaw(row: ComponentAssetRow) {
 
     <template v-else>
       <PageHeader
-        :title="`${component.name} ${component.version}`"
+        :title="`${component.name} ${versionText(component.version, component.build)}`"
         :subtitle="`${componentTypeLabel[component.type]} · ${originLabel[component.origin]}`"
         :back="{ to: '/components', label: '컴포넌트' }"
       />
@@ -87,6 +87,10 @@ function showRaw(row: ComponentAssetRow) {
           <dd><CopyField :value="component.purl" /></dd>
           <dt>CPE</dt>
           <dd><span v-if="component.cpe" class="mono break-all">{{ component.cpe }}</span><span v-else class="text-ink-3">—</span></dd>
+          <template v-if="component.build">
+            <dt>빌드</dt>
+            <dd><span class="mono">{{ component.build }}</span></dd>
+          </template>
           <dt>종류</dt>
           <dd>{{ componentTypeLabel[component.type] }}</dd>
           <dt>출처</dt>

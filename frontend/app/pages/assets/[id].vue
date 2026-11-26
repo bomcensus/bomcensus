@@ -450,7 +450,7 @@ const tabs = computed(() => [
             </template>
             <template #cell-version="{ row }">
               <span class="inline-flex flex-wrap items-center gap-1.5">
-                <span class="mono whitespace-nowrap">{{ row.component.version }}</span>
+                <span class="mono whitespace-nowrap">{{ versionText(row.component.version, row.component.build) }}</span>
                 <AppButton v-if="row.versionRaw" size="sm" variant="ghost" @click="openRaw(row)">출력 보기</AppButton>
               </span>
             </template>
@@ -578,7 +578,7 @@ const tabs = computed(() => [
               <dt>컴포넌트</dt>
               <dd>
                 <NuxtLink :to="`/components/${selectedComponent.id}`" class="link">{{ selectedComponent.name }}</NuxtLink>
-                <span class="mono ml-1 text-ink-2">{{ selectedComponent.version }}</span>
+                <span class="mono ml-1 text-ink-2">{{ versionText(selectedComponent.version, selectedComponent.build) }}</span>
               </dd>
             </template>
           </dl>
@@ -732,7 +732,7 @@ const tabs = computed(() => [
             <dt>실행한 명령</dt>
             <dd :class="rawTarget.versionCommand ? 'mono' : 'text-ink-3'">{{ rawTarget.versionCommand ?? '—' }}</dd>
             <dt>파싱한 버전</dt>
-            <dd class="mono">{{ rawTarget.component.version }}</dd>
+            <dd class="mono">{{ versionText(rawTarget.component.version, rawTarget.component.build) }}</dd>
             <dt>탐지 방법</dt>
             <dd>{{ detectMethodLabel[rawTarget.method] }}</dd>
           </dl>

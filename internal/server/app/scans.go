@@ -11,6 +11,7 @@ import (
 	agentgen "github.com/bomcensus/bomcensus/agentproto/dto"
 	"github.com/bomcensus/bomcensus/internal/server/adminapi/inventoryapi"
 	"github.com/bomcensus/bomcensus/internal/server/adminapi/manageapi"
+	"github.com/bomcensus/bomcensus/internal/server/detectorsvc"
 	"github.com/bomcensus/bomcensus/internal/server/dispatch"
 	"github.com/bomcensus/bomcensus/internal/server/ingest"
 	"github.com/bomcensus/bomcensus/internal/server/job"
@@ -66,7 +67,9 @@ type Services struct {
 	Updates  *updatesvc.Service
 	PKI      *pkisvc.Service
 	Secrets  *secret.Box
-	Logger   *slog.Logger
+	// Detectors is the detector table service.
+	Detectors *detectorsvc.Service
+	Logger    *slog.Logger
 }
 
 // NewScans builds the scan service from the wired components. It is called
@@ -103,6 +106,9 @@ func ScanService(_ context.Context, s Services) (Scans, error) {
 	}
 	if s.Updates != nil {
 		cfg.Probe = s.Updates.Probe
+	}
+	if s.Detectors != nil {
+		cfg.Detectors = s.Detectors.ForProbe
 	}
 	return scansvc.New(cfg)
 }

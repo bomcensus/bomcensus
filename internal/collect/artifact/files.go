@@ -315,6 +315,7 @@ func (c *collector) addSoftware(ctx context.Context, d *Detector, src staticSour
 		if res.Ran && res.Output != nil {
 			a.VersionOutput = res.Output
 			ex, exOK = firstMatch(d.Parse, []byte(res.Output.Stdout+"\n"+res.Output.Stderr))
+			exOK = exOK && d.accepts(ex)
 		}
 	}
 	var m match
@@ -329,6 +330,7 @@ func (c *collector) addSoftware(ctx context.Context, d *Detector, src staticSour
 		m = st
 	}
 	a.Version = m.Version
+	a.Build = m.Build
 	a.Name = cmpOr(m.Name, d.Name)
 	a.PURL = expand(cmpOr(m.PURL, d.PURL), m.Version, purlEscape)
 	a.CPE = expand(cmpOr(m.CPE, d.CPE), m.Version, cpeEscape)

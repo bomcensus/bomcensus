@@ -99,7 +99,8 @@ func runSSH(ctx context.Context, job SSHJob, d Deps, res *Result, log *slog.Logg
 		},
 		Sudo:    job.Sudo,
 		HostKey: pinned,
-		Request: report.Request{Sections: slices.Clone(job.Sections), Policy: job.Policy, GoSymbols: job.GoSymbols},
+		Request: report.Request{Sections: slices.Clone(job.Sections), Policy: job.Policy, GoSymbols: job.GoSymbols,
+			Detectors: d.detectors()},
 		Timeout: job.Timeout,
 	}
 	if job.Integrity != nil {

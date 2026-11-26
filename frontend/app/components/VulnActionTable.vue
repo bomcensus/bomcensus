@@ -96,7 +96,7 @@ const sevCounts = (c: VulnComponent) =>
             </td>
             <td class="min-w-0 px-3 py-2.5">
               <NuxtLink :to="`/vulnerabilities?view=component&id=${c.componentId}`" class="font-medium hover:underline" @click.stop>{{ c.name }}</NuxtLink>
-              <span class="mono ml-1.5 text-xs whitespace-nowrap text-ink-2">{{ c.version }}</span>
+              <span class="mono ml-1.5 text-xs whitespace-nowrap text-ink-2">{{ versionText(c.version, c.build) }}</span>
               <span v-if="c.fixedVersion" class="mono ml-1.5 whitespace-nowrap text-xs">→ {{ c.fixedVersion }}</span>
               <span v-else class="ml-1.5 text-xs text-ink-3">수정 버전 없음</span>
             </td>

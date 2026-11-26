@@ -247,7 +247,7 @@ func processesDTO(ps []store.FindingProcessRef) []gen.FindingProcess {
 
 func componentUnitDTO(r store.VulnComponentRow) gen.VulnComponent {
 	out := gen.VulnComponent{
-		ComponentId: r.Component.ID, Name: r.Component.Name, Version: r.Component.Version,
+		ComponentId: r.Component.ID, Name: r.Component.Name, Version: r.Component.Version, Build: optStr(r.Component.Build),
 		Type: gen.ComponentType(r.Component.Type), Purl: optStr(r.Component.PURL),
 		Cves: len(r.VulnIDs), Kev: len(r.KEVVulnIDs), SeverityCounts: severityCountsDTO(r.Severity),
 		Score: r.MaxScore, Severity: topSeverity(r.Severity), Epss: r.MaxEPSS,
@@ -492,6 +492,7 @@ func locationsOf(fs []store.OpenFinding) []gen.VulnLocation {
 				Layer: gen.FindingLayer(layerOf(f.Layer)), ImageDigest: optStr(f.ImageDigest),
 				ComponentId: f.Component.ID, ComponentName: f.Component.Name, ComponentVersion: f.Component.Version,
 				Locations: f.Locations, Exposure: gen.Exposure(f.Exposure), Processes: processesDTO(f.Processes), FirstSeen: f.FirstSeen,
+				ComponentBuild: optStr(f.Component.Build),
 			}
 			if loc.Locations == nil {
 				loc.Locations = []string{}
@@ -738,7 +739,8 @@ func (h *Handlers) GetVulnerability(ctx context.Context, req gen.GetVulnerabilit
 		a := byComp[id]
 		m := a.f.Match
 		c := gen.VulnCveComponent{
-			ComponentId: id, Name: a.f.Component.Name, Version: a.f.Component.Version, Type: gen.ComponentType(a.f.Component.Type),
+			ComponentId: id, Name: a.f.Component.Name, Version: a.f.Component.Version, Build: optStr(a.f.Component.Build),
+			Type: gen.ComponentType(a.f.Component.Type),
 			Purl: optStr(a.f.Component.PURL), Method: gen.VulnCveComponentMethod(m.Method), Ecosystem: optStr(m.Ecosystem),
 			FixState: gen.FixState(m.FixState), FixedVersion: optStr(m.FixedVersion), Platforms: m.Platforms,
 			Advisories: make([]gen.VulnAdvisory, 0, len(m.Advisories)), Assets: len(a.assets), Exposure: gen.Exposure(a.f.Exposure),
@@ -788,8 +790,8 @@ func (h *Handlers) ListAssetVulnerabilities(ctx context.Context, req gen.ListAss
 	for _, f := range fs {
 		out.Items = append(out.Items, gen.AssetVuln{
 			ComponentId: f.Component.ID, ComponentName: f.Component.Name, ComponentVersion: f.Component.Version,
-			ComponentPurl: optStr(f.Component.PURL),
-			Container:     optStr(f.Container), Layer: gen.FindingLayer(layerOf(f.Layer)), ImageDigest: optStr(f.ImageDigest),
+			ComponentBuild: optStr(f.Component.Build), ComponentPurl: optStr(f.Component.PURL),
+			Container: optStr(f.Container), Layer: gen.FindingLayer(layerOf(f.Layer)), ImageDigest: optStr(f.ImageDigest),
 			VulnId: f.VulnID, Summary: optStr(f.Meta.Summary), Severity: severityPtr(store.MatchSeverity(f.Match, f.Meta)), Score: f.Meta.MaxScore,
 			Kev: f.Meta.KEV != nil, Epss: f.Meta.EPSS, Exposure: gen.Exposure(f.Exposure), FixState: gen.FixState(f.Match.FixState),
 			FixedVersion: optStr(f.Match.FixedVersion), Processes: processesDTO(f.Processes), FirstSeen: f.FirstSeen,

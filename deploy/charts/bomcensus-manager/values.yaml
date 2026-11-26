@@ -30,6 +30,17 @@ embeddedScanner: true
 # certificate.
 clusterDomain: cluster.local
 
+# Default known-software detector table (BOMCENSUS_DETECTORS_FILE). Agents
+# and scanners use it until an administrator saves another one in the
+# console (Settings, software detection rules); resetting there returns to
+# it. The chart ships the table built into this version (files/
+# detectors.yaml). existingConfigMap names a ConfigMap of your own with a
+# detectors.yaml key instead. With enabled false the server uses the table
+# built into its binary.
+detectors:
+  enabled: true
+  existingConfigMap: ""
+
 web:
   # TLS of the console listener: auto (internal CA) or manual (certificate
   # uploaded in the console). Always "off" when ingress.enabled is true;

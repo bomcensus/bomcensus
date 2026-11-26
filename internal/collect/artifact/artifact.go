@@ -52,6 +52,9 @@ type Inputs struct {
 	// WalkPaths are the logical directories walked. Empty means no walk:
 	// only Running and OpenFiles are inspected.
 	WalkPaths []string
+	// Detectors replaces the built-in table (Detectors) when not nil; see
+	// Load.
+	Detectors []*Detector
 }
 
 // OpenRef is an open file descriptor of a process.
@@ -149,6 +152,9 @@ func newCollector(env *collect.Env, in Inputs) *collector {
 		visitedDirs:   map[fileID]bool{},
 		st:            stats{limitHits: map[string]int{}},
 	}
+	if in.Detectors != nil {
+		c.detectors = in.Detectors
+	}
 	c.excludes = buildExcludes(env.Policy.ExcludePaths)
 	return c
 }
@@ -225,6 +231,7 @@ func compareArtifacts(a, b report.Artifact) int {
 		strings.Compare(a.GroupID, b.GroupID),
 		strings.Compare(a.Name, b.Name),
 		strings.Compare(a.Version, b.Version),
+		strings.Compare(a.Build, b.Build),
 		strings.Compare(a.SHA256, b.SHA256),
 		strings.Compare(a.SHA1, b.SHA1),
 	} {

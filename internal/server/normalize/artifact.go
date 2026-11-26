@@ -31,7 +31,8 @@ const GoStdlib = "stdlib"
 //	           when the coordinates are missing
 //	go_binary  pkg:golang/<module>@<version> and pkg:golang/stdlib@<go version>
 //	go_module  pkg:golang/<module>@<version>
-//	software   the detector's purl and CPE, or pkg:generic/<name>@<version>
+//	software   the detector's purl and CPE, or pkg:generic/<name>@<version>;
+//	           the build, when the detector found one, is kept
 func Artifact(a report.Artifact) []store.Component {
 	switch a.Kind {
 	case report.ArtifactJar:
@@ -76,7 +77,7 @@ func goModule(module, version string) store.Component {
 }
 
 func softwareComponent(a report.Artifact) store.Component {
-	c := store.Component{Type: TypeBinary, Name: a.Name, Version: a.Version, CPE: a.CPE,
+	c := store.Component{Type: TypeBinary, Name: a.Name, Version: a.Version, Build: a.Build, CPE: a.CPE,
 		Origin: store.OriginUpstream}
 	if p := strings.TrimSuffix(strings.TrimSpace(a.PURL), "@"); strings.HasPrefix(p, "pkg:") {
 		c.PURL = p

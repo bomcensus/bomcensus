@@ -117,6 +117,22 @@ func TestRunSSHSuccess(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if got.Request.Detectors != nil {
+		t.Fatalf("detector table without one: %+v", got.Request.Detectors)
+	}
+	table := &report.DetectorTable{SchemaVersion: report.DetectorSchemaVersion}
+	d.Detectors = func() *report.DetectorTable { return table }
+	d.Sink = newSink()
+	if _, err := RunSSH(context.Background(), job, d); err != nil || got.Request.Detectors != table {
+		t.Fatalf("detector table not passed: %v", err)
+	}
+	sink = newSink()
+	d.Sink = sink
+	d.Detectors = nil
+	res, err = RunSSH(context.Background(), job, d)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if got.Address != "10.0.0.9" || got.Port != 2222 || got.User != "scan" || got.Auth.Password != "pw" ||
 		!got.Sudo || got.HostKey != nil || len(got.Request.Sections) != 1 || !got.Request.Policy.ExecVersion ||
 		got.Request.GoSymbols != job.GoSymbols {
@@ -391,6 +407,9 @@ func TestRunK8sExec(t *testing.T) {
 			if kd.ClusterID != "c1" {
 				t.Errorf("deps cluster %q", kd.ClusterID)
 			}
+			if kd.Detectors == nil || kd.Detectors.SchemaVersion != report.DetectorSchemaVersion {
+				t.Errorf("deps detectors %+v", kd.Detectors)
+			}
 			switch tg.Pod {
 			case "distroless":
 				return nil, kube.ContainerOutcome{Coverage: dto.CoverageUnsupported, Reason: "no shell"}, nil
@@ -407,6 +426,8 @@ func TestRunK8sExec(t *testing.T) {
 		{Namespace: "c", Pod: "distroless", Container: "app", Node: "n3"},
 		{Namespace: "d", Pod: "boom", Container: "app", Node: "n4"},
 	}
+	table := &report.DetectorTable{SchemaVersion: report.DetectorSchemaVersion}
+	d.Detectors = func() *report.DetectorTable { return table }
 	res, err := RunK8sExec(context.Background(), K8sExecJob{JobID: "e1", ClusterID: "c1", Targets: targets,
 		Limits: kube.Limits{Total: 2, PerNode: 1, PerNamespace: 1}}, d)
 	if err != nil {

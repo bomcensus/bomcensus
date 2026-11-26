@@ -1,0 +1,19 @@
+{{- /*
+  Copyright (C) 2026 JC-Lab
+  SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-bomcensus-Commercial
+  Additional terms apply. See LICENSING.md.
+*/ -}}
+
+{{- /* The default detector table, a copy of internal/detectors/detectors.yaml. */ -}}
+{{- if and .Values.detectors.enabled (not .Values.detectors.existingConfigMap) }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "bomcensus-manager.fullname" . }}-detectors
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "bomcensus-manager.labels" . | nindent 4 }}
+data:
+  detectors.yaml: |
+    {{- .Files.Get "files/detectors.yaml" | nindent 4 }}
+{{- end }}

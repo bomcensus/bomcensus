@@ -942,6 +942,14 @@ components:
           items:
             type: string
             maxLength: 64
+        detectors_digest:
+          description: >-
+            Digest of the detector table the agent holds, empty when it holds
+            none and its probe uses the built-in table. Agents that do not
+            take detector tables leave it out. When it differs from
+            `AgentConfig.detectors_digest` the poll result carries the table.
+          type: string
+          pattern: "^([0-9a-f]{64})?$"
     SectionIntervals:
       description: Collection interval per section in seconds. 0 disables the section.
       type: object
@@ -981,6 +989,28 @@ components:
           description: Package file integrity passes of the agent's own host. Sent only to agents that report the `integrity` feature.
           allOf:
             - $ref: "#/components/schemas/IntegrityConfig"
+        detectors_digest:
+          description: >-
+            Digest of the detector table the server wants probes to use
+            (`report.Request.detectors`). Absent from servers without
+            detector tables; the probe then uses its built-in table.
+          type: string
+          pattern: "^[0-9a-f]{64}$"
+    DetectorTable:
+      description: >-
+        The detector table of `AgentConfig.detectors_digest`. `table` is the
+        canonical JSON of a `report.DetectorTable`; `digest` is its hex
+        SHA-256. The agent checks both against the configuration before it
+        keeps the table and passes it to its probe.
+      type: object
+      required: [digest, table]
+      properties:
+        digest:
+          type: string
+          pattern: "^[0-9a-f]{64}$"
+        table:
+          type: string
+          format: byte
     IntegrityConfig:
       description: >-
         When and how the agent checks the files of installed OS packages
@@ -1053,6 +1083,12 @@ components:
         server_time:
           type: string
           format: date-time
+        detectors:
+          description: >-
+            The detector table, sent when the poll request carried a
+            `detectors_digest` other than the configuration's.
+          allOf:
+            - $ref: "#/components/schemas/DetectorTable"
 
     # ── directives ──────────────────────────────────────────────────────
 

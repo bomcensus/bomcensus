@@ -16,6 +16,8 @@ import type {
   CredentialSecretUpdate,
   DetectDirCreate,
   DetectDirUpdate,
+  DetectorTableCheck,
+  DetectorTableState,
   FeedServerCreate,
   FeedServerUpdate,
   TriageRuleCreate,
@@ -154,6 +156,20 @@ export const updateDetectDir = (id: string, body: DetectDirUpdate) => call(sdk.u
 export const deleteDetectDir = async (id: string) => {
   await call(sdk.deleteDetectDir({ path: { id } }))
 }
+
+export const getDetectorTable = () => call(sdk.getDetectorTable())
+export const getDefaultDetectorTable = () => call(sdk.getDefaultDetectorTable())
+export const checkDetectorTable = (yaml: string) => call(sdk.checkDetectorTable({ body: { yaml } }))
+/** Saves the table; a table with errors is not saved and its check is returned instead. */
+export async function saveDetectorTable(yaml: string): Promise<{ state?: DetectorTableState; check?: DetectorTableCheck }> {
+  const res = await sdk.saveDetectorTable({ body: { yaml } })
+  if (res.response?.status === 422 && res.error) return { check: res.error as DetectorTableCheck }
+  return { state: await call(Promise.resolve(res)) }
+}
+export const resetDetectorTable = () => call(sdk.resetDetectorTable())
+export const listDetectorTableRevisions = () => call(sdk.listDetectorTableRevisions())
+export const getDetectorTableRevision = (revision: number) => call(sdk.getDetectorTableRevision({ path: { revision } }))
+export const getDetectorTableUsage = () => call(sdk.getDetectorTableUsage())
 
 // ── settings ────────────────────────────────────────────
 

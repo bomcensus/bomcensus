@@ -34,6 +34,9 @@ spec:
         {{- end }}
       annotations:
         checksum/config: {{ printf "%s|%s|%s" (include "bomcensus-manager.agentServerNames" .) (include "bomcensus-manager.webServerNames" .) $webTLS | sha256sum }}
+        {{- if and .Values.detectors.enabled (not .Values.detectors.existingConfigMap) }}
+        checksum/detectors: {{ .Files.Get "files/detectors.yaml" | sha256sum }}
+        {{- end }}
         {{- with .Values.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -91,6 +94,10 @@ spec:
               value: {{ include "bomcensus-manager.agentServerNames" . | quote }}
             - name: BOMCENSUS_EMBEDDED_SCANNER
               value: {{ .Values.embeddedScanner | quote }}
+            {{- if .Values.detectors.enabled }}
+            - name: BOMCENSUS_DETECTORS_FILE
+              value: /etc/bomcensus/detectors/detectors.yaml
+            {{- end }}
             {{- with .Values.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -135,6 +142,11 @@ spec:
               readOnly: true
             - name: tmp
               mountPath: /tmp
+            {{- if .Values.detectors.enabled }}
+            - name: detectors
+              mountPath: /etc/bomcensus/detectors
+              readOnly: true
+            {{- end }}
             {{- with .Values.extraVolumeMounts }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -143,6 +155,14 @@ spec:
         - name: tmp
           emptyDir:
             sizeLimit: 512Mi
+        {{- if .Values.detectors.enabled }}
+        - name: detectors
+          configMap:
+            name: {{ .Values.detectors.existingConfigMap | default (printf "%s-detectors" $fullname) }}
+            items:
+              - key: detectors.yaml
+                path: detectors.yaml
+        {{- end }}
         {{- with .Values.extraVolumes }}
         {{- toYaml . | nindent 8 }}
         {{- end }}

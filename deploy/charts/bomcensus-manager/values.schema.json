@@ -35,6 +35,14 @@
     "logFormat": {"type": "string", "enum": ["text", "json"]},
     "embeddedScanner": {"type": "boolean"},
     "clusterDomain": {"type": "string", "minLength": 1},
+    "detectors": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "existingConfigMap": {"type": "string"}
+      }
+    },
     "web": {
       "type": "object",
       "properties": {

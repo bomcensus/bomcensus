@@ -116,7 +116,7 @@ const componentColumns: TableColumn<ImageComponent>[] = [
           <template #cell-name="{ row }">
             <NuxtLink :to="`/components/${row.component.id}`" class="font-medium hover:underline">{{ row.component.name }}</NuxtLink>
           </template>
-          <template #cell-version="{ row }"><span class="mono whitespace-nowrap">{{ row.component.version }}</span></template>
+          <template #cell-version="{ row }"><span class="mono whitespace-nowrap">{{ versionText(row.component.version, row.component.build) }}</span></template>
           <template #cell-type="{ row }">{{ componentTypeLabel[row.component.type] }}</template>
         </DataTable>
       </Panel>

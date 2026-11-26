@@ -485,7 +485,8 @@ func (h *Handlers) GetVulnerableImage(ctx context.Context, req gen.GetVulnerable
 				locs = []string{}
 			}
 			c = &comp{dto: gen.VulnImageComponent{ComponentId: v.Component.ID, Name: v.Component.Name, Version: v.Component.Version,
-				Type: gen.ComponentType(v.Component.Type), Purl: optStr(v.Component.PURL), Locations: locs}}
+				Type: gen.ComponentType(v.Component.Type), Purl: optStr(v.Component.PURL), Locations: locs,
+				Build: optStr(v.Component.Build)}}
 			byComp[v.Component.ID] = c
 			order = append(order, v.Component.ID)
 		}

@@ -97,6 +97,7 @@ func (d *DB) ivUpsertComponents(ctx context.Context, obs []*ivObs, at time.Time)
 		Vendor        string `json:"vendor"`
 		Origin        string `json:"origin"`
 		Modularity    string `json:"modularity"`
+		Build         string `json:"build"`
 	}
 	seen := map[string]bool{}
 	var rows []row
@@ -108,7 +109,7 @@ func (d *DB) ivUpsertComponents(ctx context.Context, obs []*ivObs, at time.Time)
 		seen[o.ident] = true
 		c := o.comp
 		rows = append(rows, row{ivNewID(), o.ident, c.Type, c.Name, c.Version, c.Arch, c.Distro, c.PURL,
-			c.CPE, c.SourceName, c.SourceVersion, c.Vendor, string(c.Origin), c.Modularity})
+			c.CPE, c.SourceName, c.SourceVersion, c.Vendor, string(c.Origin), c.Modularity, c.Build})
 		b, _ := hex.DecodeString(o.ident)
 		idents = append(idents, b)
 	}
@@ -121,12 +122,12 @@ func (d *DB) ivUpsertComponents(ctx context.Context, obs []*ivObs, at time.Time)
 	var created []string
 	res, err := d.q.Query(ctx, `
 		INSERT INTO components (id, ident, type, name, version, arch, distro, purl, cpe,
-			source_name, source_version, vendor, origin, modularity, created_at)
+			source_name, source_version, vendor, origin, modularity, build, created_at)
 		SELECT x.id, decode(x.ident, 'hex'), x.type, x.name, x.version, x.arch, x.distro, x.purl, x.cpe,
-			x.source_name, x.source_version, x.vendor, x.origin, x.modularity, $2
+			x.source_name, x.source_version, x.vendor, x.origin, x.modularity, x.build, $2
 		FROM jsonb_to_recordset($1::jsonb) AS x(id uuid, ident text, type text, name text, version text,
 			arch text, distro text, purl text, cpe text, source_name text, source_version text,
-			vendor text, origin text, modularity text)
+			vendor text, origin text, modularity text, build text)
 		ORDER BY x.ident
 		ON CONFLICT (ident) DO NOTHING
 		RETURNING id::text`, js, at)

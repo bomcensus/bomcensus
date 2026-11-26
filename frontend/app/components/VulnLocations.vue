@@ -36,7 +36,7 @@ defineProps<{ items: VulnLocation[]; exe?: string }>()
               <span v-if="l.locations.length > 1" class="text-xs text-ink-3"> 외 {{ l.locations.length - 1 }}</span>
             </span>
             <span v-else class="text-ink-3">—</span>
-            <div class="mono text-xs text-ink-3">{{ l.componentName }} {{ l.componentVersion }}</div>
+            <div class="mono text-xs text-ink-3">{{ l.componentName }} {{ versionText(l.componentVersion, l.componentBuild) }}</div>
           </td>
           <td class="hidden px-3 py-2 text-xs text-ink-2 md:table-cell">{{ l.method ? detectMethodLabel[l.method] : '—' }}</td>
           <td class="px-3 py-2">

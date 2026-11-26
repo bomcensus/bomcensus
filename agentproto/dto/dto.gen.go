@@ -415,6 +415,9 @@ func (e UpdateState) Valid() bool {
 
 // AgentConfig defines model for AgentConfig.
 type AgentConfig struct {
+	// DetectorsDigest Digest of the detector table the server wants probes to use (`report.Request.detectors`). Absent from servers without detector tables; the probe then uses its built-in table.
+	DetectorsDigest *string `json:"detectors_digest,omitempty"`
+
 	// Integrity Package file integrity passes of the agent's own host. Sent only to agents that report the `integrity` feature.
 	Integrity *IntegrityConfig `json:"integrity,omitempty"`
 
@@ -457,6 +460,12 @@ type ConnectMode string
 
 // Coverage defines model for Coverage.
 type Coverage string
+
+// DetectorTable The detector table of `AgentConfig.detectors_digest`. `table` is the canonical JSON of a `report.DetectorTable`; `digest` is its hex SHA-256. The agent checks both against the configuration before it keeps the table and passes it to its probe.
+type DetectorTable struct {
+	Digest string `json:"digest"`
+	Table  []byte `json:"table"`
+}
 
 // Directive defines model for Directive.
 type Directive struct {
@@ -788,6 +797,9 @@ type PollRequest struct {
 	CertNotAfter    *time.Time  `json:"cert_not_after,omitempty"`
 	ConnectMode     ConnectMode `json:"connect_mode"`
 
+	// DetectorsDigest Digest of the detector table the agent holds, empty when it holds none and its probe uses the built-in table. Agents that do not take detector tables leave it out. When it differs from `AgentConfig.detectors_digest` the poll result carries the table.
+	DetectorsDigest *string `json:"detectors_digest,omitempty"`
+
 	// Features Optional features this agent or scanner supports. `go_symbols`: answers `go_symbols` directives and the `go_symbols` fields of scan directives.
 	Features *[]string `json:"features,omitempty"`
 
@@ -808,8 +820,11 @@ type PollRequest struct {
 
 // PollResult defines model for PollResult.
 type PollResult struct {
-	Config     AgentConfig `json:"config"`
-	Directives []Directive `json:"directives"`
+	Config AgentConfig `json:"config"`
+
+	// Detectors The detector table, sent when the poll request carried a `detectors_digest` other than the configuration's.
+	Detectors  *DetectorTable `json:"detectors,omitempty"`
+	Directives []Directive    `json:"directives"`
 
 	// LastCounter Last accepted `Bomcensus-Counter` value of this agent.
 	LastCounter int64     `json:"last_counter"`

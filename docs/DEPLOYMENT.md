@@ -342,6 +342,12 @@ The pod reproduces the split of the systemd units (SECURITY.md §6.7):
 - On SELinux nodes set `nodeAgent.probe.seLinuxOptions.type=spc_t`; the default container type cannot read host files.
 - The ServiceAccount token is not mounted; nothing in the pod uses the Kubernetes API. NetworkPolicies do not apply to host-network pods.
 
+### 3.8 Detector table
+
+The manager chart mounts the default known-software detector table from a ConfigMap (`<release>-detectors`, from the chart's `files/detectors.yaml`) and sets `BOMCENSUS_DETECTORS_FILE` to it. The chart's file is the table built into the probes of the same release. `detectors.existingConfigMap` uses a ConfigMap of your own with a `detectors.yaml` key instead; `detectors.enabled=false` leaves the default to the table built into the server. A default table with errors stops the server at start. A chart upgrade with a new table restarts the server pods (`checksum/detectors`).
+
+Administrators edit the table in the console (Settings, "소프트웨어 탐지 규칙"): check and save YAML, compare it with the default, load an earlier revision, return to the default, and see which table the agents and scanners use (by the digest of their last poll). Every save and reset is kept as a revision. A saved table replaces the default until it is reset; other server replicas pick it up within 30 seconds, and agents and scanners with their next poll. What probes accept from a table that differs from their own is limited (SECURITY.md §6.8): version commands run only where they are identical to the built-in table.
+
 ## 4. systemd
 
 The Linux host agent is installed as separate components with separate users (SECURITY section 6.1). The files are in `deploy/systemd/`.
@@ -571,6 +577,7 @@ The server reads `BOMCENSUS_*` environment variables only. All variables that ar
 | `BOMCENSUS_AGENT_SERVER_NAMES` | host name | comma-separated names of the automatic agent TLS certificate. Agents connect with one of them |
 | `BOMCENSUS_RELEASE_DIR` | | directory whose release bundles are imported at start. The server image sets `/usr/share/bomcensus/releases` |
 | `BOMCENSUS_EMBEDDED_SCANNER` | `true` | run the scanner inside the server process |
+| `BOMCENSUS_DETECTORS_FILE` | | default known-software detector table (YAML), used until an administrator saves one in the console; empty uses the table built into the server (section 3.8). A file with errors stops the server |
 | `BOMCENSUS_LOG_LEVEL` | `info` | `debug`, `info`, `warn`, `error` |
 | `BOMCENSUS_LOG_FORMAT` | `text` | `text` or `json` |
 

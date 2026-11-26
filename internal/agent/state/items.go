@@ -334,6 +334,27 @@ func (d *Dir) SaveProbeCache(c json.RawMessage) error {
 	return d.WriteFile(cacheName, c, 0o600)
 }
 
+// LoadDetectors returns the stored detector table (canonical JSON), or nil
+// when there is none.
+func (d *Dir) LoadDetectors() ([]byte, error) {
+	b, err := d.ReadFile(detectorsName)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("state: read %s: %w", detectorsName, err)
+	}
+	return b, nil
+}
+
+// SaveDetectors stores the detector table; empty removes it.
+func (d *Dir) SaveDetectors(table []byte) error {
+	if len(table) == 0 {
+		return d.Remove(detectorsName)
+	}
+	return d.WriteFile(detectorsName, table, 0o600)
+}
+
 // Integrity records the package file integrity passes of the agent's host.
 type Integrity struct {
 	// PassID, Cursor and FullRehash describe the pass in progress; PassID

@@ -173,6 +173,7 @@ func (h *Handlers) Poll(ctx context.Context, body *dto.PollRequest) (*dto.PollRe
 		UpdateMessage:      updateMessage(body.Update.Message),
 		Features:           knownFeatures(body.Features),
 		SeenAt:             now,
+		DetectorsDigest:    detectorsDigest(body.DetectorsDigest),
 	}
 	if remote.IsValid() {
 		status.Address = remote.String()
@@ -196,6 +197,10 @@ func (h *Handlers) Poll(ctx context.Context, body *dto.PollRequest) (*dto.PollRe
 	if err != nil {
 		return nil, err
 	}
+	table, err := h.detectorTable(ctx, &cfg, body.DetectorsDigest)
+	if err != nil {
+		return nil, err
+	}
 	extra, err := h.computedDirectives(ctx, a.ID, body, bundle.Serial, now)
 	if err != nil {
 		return nil, err
@@ -216,7 +221,40 @@ func (h *Handlers) Poll(ctx context.Context, body *dto.PollRequest) (*dto.PollRe
 		Directives:  directives,
 		LastCounter: int64(counter),
 		ServerTime:  h.now().UTC().Truncate(time.Second),
+		Detectors:   table,
 	}, nil
+}
+
+// detectorTable announces the detector table in cfg and returns it when
+// the agent reported a table digest (agents that take tables do) that
+// differs.
+func (h *Handlers) detectorTable(ctx context.Context, cfg *dto.AgentConfig, held *string) (*dto.DetectorTable, error) {
+	if h.detectors == nil {
+		return nil, nil
+	}
+	digest, raw, err := h.detectors.Current(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("detector table: %w", err)
+	}
+	cfg.DetectorsDigest = &digest
+	if held == nil || *held == digest {
+		return nil, nil
+	}
+	return &dto.DetectorTable{Digest: digest, Table: raw}, nil
+}
+
+// detectorsDigest keeps a reported table digest when it has the form of
+// one; anything else is stored as reported by an agent that has none.
+func detectorsDigest(d *string) *string {
+	if d == nil {
+		return nil
+	}
+	if len(*d) != 64 || strings.Trim(*d, "0123456789abcdef") != "" {
+		empty := ""
+		return &empty
+	}
+	v := *d
+	return &v
 }
 
 // knownFeatures keeps the features the server knows of.

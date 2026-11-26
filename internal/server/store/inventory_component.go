@@ -40,14 +40,16 @@ const (
 
 // Component is a globally deduplicated piece of software.
 //
-// Its identity is (Type, Name, Version, Arch, Distro, PURL), compared
-// exactly: two observations with equal values are the same component. The
+// Its identity is (Type, Name, Version, Arch, Distro, PURL) and Build when it
+// is set, compared exactly: two observations with equal values are the same
+// component. The
 // other fields are attributes taken from the first observation.
 type Component struct {
 	ID            string
 	Type          string // deb, rpm, apk, maven, golang, binary, windows, middleware
 	Name          string
 	Version       string
+	Build         string // vendor build or revision from a detector; identity when set
 	Arch          string
 	Distro        string // distro qualifier, e.g. "ubuntu-24.04"
 	PURL          string

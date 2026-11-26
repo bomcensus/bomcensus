@@ -38,6 +38,7 @@ type component struct {
 	Origin     string         `json:"origin,omitempty"`
 	Modularity string         `json:"modularity,omitempty"`
 	Source     *sourcePackage `json:"source,omitempty"`
+	Build      string         `json:"build,omitempty"` // vendor build or revision of a detected component
 }
 
 type sourcePackage struct {
@@ -153,7 +154,7 @@ func buildRequest(comps []store.Component) matchRequest {
 	const noOS = -1
 	plain := noOS
 	for _, c := range comps {
-		wc := component{Ref: c.ID, PURL: c.PURL, CPE: c.CPE, Modularity: c.Modularity}
+		wc := component{Ref: c.ID, PURL: c.PURL, CPE: c.CPE, Modularity: c.Modularity, Build: c.Build}
 		os, hasOS := osOf(c)
 		if hasOS && c.Origin != "" {
 			wc.Origin = string(c.Origin)

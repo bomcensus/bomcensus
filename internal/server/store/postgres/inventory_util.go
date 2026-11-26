@@ -193,11 +193,17 @@ func ivSortedUnique(s []string) []string {
 }
 
 // ivIdent is the identity key of a component: the SHA-256 of the
-// length-prefixed fields type, name, version, arch, distro and purl.
+// length-prefixed fields type, name, version, arch, distro and purl, and of
+// the build when there is one. Components without a build keep the identity
+// they had before builds were reported.
 func ivIdent(c store.Component) []byte {
 	h := sha256.New()
 	var n [8]byte
-	for _, f := range []string{c.Type, c.Name, c.Version, c.Arch, c.Distro, c.PURL} {
+	fields := []string{c.Type, c.Name, c.Version, c.Arch, c.Distro, c.PURL}
+	if c.Build != "" {
+		fields = append(fields, "build", c.Build)
+	}
+	for _, f := range fields {
 		binary.BigEndian.PutUint64(n[:], uint64(len(f)))
 		h.Write(n[:])
 		h.Write([]byte(f))
@@ -301,11 +307,11 @@ func ivPage(ctx context.Context, d *DB, op string, q *ivQuery, sel, from, order 
 const ivComponentCols = `COALESCE(c.id::text, ''), COALESCE(c.type, ''), COALESCE(c.name, ''),
 	COALESCE(c.version, ''), COALESCE(c.arch, ''), COALESCE(c.distro, ''), COALESCE(c.purl, ''),
 	COALESCE(c.cpe, ''), COALESCE(c.source_name, ''), COALESCE(c.source_version, ''),
-	COALESCE(c.vendor, ''), COALESCE(c.origin, '')`
+	COALESCE(c.vendor, ''), COALESCE(c.origin, ''), COALESCE(c.build, '')`
 
 func ivComponentDest(c *store.Component) []any {
 	return []any{&c.ID, &c.Type, &c.Name, &c.Version, &c.Arch, &c.Distro, &c.PURL,
-		&c.CPE, &c.SourceName, &c.SourceVersion, &c.Vendor, &c.Origin}
+		&c.CPE, &c.SourceName, &c.SourceVersion, &c.Vendor, &c.Origin, &c.Build}
 }
 
 // Asset brief columns of asset alias a and cluster alias k.

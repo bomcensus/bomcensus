@@ -30,6 +30,7 @@ import (
 	"github.com/bomcensus/bomcensus/internal/server/adminapi/inventoryapi"
 	"github.com/bomcensus/bomcensus/internal/server/adminapi/manageapi"
 	"github.com/bomcensus/bomcensus/internal/server/agentapi"
+	"github.com/bomcensus/bomcensus/internal/server/detectorsvc"
 	"github.com/bomcensus/bomcensus/internal/server/dispatch"
 	"github.com/bomcensus/bomcensus/internal/server/enrollsvc"
 	"github.com/bomcensus/bomcensus/internal/server/feedsvc"
@@ -164,6 +165,11 @@ func Run(ctx context.Context, cfg config.Config, log *slog.Logger, opts Options)
 	if err := migrateStore(ctx, db); err != nil {
 		return err
 	}
+	dets, err := detectorsvc.New(detectorsvc.Config{Store: db, DefaultFile: cfg.DetectorsFile,
+		Logger: log.With("component", "detectors")})
+	if err != nil {
+		return fmt.Errorf("%s: %w", config.EnvDetectorsFile, err)
+	}
 
 	webTLS := cfg.WebTLS != config.WebTLSOff
 	pki, err := pkisvc.New(pkisvc.Config{
@@ -249,7 +255,7 @@ func Run(ctx context.Context, cfg config.Config, log *slog.Logger, opts Options)
 	if opts.Scans != nil {
 		scans, err = opts.Scans(sys, Services{
 			Config: cfg, Store: db, Queue: queue, Dispatch: disp, Ingest: ing,
-			Updates: upd, PKI: pki, Secrets: box, Logger: log.With("component", "scans"),
+			Updates: upd, PKI: pki, Secrets: box, Detectors: dets, Logger: log.With("component", "scans"),
 		})
 		if err != nil {
 			return fmt.Errorf("scan service: %w", err)
@@ -272,6 +278,7 @@ func Run(ctx context.Context, cfg config.Config, log *slog.Logger, opts Options)
 		Secrets:     box,
 		Feed:        feed,
 		Matcher:     matcher,
+		Detectors:   dets,
 		PrincipalID: auth.IDFrom,
 		Logger:      log.With("component", "api"),
 	}
@@ -303,13 +310,14 @@ func Run(ctx context.Context, cfg config.Config, log *slog.Logger, opts Options)
 
 	// Agent API.
 	agentSvc, err := agentapi.New(agentapi.Options{
-		Store:    db,
-		PKI:      pki,
-		Enroll:   enroll,
-		Dispatch: disp,
-		Updates:  updates{svc: upd},
-		Ingest:   &reportIngest{ing: ing, queue: queue, scans: scans, log: log.With("component", "agentapi")},
-		Logger:   log.With("component", "agentapi"),
+		Store:     db,
+		PKI:       pki,
+		Enroll:    enroll,
+		Dispatch:  disp,
+		Updates:   updates{svc: upd},
+		Ingest:    &reportIngest{ing: ing, queue: queue, scans: scans, log: log.With("component", "agentapi")},
+		Detectors: dets,
+		Logger:    log.With("component", "agentapi"),
 	})
 	if err != nil {
 		return err

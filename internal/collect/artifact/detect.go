@@ -18,10 +18,12 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+
+	"github.com/bomcensus/bomcensus/internal/detectors"
 )
 
 // Detector recognizes one piece of known software by file name and finds its
-// version. Detectors are plain data; see detectors.go.
+// version. Detectors are built from a table (detectors.go, Load).
 type Detector struct {
 	// ID is stable; it is reported in Artifact.Detector and keys the cache.
 	ID string
@@ -55,6 +57,15 @@ type Detector struct {
 	// PURL and CPE are templates; {version} is replaced.
 	PURL string
 	CPE  string
+
+	// constrained is set for detectors that are not in the built-in
+	// table (detectors.Entry.Builtin): their side files are opened with
+	// openSideConstrained and what they capture must be
+	// detectors.ValidCaptured.
+	constrained bool
+	// cacheTag tells the cached static results of a detector that is not
+	// built in apart from those of another detector with the same id.
+	cacheTag string
 }
 
 // EnvVar is an environment variable derived from the install path.
@@ -66,7 +77,8 @@ type EnvVar struct {
 }
 
 // Rule extracts a version with a regular expression: the group named
-// "version" if there is one, else the first group.
+// "version" if there is one, else the first group. A group named "build"
+// captures the vendor build or revision number (Artifact.Build).
 type Rule struct {
 	Pattern *regexp.Regexp
 	// Name, PURL and CPE override the detector's values when set.
@@ -94,12 +106,9 @@ type StaticRule struct {
 	Limit int64
 }
 
-// re compiles a pattern of the built-in table.
-func re(s string) *regexp.Regexp { return regexp.MustCompile(s) }
-
 const (
-	defaultSideFileLimit = 1 << 20
-	defaultBinaryLimit   = 256 << 20
+	defaultSideFileLimit = detectors.SideFileLimit
+	defaultBinaryLimit   = detectors.BinaryLimit
 	scanChunk            = 1 << 20
 	scanOverlap          = 4 << 10
 )
@@ -130,6 +139,7 @@ func (d *Detector) matches(p string) bool {
 // match is a version found by a rule, with the overrides of that rule.
 type match struct {
 	Version string `json:"v,omitempty"`
+	Build   string `json:"b,omitempty"`
 	Name    string `json:"n,omitempty"`
 	PURL    string `json:"p,omitempty"`
 	CPE     string `json:"c,omitempty"`
@@ -147,7 +157,11 @@ func (r *Rule) find(b []byte) (match, bool) {
 	if idx >= len(sub) || len(sub[idx]) == 0 {
 		return match{}, false
 	}
-	return match{Version: string(sub[idx]), Name: r.Name, PURL: r.PURL, CPE: r.CPE}, true
+	m := match{Version: string(sub[idx]), Name: r.Name, PURL: r.PURL, CPE: r.CPE}
+	if i := r.Pattern.SubexpIndex("build"); i > 0 && i < len(sub) {
+		m.Build = string(sub[i])
+	}
+	return m, true
 }
 
 // firstMatch applies rules in order to one buffer.
@@ -213,6 +227,9 @@ func (c *collector) static(d *Detector, src staticSource, fi os.FileInfo) (match
 			}
 		case r.File == "" && r.Entry == "":
 			key := "artifact.static.v1." + d.ID + "." + strconv.Itoa(i)
+			if d.cacheTag != "" {
+				key = "artifact.static.t1." + d.ID + "." + d.cacheTag + "." + strconv.Itoa(i)
+			}
 			var cached struct {
 				M  match `json:"m"`
 				OK bool  `json:"ok"`
@@ -232,24 +249,36 @@ func (c *collector) static(d *Detector, src staticSource, fi os.FileInfo) (match
 		case r.File == "":
 			m, ok = c.zipEntryMatch(src.file, src.size, r)
 		default:
-			m, ok = c.sideFileMatch(src.logical, r)
+			m, ok = c.sideFileMatch(src.logical, r, d.constrained)
 		}
-		if ok {
+		if ok && d.accepts(m) {
 			return m, true
 		}
 	}
 	return match{}, false
 }
 
+// limitOr returns v, at most def, or def when v is zero.
 func limitOr(v, def int64) int64 {
 	if v > 0 {
-		return v
+		return min(v, def)
 	}
 	return def
 }
 
+// accepts reports whether a match may be reported: always for built-in
+// detectors, only with a version and build of the strict grammar for the
+// others.
+func (d *Detector) accepts(m match) bool {
+	if !d.constrained {
+		return true
+	}
+	return detectors.ValidCaptured(m.Version) && (m.Build == "" || detectors.ValidCaptured(m.Build))
+}
+
 // sideFileMatch applies a rule to a file next to the matched one.
-func (c *collector) sideFileMatch(logical string, r *StaticRule) (match, bool) {
+// Detectors that are not built in open it with openSideConstrained.
+func (c *collector) sideFileMatch(logical string, r *StaticRule, constrained bool) (match, bool) {
 	rel := path.Clean(path.Join(path.Dir(logical), r.File))
 	candidates := []string{rel}
 	if strings.ContainsAny(rel, "*?[") {
@@ -263,8 +292,15 @@ func (c *collector) sideFileMatch(logical string, r *StaticRule) (match, bool) {
 		}
 		slices.Sort(candidates)
 	}
+	open := c.openSide
+	if constrained {
+		open = c.openSideConstrained
+		// A pattern of a table that is not built in reads a few files,
+		// not a directory.
+		candidates = candidates[:min(len(candidates), detectors.MaxSideFileMatches)]
+	}
 	for _, p := range candidates {
-		f, err := c.openSide(p)
+		f, err := open(p)
 		if err != nil {
 			continue
 		}

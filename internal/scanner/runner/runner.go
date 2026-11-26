@@ -123,6 +123,10 @@ type Deps struct {
 	// UserAgent of Kubernetes API requests.
 	UserAgent string
 	Now       func() time.Time
+	// Detectors returns the detector table passed to the probe
+	// (report.Request.Detectors); nil, or a nil result, leaves the probe
+	// with its built-in table.
+	Detectors func() *report.DetectorTable
 
 	// Replacements for tests.
 	sshCollect  func(context.Context, ssh.Target, ssh.Deps) (*ssh.Result, error)
@@ -162,6 +166,13 @@ func (d Deps) probe() func(ctx context.Context, goos, arch string) ([]byte, erro
 		}
 	}
 	return d.Probe
+}
+
+func (d Deps) detectors() *report.DetectorTable {
+	if d.Detectors == nil {
+		return nil
+	}
+	return d.Detectors()
 }
 
 func (d Deps) kubeConfig(kubeconfig []byte) kube.Config {

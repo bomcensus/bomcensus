@@ -86,6 +86,11 @@ func main() {
 			r.Processes = &report.ProcessesSection{SectionMeta: meta, Processes: []report.Process{{PID: os.Getpid(), Exe: "/fake"}}}
 		}
 	}
+	if req.Detectors != nil {
+		// Tells the test which detector table arrived.
+		d, _ := report.Digest(req.Detectors)
+		r.Detectors = &report.DetectorUse{Digest: d, Source: report.DetectorsRequest}
+	}
 	if err := report.Encode(os.Stdout, r); err != nil {
 		fmt.Fprintln(os.Stderr, "fakeprobe:", err)
 		os.Exit(1)

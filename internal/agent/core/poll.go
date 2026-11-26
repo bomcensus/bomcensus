@@ -62,6 +62,8 @@ func (r *Runtime) pollOnce(ctx context.Context) error {
 	if res.LastCounter > 0 {
 		_ = r.counter.Observe(ctx, uint64(res.LastCounter))
 	}
+	// Before the configuration, so that its listeners see the new table.
+	r.applyDetectors(res.Config, res.Detectors)
 	r.applyConfig(ctx, res.Config)
 	for _, f := range r.pollFuncs {
 		f(ctx)
@@ -99,6 +101,8 @@ func (r *Runtime) pollRequest(ctx context.Context) (dto.PollRequest, []string) {
 	if b := r.TrustBundle(); b != nil {
 		req.TrustBundleSerial = int64(b.Version)
 	}
+	held := r.DetectorsDigest()
+	req.DetectorsDigest = &held
 	if c := r.Certificate(); c != nil {
 		na := c.NotAfter
 		req.CertNotAfter = &na

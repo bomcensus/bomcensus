@@ -160,6 +160,8 @@ func TestDetectorStaticSnippets(t *testing.T) {
 		{"mysql", "\x0011.8.9-MariaDB\x00../../mysql-8.4.13/x\x00", "mariadb", "11.8.9"},
 		{"openssl", "\x00OpenSSL 3.5.7 9 Jun 2026\x00", "openssl", "3.5.7"},
 		{"openssl", "\x00OpenSSL 1.1.1w  11 Sep 2023\x00", "openssl", "1.1.1w"},
+		{"genian-nac", "2.1.2=\x005.0.54\x00License version mismatched\x001.3.6.", "genian-nac", "5.0.54"},
+		{"genian-nac", "2.1.2=\x006.0.15\x00License version mismatched\x001.3.6.", "genian-ztna", "6.0.15"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.detector+"/"+tc.version, func(t *testing.T) {
@@ -227,6 +229,8 @@ func TestDetectorMatches(t *testing.T) {
 		{"tomcat", "/opt/tomcat/lib/catalina.jar", true},
 		{"tomcat", "/opt/app/catalina.jar", false},
 		{"containerd", "/usr/bin/containerd-shim-runc-v2", true},
+		{"genian-nac", "/usr/geni/centerd", true},
+		{"genian-nac", "/opt/x/centerd", false},
 	}
 	for _, tc := range cases {
 		if got := detectorByID(t, tc.id).matches(tc.path); got != tc.want {
@@ -272,9 +276,14 @@ func TestDetectorSideFiles(t *testing.T) {
 	write("srv/tc9/lib/catalina.jar", jar2.String(), 0o644)
 	write("srv/tc9/RELEASE-NOTES", "                     Apache Tomcat Version 9.0.83\n", 0o644)
 
+	// Genian NAC: build tag in /.version (Docker image layout).
+	write("usr/geni/centerd", string(tinyELF(t, "x", "", 0)), 0o755)
+	write(".version", "NAC-CLOUD-R-117458-5.0.54.0720\n", 0o644)
+
 	env := testEnv(root)
 	sec := testCollector(env, Inputs{}, "/", Detectors...).run(context.Background())
 	want := map[string]string{
+		"/usr/geni/centerd":                  "5.0.54.0720",
 		"/opt/jdk/bin/java":                  "17.0.21",
 		"/opt/jdk8/jre/bin/java":             "1.8.0_512",
 		"/usr/local/bin/ruby":                "3.3.14",

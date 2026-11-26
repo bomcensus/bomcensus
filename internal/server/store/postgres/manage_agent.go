@@ -26,7 +26,7 @@ const mgAgentColumns = `a.id::text, a.kind, a.hostname, a.description, a.identit
 	array(SELECT x.dir_id::text FROM agent_detect_dirs x JOIN detect_dirs dd ON dd.id = x.dir_id
 		WHERE x.agent_id = a.id ORDER BY dd.path),
 	array(SELECT dd.path FROM agent_detect_dirs x JOIN detect_dirs dd ON dd.id = x.dir_id
-		WHERE x.agent_id = a.id ORDER BY dd.path), a.integrity, coalesce(a.scope_id, '')`
+		WHERE x.agent_id = a.id ORDER BY dd.path), a.integrity, coalesce(a.scope_id, ''), a.detectors_digest`
 
 // mgScanAgent scans mgAgentColumns followed by extra.
 func mgScanAgent(r mgRow, extra ...any) (store.Agent, error) {
@@ -35,7 +35,7 @@ func mgScanAgent(r mgRow, extra ...any) (store.Agent, error) {
 		&a.RegisterKeyID, &a.State, &a.Version, &a.OS, &a.Arch, &a.ConnectMode, &a.ListenAddress,
 		&a.TLSMode, &a.ObservedIssuer, &a.Privilege, &a.ExecHelper, &a.Address, &a.TrustBundleVersion,
 		&a.UpdateState, &a.UpdateMessage, &a.AssetID, &a.EnrolledAt, &a.ApprovedAt, &a.RevokedAt, &a.LastSeen,
-		&a.CertNotAfter, &a.Features, &a.DetectDirIDs, &a.DetectPaths, &a.Integrity, &a.ScopeID}
+		&a.CertNotAfter, &a.Features, &a.DetectDirIDs, &a.DetectPaths, &a.Integrity, &a.ScopeID, &a.DetectorsDigest}
 	if err := r.Scan(append(dest, extra...)...); err != nil {
 		return store.Agent{}, err
 	}
@@ -295,10 +295,10 @@ func (d *DB) UpdateAgentPoll(ctx context.Context, id string, s store.AgentPollSt
 	return d.mgUpdateAgent(ctx, "update agent poll", `hostname = $2, version = $3, os = $4, arch = $5, connect_mode = $6,
 			listen_address = $7, tls_mode = $8, observed_issuer = $9, privilege = $10, exec_helper = $11,
 			address = $12, trust_bundle_version = $13, update_state = $14, last_seen = $15,
-			update_message = $16, features = $17`,
+			update_message = $16, features = $17, detectors_digest = $18`,
 		id, s.Hostname, s.Version, s.OS, s.Arch, s.ConnectMode, s.ListenAddress, s.TLSMode, s.ObservedIssuer,
 		s.Privilege, s.ExecHelper, s.Address, s.TrustBundleVersion, s.UpdateState, mgOrNow(s.SeenAt),
-		s.UpdateMessage, vuStrings(s.Features))
+		s.UpdateMessage, vuStrings(s.Features), s.DetectorsDigest)
 }
 
 // mgUpdateAgent runs UPDATE agents SET set WHERE id = $1 for exactly one

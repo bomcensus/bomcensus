@@ -244,8 +244,8 @@ const tabModel = computed({ get: () => view.value as string, set: (v: string) =>
                   <StatusBadge v-if="c.deferred" label="유예" />
                   <span class="mono ml-auto text-xs text-ink-2">{{ c.score !== undefined ? c.score.toFixed(1) : '—' }}</span>
                 </span>
-                <span class="mono mt-0.5 block truncate text-xs text-ink-2" :title="c.fixedVersion ? `${c.version} → ${c.fixedVersion}` : c.version">
-                  {{ c.version }}<template v-if="c.fixedVersion"> → {{ c.fixedVersion }}</template>
+                <span class="mono mt-0.5 block truncate text-xs text-ink-2" :title="c.fixedVersion ? `${versionText(c.version, c.build)} → ${c.fixedVersion}` : versionText(c.version, c.build)">
+                  {{ versionText(c.version, c.build) }}<template v-if="c.fixedVersion"> → {{ c.fixedVersion }}</template>
                 </span>
                 <span class="mt-1 flex items-center gap-2 text-xs text-ink-3">
                   <ExposureMeter :exposure="c.exposure" />
@@ -337,7 +337,7 @@ const tabModel = computed({ get: () => view.value as string, set: (v: string) =>
                   <tr class="align-top">
                     <td class="py-2 pl-3.5">
                       <NuxtLink :to="`/vulnerabilities?view=component&id=${c.componentId}`" class="font-medium hover:underline">{{ c.name }}</NuxtLink>
-                      <span class="mono ml-1 text-xs text-ink-2">{{ c.version }}</span>
+                      <span class="mono ml-1 text-xs text-ink-2">{{ versionText(c.version, c.build) }}</span>
                     </td>
                     <td class="px-3 py-2">
                       <span v-if="c.fixedVersion" class="mono whitespace-nowrap text-xs">→ {{ c.fixedVersion }}</span>
@@ -393,7 +393,7 @@ const tabModel = computed({ get: () => view.value as string, set: (v: string) =>
               </div>
               <h2 class="mt-2 text-lg font-semibold">
                 <NuxtLink :to="`/components/${compDetail.component.componentId}`" class="hover:underline">{{ compDetail.component.name }}</NuxtLink>
-                <span class="mono ml-2 text-base font-normal text-ink-2">{{ compDetail.component.version }}</span>
+                <span class="mono ml-2 text-base font-normal text-ink-2">{{ versionText(compDetail.component.version, compDetail.component.build) }}</span>
               </h2>
               <p class="mt-1 text-sm">
                 <template v-if="compDetail.component.fixedVersion">

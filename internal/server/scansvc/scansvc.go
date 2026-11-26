@@ -196,6 +196,9 @@ type Config struct {
 	ExecLimits kube.Limits
 	Logger     *slog.Logger
 	Now        func() time.Time
+	// Detectors returns the detector table for the embedded scanner's
+	// probes; nil leaves them with their built-in table.
+	Detectors func() *report.DetectorTable
 }
 
 // Service schedules and dispatches scan jobs.
@@ -209,6 +212,7 @@ type Service struct {
 	run      Runner
 	embedded bool
 	limits   kube.Limits
+	detect   func() *report.DetectorTable
 	log      *slog.Logger
 	now      func() time.Time
 	pool     *runner.Pool
@@ -229,7 +233,7 @@ func New(cfg Config) (*Service, error) {
 	}
 	s := &Service{
 		st: cfg.Store, ing: cfg.Ingest, notify: cfg.Notify, secrets: cfg.Secrets, probe: cfg.Probe,
-		run: cfg.Runner, embedded: cfg.EmbeddedScanner, limits: cfg.ExecLimits,
+		run: cfg.Runner, embedded: cfg.EmbeddedScanner, limits: cfg.ExecLimits, detect: cfg.Detectors,
 		log: cfg.Logger, now: cfg.Now,
 	}
 	if s.run == nil {
@@ -389,7 +393,8 @@ func (s *Service) probeSource() runner.ProbeSource {
 }
 
 func (s *Service) deps(sink runner.Sink) runner.Deps {
-	return runner.Deps{Sink: sink, Probe: s.probeSource(), Logger: s.log, Now: s.now, UserAgent: "bomcensus-server"}
+	return runner.Deps{Sink: sink, Probe: s.probeSource(), Logger: s.log, Now: s.now, UserAgent: "bomcensus-server",
+		Detectors: s.detect}
 }
 
 // scanner returns the approved scanner with a usable encryption key.

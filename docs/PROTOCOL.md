@@ -1,6 +1,6 @@
 # Agent protocol: signatures and sealed secrets
 
-This document specifies the bytes that are signed on the agent protocol (`api/openapi/agent.yaml`, base path `/agent/v1`) and how secrets in scanner directives are sealed (§9). JSON bodies are defined by the OpenAPI document; this document does not depend on them. Security rationale: `docs/SECURITY.md` §4.3 and §4.6. It covers the built-in HTTP channel; channels of your own carry the same operations and authenticate them in their own way (`docs/EXTENDING.md` §3), while the enrollment signatures (§2) and sealed secrets (§9) are the same on every channel.
+This document specifies the bytes that are signed on the agent protocol (`api/openapi/agent.yaml`, base path `/agent/v1`), how secrets in scanner directives are sealed (§9) and how detector tables are distributed (§10). JSON bodies are defined by the OpenAPI document; this document does not depend on them. Security rationale: `docs/SECURITY.md` §4.3 and §4.6. It covers the built-in HTTP channel; channels of your own carry the same operations and authenticate them in their own way (`docs/EXTENDING.md` §3), while the enrollment signatures (§2) and sealed secrets (§9) are the same on every channel.
 
 Notation: `‖` is byte concatenation, `H(x)` is SHA-256, `b64url` is unpadded base64url (RFC 4648 §5), `b64` is standard base64 with padding (RFC 4648 §4). All text is ASCII.
 
@@ -230,3 +230,19 @@ SSH host keys (SECURITY §7.1). `host_key` is an SSH public key in wire format (
 - The result of a `scan_ssh` job carries the key the target presented in both fields whenever the handshake reached it, including a `host_key_changed` failure. A key different from the pinned one fails the job with reason `host_key_changed`; it is not retried. The server pins the reported key on the first `ok` or `partial` result of a target without a pinned key. A pinned key changes only after an administrator clears it.
 
 Result messages of failed and partial jobs start with a reason code: `<code>: <detail>`, `code` in `[a-z_]+`.
+
+## 10. Detector tables
+
+The known-software detector table (SECURITY §6.8) reaches agents and scanners through the poll, with additive, optional fields only. Agents and servers without them keep working: such an agent's probe uses its built-in table.
+
+The digest of a table is the lowercase hex SHA-256 of its canonical JSON: `report.DetectorTable` encoded with Go's `encoding/json`, HTML escaping off, followed by a newline (`internal/detectors.Encode`). YAML comments and layout do not change it.
+
+| Field | In | Meaning |
+|---|---|---|
+| `detectors_digest` | `AgentConfig` | digest of the table the server wants probes to use. Absent on servers without detector tables |
+| `detectors_digest` | `PollRequest` | digest of the table the agent holds; empty when it holds none. Agents that do not take tables leave it out |
+| `detectors` | `PollResult` | `{digest, table}` where `table` (`format: byte`) is the canonical JSON. Present only when the request carried a `detectors_digest` that differs from the configuration's |
+
+The agent keeps a table only when `digest` equals the configuration's digest and both the SHA-256 of `table` and the digest of the decoded table equal it. It stores the canonical bytes in its state directory (`detectors.json`), reports the digest from then on and passes the table to its probe as `detectors` of the probe request (`report.Request`); scanners do the same for SSH and Kubernetes collections. A table that fails these checks or does not decode (unknown fields, another `schema_version`) is not used; its digest is still reported so that it is not sent again, and the probe uses its built-in table. When the configuration carries no digest the agent drops its table. A new digest collects artifacts and containers right away.
+
+The probe answers with `detectors` in the report: the digest of the table it was given (or of its built-in table), the source (`builtin` or `request`), an error when the given table could not be used at all, the entries it dropped (`rejected`: index, id, reason) and the detectors whose version command it did not run (`static_only`). Probes that do not know the request field ignore it.

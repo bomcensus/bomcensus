@@ -394,6 +394,24 @@ func (e DetectMethod) Valid() bool {
 	}
 }
 
+// Defines values for DetectorTableProblemSeverity.
+const (
+	DetectorTableProblemSeverityError   DetectorTableProblemSeverity = "error"
+	DetectorTableProblemSeverityWarning DetectorTableProblemSeverity = "warning"
+)
+
+// Valid indicates whether the value is a known member of the DetectorTableProblemSeverity enum.
+func (e DetectorTableProblemSeverity) Valid() bool {
+	switch e {
+	case DetectorTableProblemSeverityError:
+		return true
+	case DetectorTableProblemSeverityWarning:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ExeSource.
 const (
 	Cmdline ExeSource = "cmdline"
@@ -2097,11 +2115,14 @@ type Agent struct {
 	Description *string `json:"description,omitempty"`
 
 	// DetectDirIds Detect directories walked on the agent's host, ordered by path. Always empty for scanners.
-	DetectDirIds []string  `json:"detectDirIds"`
-	EnrolledAt   time.Time `json:"enrolledAt"`
-	ExecHelper   bool      `json:"execHelper"`
-	Hostname     string    `json:"hostname"`
-	Id           string    `json:"id"`
+	DetectDirIds []string `json:"detectDirIds"`
+
+	// DetectorsDigest Digest of the detector table the agent reported in its last poll; empty when it holds none, absent for agents that do not report one (their probe uses its built-in table).
+	DetectorsDigest *string   `json:"detectorsDigest,omitempty"`
+	EnrolledAt      time.Time `json:"enrolledAt"`
+	ExecHelper      bool      `json:"execHelper"`
+	Hostname        string    `json:"hostname"`
+	Id              string    `json:"id"`
 
 	// Integrity File integrity mode. Absent for scanners.
 	Integrity *IntegrityMode `json:"integrity,omitempty"`
@@ -2386,6 +2407,8 @@ type AssetSummary struct {
 
 // AssetVuln defines model for AssetVuln.
 type AssetVuln struct {
+	// ComponentBuild Vendor build or revision number reported by the detector.
+	ComponentBuild   *string  `json:"componentBuild,omitempty"`
 	ComponentId      string   `json:"componentId"`
 	ComponentName    string   `json:"componentName"`
 	ComponentPurl    *string  `json:"componentPurl,omitempty"`
@@ -2500,11 +2523,14 @@ type ComponentSummary struct {
 	Arch *string `json:"arch,omitempty"`
 
 	// AssetCount Assets on which the component is currently installed.
-	AssetCount int     `json:"assetCount"`
-	Cpe        *string `json:"cpe,omitempty"`
-	Distro     *string `json:"distro,omitempty"`
-	Id         string  `json:"id"`
-	Name       string  `json:"name"`
+	AssetCount int `json:"assetCount"`
+
+	// Build Vendor build or revision number reported by the detector.
+	Build  *string `json:"build,omitempty"`
+	Cpe    *string `json:"cpe,omitempty"`
+	Distro *string `json:"distro,omitempty"`
+	Id     string  `json:"id"`
+	Name   string  `json:"name"`
 
 	// Origin `distro`: distribution package. `third_party`: package from a third-party repository. `upstream`: software that is not a package.
 	Origin ComponentOrigin `json:"origin"`
@@ -2815,6 +2841,105 @@ type DetectDirUpdate struct {
 
 // DetectMethod defines model for DetectMethod.
 type DetectMethod string
+
+// DetectorTableCheck defines model for DetectorTableCheck.
+type DetectorTableCheck struct {
+	// Detectors Number of detectors when the table parses.
+	Detectors *int `json:"detectors,omitempty"`
+
+	// Digest Digest of the table when it parses.
+	Digest   *string                `json:"digest,omitempty"`
+	Problems []DetectorTableProblem `json:"problems"`
+
+	// Valid The table has no errors and can be saved.
+	Valid bool `json:"valid"`
+}
+
+// DetectorTableInput defines model for DetectorTableInput.
+type DetectorTableInput struct {
+	Yaml string `json:"yaml"`
+}
+
+// DetectorTableProblem defines model for DetectorTableProblem.
+type DetectorTableProblem struct {
+	Id *string `json:"id,omitempty"`
+
+	// Index Position of the detector in the table (0 based), -1 for the whole table.
+	Index    int                          `json:"index"`
+	Message  string                       `json:"message"`
+	Severity DetectorTableProblemSeverity `json:"severity"`
+}
+
+// DetectorTableProblemSeverity defines model for DetectorTableProblem.Severity.
+type DetectorTableProblemSeverity string
+
+// DetectorTableRevision defines model for DetectorTableRevision.
+type DetectorTableRevision struct {
+	CreatedAt time.Time `json:"createdAt"`
+	CreatedBy string    `json:"createdBy"`
+	Digest    *string   `json:"digest,omitempty"`
+
+	// Reset The edit returned to the default table.
+	Reset    bool  `json:"reset"`
+	Revision int64 `json:"revision"`
+
+	// Yaml Present when one revision is read.
+	Yaml *string `json:"yaml,omitempty"`
+}
+
+// DetectorTableRevisionList defines model for DetectorTableRevisionList.
+type DetectorTableRevisionList struct {
+	Items []DetectorTableRevision `json:"items"`
+}
+
+// DetectorTableState defines model for DetectorTableState.
+type DetectorTableState struct {
+	// BuiltinDigest Digest of the table built into this server and its probes.
+	BuiltinDigest string `json:"builtinDigest"`
+
+	// Custom The table was saved by an administrator; false while the default table is in effect.
+	Custom        bool   `json:"custom"`
+	DefaultDigest string `json:"defaultDigest"`
+	Detectors     int    `json:"detectors"`
+	Digest        string `json:"digest"`
+
+	// Revision The last edit (a save or a reset); absent when the table was never edited.
+	Revision  *int64                 `json:"revision,omitempty"`
+	UpdatedAt *time.Time             `json:"updatedAt,omitempty"`
+	UpdatedBy *string                `json:"updatedBy,omitempty"`
+	Warnings  []DetectorTableProblem `json:"warnings"`
+	Yaml      string                 `json:"yaml"`
+}
+
+// DetectorTableText defines model for DetectorTableText.
+type DetectorTableText struct {
+	Detectors int    `json:"detectors"`
+	Digest    string `json:"digest"`
+
+	// Source The file the default table was read from, or `built-in`.
+	Source string `json:"source"`
+	Yaml   string `json:"yaml"`
+}
+
+// DetectorTableUsage defines model for DetectorTableUsage.
+type DetectorTableUsage struct {
+	Count int `json:"count"`
+
+	// Current The digest is the table in effect.
+	Current bool `json:"current"`
+
+	// Digest Digest of the table; absent when the agent holds none.
+	Digest *string   `json:"digest,omitempty"`
+	Kind   AgentKind `json:"kind"`
+
+	// Reported False for agents that do not report a table (older versions); their probe uses its built-in table.
+	Reported bool `json:"reported"`
+}
+
+// DetectorTableUsageList defines model for DetectorTableUsageList.
+type DetectorTableUsageList struct {
+	Items []DetectorTableUsage `json:"items"`
+}
 
 // Error defines model for Error.
 type Error struct {
@@ -3910,7 +4035,10 @@ type SeverityCounts struct {
 
 // SoftwareComponent defines model for SoftwareComponent.
 type SoftwareComponent struct {
-	Arch   *string `json:"arch,omitempty"`
+	Arch *string `json:"arch,omitempty"`
+
+	// Build Vendor build or revision number reported by the detector.
+	Build  *string `json:"build,omitempty"`
 	Cpe    *string `json:"cpe,omitempty"`
 	Distro *string `json:"distro,omitempty"`
 	Id     string  `json:"id"`
@@ -4118,9 +4246,12 @@ type VulnAdvisory struct {
 
 // VulnComponent An update action. `fixedVersion` is the version that fixes all its vulnerabilities, when one is known.
 type VulnComponent struct {
-	Assets      int    `json:"assets"`
-	ComponentId string `json:"componentId"`
-	Cves        int    `json:"cves"`
+	Assets int `json:"assets"`
+
+	// Build Vendor build or revision number reported by the detector.
+	Build       *string `json:"build,omitempty"`
+	ComponentId string  `json:"componentId"`
+	Cves        int     `json:"cves"`
 
 	// Deferred Deferred findings among them (when deferred ones are included).
 	Deferred *int     `json:"deferred,omitempty"`
@@ -4233,8 +4364,11 @@ type VulnCve struct {
 
 // VulnCveComponent defines model for VulnCveComponent.
 type VulnCveComponent struct {
-	Advisories  []VulnAdvisory            `json:"advisories"`
-	Assets      int                       `json:"assets"`
+	Advisories []VulnAdvisory `json:"advisories"`
+	Assets     int            `json:"assets"`
+
+	// Build Vendor build or revision number reported by the detector.
+	Build       *string                   `json:"build,omitempty"`
 	ComponentId string                    `json:"componentId"`
 	CpeMatch    *VulnCveComponentCpeMatch `json:"cpeMatch,omitempty"`
 
@@ -4345,6 +4479,8 @@ type VulnImage struct {
 
 // VulnImageComponent defines model for VulnImageComponent.
 type VulnImageComponent struct {
+	// Build Vendor build or revision number reported by the detector.
+	Build         *string        `json:"build,omitempty"`
 	ComponentId   string         `json:"componentId"`
 	Cves          []VulnImageCve `json:"cves"`
 	FixedVersion  *string        `json:"fixedVersion,omitempty"`
@@ -4391,14 +4527,17 @@ type VulnImageList struct {
 
 // VulnLocation One place a component is, with the open findings there.
 type VulnLocation struct {
-	AssetId          string    `json:"assetId"`
-	AssetKind        AssetKind `json:"assetKind"`
-	AssetName        string    `json:"assetName"`
-	ComponentId      string    `json:"componentId"`
-	ComponentName    string    `json:"componentName"`
-	ComponentVersion string    `json:"componentVersion"`
-	Container        *string   `json:"container,omitempty"`
-	Cves             int       `json:"cves"`
+	AssetId   string    `json:"assetId"`
+	AssetKind AssetKind `json:"assetKind"`
+	AssetName string    `json:"assetName"`
+
+	// ComponentBuild Vendor build or revision number reported by the detector.
+	ComponentBuild   *string `json:"componentBuild,omitempty"`
+	ComponentId      string  `json:"componentId"`
+	ComponentName    string  `json:"componentName"`
+	ComponentVersion string  `json:"componentVersion"`
+	Container        *string `json:"container,omitempty"`
+	Cves             int     `json:"cves"`
 
 	// Exposure `listening`: a process that loaded the component listens on a
 	// non-loopback address. `running`: a process loaded it.
@@ -5035,6 +5174,12 @@ type CreateDetectDirJSONRequestBody = DetectDirCreate
 // UpdateDetectDirJSONRequestBody defines body for UpdateDetectDir for application/json ContentType.
 type UpdateDetectDirJSONRequestBody = DetectDirUpdate
 
+// SaveDetectorTableJSONRequestBody defines body for SaveDetectorTable for application/json ContentType.
+type SaveDetectorTableJSONRequestBody = DetectorTableInput
+
+// CheckDetectorTableJSONRequestBody defines body for CheckDetectorTable for application/json ContentType.
+type CheckDetectorTableJSONRequestBody = DetectorTableInput
+
 // CreateFeedServerJSONRequestBody defines body for CreateFeedServer for application/json ContentType.
 type CreateFeedServerJSONRequestBody = FeedServerCreate
 
@@ -5426,6 +5571,87 @@ type ClientInterface interface {
 	//
 	// Corresponds with PATCH /detect-dirs/{id} (the `UpdateDetectDir` operationId).
 	UpdateDetectDir(ctx context.Context, id PathId, body UpdateDetectDirJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ResetDetectorTable Return to the default detector table
+	//
+	// Recorded as a revision; earlier revisions are kept.
+	//
+	// Corresponds with DELETE /detector-table (the `ResetDetectorTable` operationId).
+	ResetDetectorTable(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetDetectorTable Get the detector table in effect
+	//
+	// The known-software detector table that agents and scanners pass to
+	// their probes: the table an administrator saved, or the default
+	// table of the server. Warnings say which detectors probes use with
+	// static rules only.
+	//
+	// Corresponds with GET /detector-table (the `GetDetectorTable` operationId).
+	GetDetectorTable(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SaveDetectorTableWithBody Save a detector table
+	//
+	// Checks the YAML as probes will and saves it as a new revision. A
+	// table with errors is not saved; the answer lists them. Agents and
+	// scanners get the new table with their next poll.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PUT /detector-table (the `SaveDetectorTable` operationId).
+	SaveDetectorTableWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SaveDetectorTable Save a detector table
+	//
+	// Checks the YAML as probes will and saves it as a new revision. A
+	// table with errors is not saved; the answer lists them. Agents and
+	// scanners get the new table with their next poll.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PUT /detector-table (the `SaveDetectorTable` operationId).
+	SaveDetectorTable(ctx context.Context, body SaveDetectorTableJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CheckDetectorTableWithBody Check a detector table without saving it
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /detector-table/check (the `CheckDetectorTable` operationId).
+	CheckDetectorTableWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CheckDetectorTable Check a detector table without saving it
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /detector-table/check (the `CheckDetectorTable` operationId).
+	CheckDetectorTable(ctx context.Context, body CheckDetectorTableJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetDefaultDetectorTable Get the default detector table
+	//
+	// The table used while none is saved (BOMCENSUS_DETECTORS_FILE, else the one built into the server).
+	//
+	// Corresponds with GET /detector-table/default (the `GetDefaultDetectorTable` operationId).
+	GetDefaultDetectorTable(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListDetectorTableRevisions List the edits of the detector table
+	//
+	// Newest first, at most 200.
+	//
+	// Corresponds with GET /detector-table/revisions (the `ListDetectorTableRevisions` operationId).
+	ListDetectorTableRevisions(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetDetectorTableRevision Get one edit of the detector table with its YAML
+	//
+	// Corresponds with GET /detector-table/revisions/{revision} (the `GetDetectorTableRevision` operationId).
+	GetDetectorTableRevision(ctx context.Context, revision int64, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetDetectorTableUsage Count agents and scanners by the detector table they use
+	//
+	// Approved agents and scanners grouped by the table digest of their
+	// last poll. Agents that report none are older versions; their probe
+	// uses its built-in table.
+	//
+	// Corresponds with GET /detector-table/usage (the `GetDetectorTableUsage` operationId).
+	GetDetectorTableUsage(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetFeedInstance The key that identifies this installation to feed servers
 	//
@@ -6770,6 +6996,187 @@ func (c *Client) UpdateDetectDirWithBody(ctx context.Context, id PathId, content
 // Corresponds with PATCH /detect-dirs/{id} (the `UpdateDetectDir` operationId).
 func (c *Client) UpdateDetectDir(ctx context.Context, id PathId, body UpdateDetectDirJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewUpdateDetectDirRequest(c.Server, id, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ResetDetectorTable Return to the default detector table
+//
+// Recorded as a revision; earlier revisions are kept.
+//
+// Corresponds with DELETE /detector-table (the `ResetDetectorTable` operationId).
+func (c *Client) ResetDetectorTable(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewResetDetectorTableRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetDetectorTable Get the detector table in effect
+//
+// The known-software detector table that agents and scanners pass to
+// their probes: the table an administrator saved, or the default
+// table of the server. Warnings say which detectors probes use with
+// static rules only.
+//
+// Corresponds with GET /detector-table (the `GetDetectorTable` operationId).
+func (c *Client) GetDetectorTable(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetDetectorTableRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SaveDetectorTableWithBody Save a detector table
+//
+// Checks the YAML as probes will and saves it as a new revision. A
+// table with errors is not saved; the answer lists them. Agents and
+// scanners get the new table with their next poll.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PUT /detector-table (the `SaveDetectorTable` operationId).
+func (c *Client) SaveDetectorTableWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSaveDetectorTableRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SaveDetectorTable Save a detector table
+//
+// Checks the YAML as probes will and saves it as a new revision. A
+// table with errors is not saved; the answer lists them. Agents and
+// scanners get the new table with their next poll.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PUT /detector-table (the `SaveDetectorTable` operationId).
+func (c *Client) SaveDetectorTable(ctx context.Context, body SaveDetectorTableJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSaveDetectorTableRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CheckDetectorTableWithBody Check a detector table without saving it
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /detector-table/check (the `CheckDetectorTable` operationId).
+func (c *Client) CheckDetectorTableWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCheckDetectorTableRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CheckDetectorTable Check a detector table without saving it
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /detector-table/check (the `CheckDetectorTable` operationId).
+func (c *Client) CheckDetectorTable(ctx context.Context, body CheckDetectorTableJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCheckDetectorTableRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetDefaultDetectorTable Get the default detector table
+//
+// The table used while none is saved (BOMCENSUS_DETECTORS_FILE, else the one built into the server).
+//
+// Corresponds with GET /detector-table/default (the `GetDefaultDetectorTable` operationId).
+func (c *Client) GetDefaultDetectorTable(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetDefaultDetectorTableRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListDetectorTableRevisions List the edits of the detector table
+//
+// Newest first, at most 200.
+//
+// Corresponds with GET /detector-table/revisions (the `ListDetectorTableRevisions` operationId).
+func (c *Client) ListDetectorTableRevisions(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListDetectorTableRevisionsRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetDetectorTableRevision Get one edit of the detector table with its YAML
+//
+// Corresponds with GET /detector-table/revisions/{revision} (the `GetDetectorTableRevision` operationId).
+func (c *Client) GetDetectorTableRevision(ctx context.Context, revision int64, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetDetectorTableRevisionRequest(c.Server, revision)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetDetectorTableUsage Count agents and scanners by the detector table they use
+//
+// Approved agents and scanners grouped by the table digest of their
+// last poll. Agents that report none are older versions; their probe
+// uses its built-in table.
+//
+// Corresponds with GET /detector-table/usage (the `GetDetectorTableUsage` operationId).
+func (c *Client) GetDetectorTableUsage(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetDetectorTableUsageRequest(c.Server)
 	if err != nil {
 		return nil, err
 	}
@@ -10395,6 +10802,255 @@ func NewUpdateDetectDirRequestWithBody(server string, id PathId, contentType str
 	}
 
 	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewResetDetectorTableRequest constructs an http.Request for the ResetDetectorTable method
+func NewResetDetectorTableRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/detector-table")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetDetectorTableRequest constructs an http.Request for the GetDetectorTable method
+func NewGetDetectorTableRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/detector-table")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewSaveDetectorTableRequest calls the generic SaveDetectorTable builder with application/json body
+func NewSaveDetectorTableRequest(server string, body SaveDetectorTableJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewSaveDetectorTableRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewSaveDetectorTableRequestWithBody constructs an http.Request for the SaveDetectorTable method, with any body, and a specified content type
+func NewSaveDetectorTableRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/detector-table")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewCheckDetectorTableRequest calls the generic CheckDetectorTable builder with application/json body
+func NewCheckDetectorTableRequest(server string, body CheckDetectorTableJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCheckDetectorTableRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewCheckDetectorTableRequestWithBody constructs an http.Request for the CheckDetectorTable method, with any body, and a specified content type
+func NewCheckDetectorTableRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/detector-table/check")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetDefaultDetectorTableRequest constructs an http.Request for the GetDefaultDetectorTable method
+func NewGetDefaultDetectorTableRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/detector-table/default")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListDetectorTableRevisionsRequest constructs an http.Request for the ListDetectorTableRevisions method
+func NewListDetectorTableRevisionsRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/detector-table/revisions")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetDetectorTableRevisionRequest constructs an http.Request for the GetDetectorTableRevision method
+func NewGetDetectorTableRevisionRequest(server string, revision int64) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "revision", revision, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "integer", Format: "int64"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/detector-table/revisions/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetDetectorTableUsageRequest constructs an http.Request for the GetDetectorTableUsage method
+func NewGetDetectorTableUsageRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/detector-table/usage")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
 
 	return req, nil
 }
@@ -14667,6 +15323,99 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with PATCH /detect-dirs/{id} (the `UpdateDetectDir` operationId).
 	UpdateDetectDirWithResponse(ctx context.Context, id PathId, body UpdateDetectDirJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateDetectDirResponse, error)
 
+	// ResetDetectorTableWithResponse Return to the default detector table
+	//
+	// Recorded as a revision; earlier revisions are kept.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /detector-table (the `ResetDetectorTable` operationId).
+	ResetDetectorTableWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ResetDetectorTableResponse, error)
+
+	// GetDetectorTableWithResponse Get the detector table in effect
+	//
+	// The known-software detector table that agents and scanners pass to
+	// their probes: the table an administrator saved, or the default
+	// table of the server. Warnings say which detectors probes use with
+	// static rules only.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /detector-table (the `GetDetectorTable` operationId).
+	GetDetectorTableWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetDetectorTableResponse, error)
+
+	// SaveDetectorTableWithBodyWithResponse Save a detector table
+	//
+	// Checks the YAML as probes will and saves it as a new revision. A
+	// table with errors is not saved; the answer lists them. Agents and
+	// scanners get the new table with their next poll.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /detector-table (the `SaveDetectorTable` operationId).
+	SaveDetectorTableWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SaveDetectorTableResponse, error)
+
+	// SaveDetectorTableWithResponse Save a detector table
+	//
+	// Checks the YAML as probes will and saves it as a new revision. A
+	// table with errors is not saved; the answer lists them. Agents and
+	// scanners get the new table with their next poll.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /detector-table (the `SaveDetectorTable` operationId).
+	SaveDetectorTableWithResponse(ctx context.Context, body SaveDetectorTableJSONRequestBody, reqEditors ...RequestEditorFn) (*SaveDetectorTableResponse, error)
+
+	// CheckDetectorTableWithBodyWithResponse Check a detector table without saving it
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /detector-table/check (the `CheckDetectorTable` operationId).
+	CheckDetectorTableWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CheckDetectorTableResponse, error)
+
+	// CheckDetectorTableWithResponse Check a detector table without saving it
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /detector-table/check (the `CheckDetectorTable` operationId).
+	CheckDetectorTableWithResponse(ctx context.Context, body CheckDetectorTableJSONRequestBody, reqEditors ...RequestEditorFn) (*CheckDetectorTableResponse, error)
+
+	// GetDefaultDetectorTableWithResponse Get the default detector table
+	//
+	// The table used while none is saved (BOMCENSUS_DETECTORS_FILE, else the one built into the server).
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /detector-table/default (the `GetDefaultDetectorTable` operationId).
+	GetDefaultDetectorTableWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetDefaultDetectorTableResponse, error)
+
+	// ListDetectorTableRevisionsWithResponse List the edits of the detector table
+	//
+	// Newest first, at most 200.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /detector-table/revisions (the `ListDetectorTableRevisions` operationId).
+	ListDetectorTableRevisionsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListDetectorTableRevisionsResponse, error)
+
+	// GetDetectorTableRevisionWithResponse Get one edit of the detector table with its YAML
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /detector-table/revisions/{revision} (the `GetDetectorTableRevision` operationId).
+	GetDetectorTableRevisionWithResponse(ctx context.Context, revision int64, reqEditors ...RequestEditorFn) (*GetDetectorTableRevisionResponse, error)
+
+	// GetDetectorTableUsageWithResponse Count agents and scanners by the detector table they use
+	//
+	// Approved agents and scanners grouped by the table digest of their
+	// last poll. Agents that report none are older versions; their probe
+	// uses its built-in table.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /detector-table/usage (the `GetDetectorTableUsage` operationId).
+	GetDetectorTableUsageWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetDetectorTableUsageResponse, error)
+
 	// GetFeedInstanceWithResponse The key that identifies this installation to feed servers
 	//
 	// The key is created on first use and cannot be changed.
@@ -17487,6 +18236,474 @@ func (r UpdateDetectDirResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r UpdateDetectDirResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ResetDetectorTableResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *DetectorTableState
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *UnexpectedError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ResetDetectorTableResponse) GetJSON200() *DetectorTableState {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ResetDetectorTableResponse) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r ResetDetectorTableResponse) GetJSONDefault() *UnexpectedError {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ResetDetectorTableResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ResetDetectorTableResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ResetDetectorTableResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ResetDetectorTableResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetDetectorTableResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *DetectorTableState
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *UnexpectedError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetDetectorTableResponse) GetJSON200() *DetectorTableState {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetDetectorTableResponse) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r GetDetectorTableResponse) GetJSONDefault() *UnexpectedError {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetDetectorTableResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetDetectorTableResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetDetectorTableResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetDetectorTableResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type SaveDetectorTableResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *DetectorTableState
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *BadRequest
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *DetectorTableCheck
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *UnexpectedError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r SaveDetectorTableResponse) GetJSON200() *DetectorTableState {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r SaveDetectorTableResponse) GetJSON400() *BadRequest {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r SaveDetectorTableResponse) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r SaveDetectorTableResponse) GetJSON422() *DetectorTableCheck {
+	return r.JSON422
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r SaveDetectorTableResponse) GetJSONDefault() *UnexpectedError {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r SaveDetectorTableResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r SaveDetectorTableResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SaveDetectorTableResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r SaveDetectorTableResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type CheckDetectorTableResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *DetectorTableCheck
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *BadRequest
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *UnexpectedError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r CheckDetectorTableResponse) GetJSON200() *DetectorTableCheck {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r CheckDetectorTableResponse) GetJSON400() *BadRequest {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r CheckDetectorTableResponse) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r CheckDetectorTableResponse) GetJSONDefault() *UnexpectedError {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r CheckDetectorTableResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CheckDetectorTableResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CheckDetectorTableResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CheckDetectorTableResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetDefaultDetectorTableResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *DetectorTableText
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *UnexpectedError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetDefaultDetectorTableResponse) GetJSON200() *DetectorTableText {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetDefaultDetectorTableResponse) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r GetDefaultDetectorTableResponse) GetJSONDefault() *UnexpectedError {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetDefaultDetectorTableResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetDefaultDetectorTableResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetDefaultDetectorTableResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetDefaultDetectorTableResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListDetectorTableRevisionsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *DetectorTableRevisionList
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *UnexpectedError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListDetectorTableRevisionsResponse) GetJSON200() *DetectorTableRevisionList {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ListDetectorTableRevisionsResponse) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r ListDetectorTableRevisionsResponse) GetJSONDefault() *UnexpectedError {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ListDetectorTableRevisionsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListDetectorTableRevisionsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListDetectorTableRevisionsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListDetectorTableRevisionsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetDetectorTableRevisionResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *DetectorTableRevision
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *UnexpectedError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetDetectorTableRevisionResponse) GetJSON200() *DetectorTableRevision {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetDetectorTableRevisionResponse) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetDetectorTableRevisionResponse) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r GetDetectorTableRevisionResponse) GetJSONDefault() *UnexpectedError {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetDetectorTableRevisionResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetDetectorTableRevisionResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetDetectorTableRevisionResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetDetectorTableRevisionResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetDetectorTableUsageResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *DetectorTableUsageList
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *UnexpectedError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetDetectorTableUsageResponse) GetJSON200() *DetectorTableUsageList {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetDetectorTableUsageResponse) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r GetDetectorTableUsageResponse) GetJSONDefault() *UnexpectedError {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetDetectorTableUsageResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetDetectorTableUsageResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetDetectorTableUsageResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetDetectorTableUsageResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -22354,6 +23571,159 @@ func (c *ClientWithResponses) UpdateDetectDirWithResponse(ctx context.Context, i
 	return ParseUpdateDetectDirResponse(rsp)
 }
 
+// ResetDetectorTableWithResponse Return to the default detector table
+//
+// Recorded as a revision; earlier revisions are kept.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /detector-table (the `ResetDetectorTable` operationId).
+func (c *ClientWithResponses) ResetDetectorTableWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ResetDetectorTableResponse, error) {
+	rsp, err := c.ResetDetectorTable(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseResetDetectorTableResponse(rsp)
+}
+
+// GetDetectorTableWithResponse Get the detector table in effect
+//
+// The known-software detector table that agents and scanners pass to
+// their probes: the table an administrator saved, or the default
+// table of the server. Warnings say which detectors probes use with
+// static rules only.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /detector-table (the `GetDetectorTable` operationId).
+func (c *ClientWithResponses) GetDetectorTableWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetDetectorTableResponse, error) {
+	rsp, err := c.GetDetectorTable(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetDetectorTableResponse(rsp)
+}
+
+// SaveDetectorTableWithBodyWithResponse Save a detector table
+//
+// Checks the YAML as probes will and saves it as a new revision. A
+// table with errors is not saved; the answer lists them. Agents and
+// scanners get the new table with their next poll.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /detector-table (the `SaveDetectorTable` operationId).
+func (c *ClientWithResponses) SaveDetectorTableWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SaveDetectorTableResponse, error) {
+	rsp, err := c.SaveDetectorTableWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSaveDetectorTableResponse(rsp)
+}
+
+// SaveDetectorTableWithResponse Save a detector table
+//
+// Checks the YAML as probes will and saves it as a new revision. A
+// table with errors is not saved; the answer lists them. Agents and
+// scanners get the new table with their next poll.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /detector-table (the `SaveDetectorTable` operationId).
+func (c *ClientWithResponses) SaveDetectorTableWithResponse(ctx context.Context, body SaveDetectorTableJSONRequestBody, reqEditors ...RequestEditorFn) (*SaveDetectorTableResponse, error) {
+	rsp, err := c.SaveDetectorTable(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSaveDetectorTableResponse(rsp)
+}
+
+// CheckDetectorTableWithBodyWithResponse Check a detector table without saving it
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /detector-table/check (the `CheckDetectorTable` operationId).
+func (c *ClientWithResponses) CheckDetectorTableWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CheckDetectorTableResponse, error) {
+	rsp, err := c.CheckDetectorTableWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCheckDetectorTableResponse(rsp)
+}
+
+// CheckDetectorTableWithResponse Check a detector table without saving it
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /detector-table/check (the `CheckDetectorTable` operationId).
+func (c *ClientWithResponses) CheckDetectorTableWithResponse(ctx context.Context, body CheckDetectorTableJSONRequestBody, reqEditors ...RequestEditorFn) (*CheckDetectorTableResponse, error) {
+	rsp, err := c.CheckDetectorTable(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCheckDetectorTableResponse(rsp)
+}
+
+// GetDefaultDetectorTableWithResponse Get the default detector table
+//
+// The table used while none is saved (BOMCENSUS_DETECTORS_FILE, else the one built into the server).
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /detector-table/default (the `GetDefaultDetectorTable` operationId).
+func (c *ClientWithResponses) GetDefaultDetectorTableWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetDefaultDetectorTableResponse, error) {
+	rsp, err := c.GetDefaultDetectorTable(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetDefaultDetectorTableResponse(rsp)
+}
+
+// ListDetectorTableRevisionsWithResponse List the edits of the detector table
+//
+// Newest first, at most 200.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /detector-table/revisions (the `ListDetectorTableRevisions` operationId).
+func (c *ClientWithResponses) ListDetectorTableRevisionsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListDetectorTableRevisionsResponse, error) {
+	rsp, err := c.ListDetectorTableRevisions(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListDetectorTableRevisionsResponse(rsp)
+}
+
+// GetDetectorTableRevisionWithResponse Get one edit of the detector table with its YAML
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /detector-table/revisions/{revision} (the `GetDetectorTableRevision` operationId).
+func (c *ClientWithResponses) GetDetectorTableRevisionWithResponse(ctx context.Context, revision int64, reqEditors ...RequestEditorFn) (*GetDetectorTableRevisionResponse, error) {
+	rsp, err := c.GetDetectorTableRevision(ctx, revision, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetDetectorTableRevisionResponse(rsp)
+}
+
+// GetDetectorTableUsageWithResponse Count agents and scanners by the detector table they use
+//
+// Approved agents and scanners grouped by the table digest of their
+// last poll. Agents that report none are older versions; their probe
+// uses its built-in table.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /detector-table/usage (the `GetDetectorTableUsage` operationId).
+func (c *ClientWithResponses) GetDetectorTableUsageWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetDetectorTableUsageResponse, error) {
+	rsp, err := c.GetDetectorTableUsage(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetDetectorTableUsageResponse(rsp)
+}
+
 // GetFeedInstanceWithResponse The key that identifies this installation to feed servers
 //
 // The key is created on first use and cannot be changed.
@@ -25241,6 +26611,354 @@ func ParseUpdateDetectDirResponse(rsp *http.Response) (*UpdateDetectDirResponse,
 			return nil, err
 		}
 		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest UnexpectedError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseResetDetectorTableResponse parses an HTTP response from a ResetDetectorTableWithResponse call
+func ParseResetDetectorTableResponse(rsp *http.Response) (*ResetDetectorTableResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ResetDetectorTableResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest DetectorTableState
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest UnexpectedError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetDetectorTableResponse parses an HTTP response from a GetDetectorTableWithResponse call
+func ParseGetDetectorTableResponse(rsp *http.Response) (*GetDetectorTableResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetDetectorTableResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest DetectorTableState
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest UnexpectedError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseSaveDetectorTableResponse parses an HTTP response from a SaveDetectorTableWithResponse call
+func ParseSaveDetectorTableResponse(rsp *http.Response) (*SaveDetectorTableResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SaveDetectorTableResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest DetectorTableState
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest DetectorTableCheck
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest UnexpectedError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCheckDetectorTableResponse parses an HTTP response from a CheckDetectorTableWithResponse call
+func ParseCheckDetectorTableResponse(rsp *http.Response) (*CheckDetectorTableResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CheckDetectorTableResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest DetectorTableCheck
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest UnexpectedError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetDefaultDetectorTableResponse parses an HTTP response from a GetDefaultDetectorTableWithResponse call
+func ParseGetDefaultDetectorTableResponse(rsp *http.Response) (*GetDefaultDetectorTableResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetDefaultDetectorTableResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest DetectorTableText
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest UnexpectedError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListDetectorTableRevisionsResponse parses an HTTP response from a ListDetectorTableRevisionsWithResponse call
+func ParseListDetectorTableRevisionsResponse(rsp *http.Response) (*ListDetectorTableRevisionsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListDetectorTableRevisionsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest DetectorTableRevisionList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest UnexpectedError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetDetectorTableRevisionResponse parses an HTTP response from a GetDetectorTableRevisionWithResponse call
+func ParseGetDetectorTableRevisionResponse(rsp *http.Response) (*GetDetectorTableRevisionResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetDetectorTableRevisionResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest DetectorTableRevision
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest UnexpectedError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetDetectorTableUsageResponse parses an HTTP response from a GetDetectorTableUsageWithResponse call
+func ParseGetDetectorTableUsageResponse(rsp *http.Response) (*GetDetectorTableUsageResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetDetectorTableUsageResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest DetectorTableUsageList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest UnexpectedError
@@ -28687,6 +30405,30 @@ type ServerInterface interface {
 	// UpdateDetectDir Change a detect directory
 	// (PATCH /detect-dirs/{id})
 	UpdateDetectDir(w http.ResponseWriter, r *http.Request, id PathId)
+	// ResetDetectorTable Return to the default detector table
+	// (DELETE /detector-table)
+	ResetDetectorTable(w http.ResponseWriter, r *http.Request)
+	// GetDetectorTable Get the detector table in effect
+	// (GET /detector-table)
+	GetDetectorTable(w http.ResponseWriter, r *http.Request)
+	// SaveDetectorTable Save a detector table
+	// (PUT /detector-table)
+	SaveDetectorTable(w http.ResponseWriter, r *http.Request)
+	// CheckDetectorTable Check a detector table without saving it
+	// (POST /detector-table/check)
+	CheckDetectorTable(w http.ResponseWriter, r *http.Request)
+	// GetDefaultDetectorTable Get the default detector table
+	// (GET /detector-table/default)
+	GetDefaultDetectorTable(w http.ResponseWriter, r *http.Request)
+	// ListDetectorTableRevisions List the edits of the detector table
+	// (GET /detector-table/revisions)
+	ListDetectorTableRevisions(w http.ResponseWriter, r *http.Request)
+	// GetDetectorTableRevision Get one edit of the detector table with its YAML
+	// (GET /detector-table/revisions/{revision})
+	GetDetectorTableRevision(w http.ResponseWriter, r *http.Request, revision int64)
+	// GetDetectorTableUsage Count agents and scanners by the detector table they use
+	// (GET /detector-table/usage)
+	GetDetectorTableUsage(w http.ResponseWriter, r *http.Request)
 	// GetFeedInstance The key that identifies this installation to feed servers
 	// (GET /feed-instance)
 	GetFeedInstance(w http.ResponseWriter, r *http.Request)
@@ -29080,6 +30822,54 @@ func (_ Unimplemented) DeleteDetectDir(w http.ResponseWriter, r *http.Request, i
 // UpdateDetectDir Change a detect directory
 // (PATCH /detect-dirs/{id})
 func (_ Unimplemented) UpdateDetectDir(w http.ResponseWriter, r *http.Request, id PathId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ResetDetectorTable Return to the default detector table
+// (DELETE /detector-table)
+func (_ Unimplemented) ResetDetectorTable(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetDetectorTable Get the detector table in effect
+// (GET /detector-table)
+func (_ Unimplemented) GetDetectorTable(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// SaveDetectorTable Save a detector table
+// (PUT /detector-table)
+func (_ Unimplemented) SaveDetectorTable(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// CheckDetectorTable Check a detector table without saving it
+// (POST /detector-table/check)
+func (_ Unimplemented) CheckDetectorTable(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetDefaultDetectorTable Get the default detector table
+// (GET /detector-table/default)
+func (_ Unimplemented) GetDefaultDetectorTable(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListDetectorTableRevisions List the edits of the detector table
+// (GET /detector-table/revisions)
+func (_ Unimplemented) ListDetectorTableRevisions(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetDetectorTableRevision Get one edit of the detector table with its YAML
+// (GET /detector-table/revisions/{revision})
+func (_ Unimplemented) GetDetectorTableRevision(w http.ResponseWriter, r *http.Request, revision int64) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetDetectorTableUsage Count agents and scanners by the detector table they use
+// (GET /detector-table/usage)
+func (_ Unimplemented) GetDetectorTableUsage(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -31108,6 +32898,130 @@ func (siw *ServerInterfaceWrapper) UpdateDetectDir(w http.ResponseWriter, r *htt
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UpdateDetectDir(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ResetDetectorTable operation middleware
+func (siw *ServerInterfaceWrapper) ResetDetectorTable(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ResetDetectorTable(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetDetectorTable operation middleware
+func (siw *ServerInterfaceWrapper) GetDetectorTable(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetDetectorTable(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SaveDetectorTable operation middleware
+func (siw *ServerInterfaceWrapper) SaveDetectorTable(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SaveDetectorTable(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CheckDetectorTable operation middleware
+func (siw *ServerInterfaceWrapper) CheckDetectorTable(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CheckDetectorTable(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetDefaultDetectorTable operation middleware
+func (siw *ServerInterfaceWrapper) GetDefaultDetectorTable(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetDefaultDetectorTable(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListDetectorTableRevisions operation middleware
+func (siw *ServerInterfaceWrapper) ListDetectorTableRevisions(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListDetectorTableRevisions(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetDetectorTableRevision operation middleware
+func (siw *ServerInterfaceWrapper) GetDetectorTableRevision(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "revision" -------------
+	var revision int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "revision", chi.URLParam(r, "revision"), &revision, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "revision", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetDetectorTableRevision(w, r, revision)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetDetectorTableUsage operation middleware
+func (siw *ServerInterfaceWrapper) GetDetectorTableUsage(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetDetectorTableUsage(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -34246,6 +36160,30 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Patch(options.BaseURL+"/detect-dirs/{id}", wrapper.UpdateDetectDir)
 	})
 	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/detector-table", wrapper.ResetDetectorTable)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/detector-table", wrapper.GetDetectorTable)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/detector-table", wrapper.SaveDetectorTable)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/detector-table/check", wrapper.CheckDetectorTable)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/detector-table/default", wrapper.GetDefaultDetectorTable)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/detector-table/revisions", wrapper.ListDetectorTableRevisions)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/detector-table/revisions/{revision}", wrapper.GetDetectorTableRevision)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/detector-table/usage", wrapper.GetDetectorTableUsage)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/credentials", wrapper.ListCredentials)
 	})
 	r.Group(func(r chi.Router) {
@@ -36648,6 +38586,481 @@ type UpdateDetectDirdefaultJSONResponse struct {
 }
 
 func (response UpdateDetectDirdefaultJSONResponse) VisitUpdateDetectDirResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResetDetectorTableRequestObject struct {
+}
+
+type ResetDetectorTableResponseObject interface {
+	VisitResetDetectorTableResponse(w http.ResponseWriter) error
+}
+
+type ResetDetectorTable200JSONResponse DetectorTableState
+
+func (response ResetDetectorTable200JSONResponse) VisitResetDetectorTableResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResetDetectorTable401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response ResetDetectorTable401JSONResponse) VisitResetDetectorTableResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResetDetectorTabledefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ResetDetectorTabledefaultJSONResponse) VisitResetDetectorTableResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDetectorTableRequestObject struct {
+}
+
+type GetDetectorTableResponseObject interface {
+	VisitGetDetectorTableResponse(w http.ResponseWriter) error
+}
+
+type GetDetectorTable200JSONResponse DetectorTableState
+
+func (response GetDetectorTable200JSONResponse) VisitGetDetectorTableResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDetectorTable401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response GetDetectorTable401JSONResponse) VisitGetDetectorTableResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDetectorTabledefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetDetectorTabledefaultJSONResponse) VisitGetDetectorTableResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SaveDetectorTableRequestObject struct {
+	Body *SaveDetectorTableJSONRequestBody
+}
+
+type SaveDetectorTableResponseObject interface {
+	VisitSaveDetectorTableResponse(w http.ResponseWriter) error
+}
+
+type SaveDetectorTable200JSONResponse DetectorTableState
+
+func (response SaveDetectorTable200JSONResponse) VisitSaveDetectorTableResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SaveDetectorTable400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response SaveDetectorTable400JSONResponse) VisitSaveDetectorTableResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SaveDetectorTable401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response SaveDetectorTable401JSONResponse) VisitSaveDetectorTableResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SaveDetectorTable422JSONResponse DetectorTableCheck
+
+func (response SaveDetectorTable422JSONResponse) VisitSaveDetectorTableResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SaveDetectorTabledefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response SaveDetectorTabledefaultJSONResponse) VisitSaveDetectorTableResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CheckDetectorTableRequestObject struct {
+	Body *CheckDetectorTableJSONRequestBody
+}
+
+type CheckDetectorTableResponseObject interface {
+	VisitCheckDetectorTableResponse(w http.ResponseWriter) error
+}
+
+type CheckDetectorTable200JSONResponse DetectorTableCheck
+
+func (response CheckDetectorTable200JSONResponse) VisitCheckDetectorTableResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CheckDetectorTable400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response CheckDetectorTable400JSONResponse) VisitCheckDetectorTableResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CheckDetectorTable401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response CheckDetectorTable401JSONResponse) VisitCheckDetectorTableResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CheckDetectorTabledefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response CheckDetectorTabledefaultJSONResponse) VisitCheckDetectorTableResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDefaultDetectorTableRequestObject struct {
+}
+
+type GetDefaultDetectorTableResponseObject interface {
+	VisitGetDefaultDetectorTableResponse(w http.ResponseWriter) error
+}
+
+type GetDefaultDetectorTable200JSONResponse DetectorTableText
+
+func (response GetDefaultDetectorTable200JSONResponse) VisitGetDefaultDetectorTableResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDefaultDetectorTable401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response GetDefaultDetectorTable401JSONResponse) VisitGetDefaultDetectorTableResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDefaultDetectorTabledefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetDefaultDetectorTabledefaultJSONResponse) VisitGetDefaultDetectorTableResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListDetectorTableRevisionsRequestObject struct {
+}
+
+type ListDetectorTableRevisionsResponseObject interface {
+	VisitListDetectorTableRevisionsResponse(w http.ResponseWriter) error
+}
+
+type ListDetectorTableRevisions200JSONResponse DetectorTableRevisionList
+
+func (response ListDetectorTableRevisions200JSONResponse) VisitListDetectorTableRevisionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListDetectorTableRevisions401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response ListDetectorTableRevisions401JSONResponse) VisitListDetectorTableRevisionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListDetectorTableRevisionsdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ListDetectorTableRevisionsdefaultJSONResponse) VisitListDetectorTableRevisionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDetectorTableRevisionRequestObject struct {
+	Revision int64 `json:"revision"`
+}
+
+type GetDetectorTableRevisionResponseObject interface {
+	VisitGetDetectorTableRevisionResponse(w http.ResponseWriter) error
+}
+
+type GetDetectorTableRevision200JSONResponse DetectorTableRevision
+
+func (response GetDetectorTableRevision200JSONResponse) VisitGetDetectorTableRevisionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDetectorTableRevision401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response GetDetectorTableRevision401JSONResponse) VisitGetDetectorTableRevisionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDetectorTableRevision404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetDetectorTableRevision404JSONResponse) VisitGetDetectorTableRevisionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDetectorTableRevisiondefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetDetectorTableRevisiondefaultJSONResponse) VisitGetDetectorTableRevisionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDetectorTableUsageRequestObject struct {
+}
+
+type GetDetectorTableUsageResponseObject interface {
+	VisitGetDetectorTableUsageResponse(w http.ResponseWriter) error
+}
+
+type GetDetectorTableUsage200JSONResponse DetectorTableUsageList
+
+func (response GetDetectorTableUsage200JSONResponse) VisitGetDetectorTableUsageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDetectorTableUsage401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response GetDetectorTableUsage401JSONResponse) VisitGetDetectorTableUsageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDetectorTableUsagedefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetDetectorTableUsagedefaultJSONResponse) VisitGetDetectorTableUsageResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -41592,6 +44005,30 @@ type StrictServerInterface interface {
 	// UpdateDetectDir Change a detect directory
 	// (PATCH /detect-dirs/{id})
 	UpdateDetectDir(ctx context.Context, request UpdateDetectDirRequestObject) (UpdateDetectDirResponseObject, error)
+	// ResetDetectorTable Return to the default detector table
+	// (DELETE /detector-table)
+	ResetDetectorTable(ctx context.Context, request ResetDetectorTableRequestObject) (ResetDetectorTableResponseObject, error)
+	// GetDetectorTable Get the detector table in effect
+	// (GET /detector-table)
+	GetDetectorTable(ctx context.Context, request GetDetectorTableRequestObject) (GetDetectorTableResponseObject, error)
+	// SaveDetectorTable Save a detector table
+	// (PUT /detector-table)
+	SaveDetectorTable(ctx context.Context, request SaveDetectorTableRequestObject) (SaveDetectorTableResponseObject, error)
+	// CheckDetectorTable Check a detector table without saving it
+	// (POST /detector-table/check)
+	CheckDetectorTable(ctx context.Context, request CheckDetectorTableRequestObject) (CheckDetectorTableResponseObject, error)
+	// GetDefaultDetectorTable Get the default detector table
+	// (GET /detector-table/default)
+	GetDefaultDetectorTable(ctx context.Context, request GetDefaultDetectorTableRequestObject) (GetDefaultDetectorTableResponseObject, error)
+	// ListDetectorTableRevisions List the edits of the detector table
+	// (GET /detector-table/revisions)
+	ListDetectorTableRevisions(ctx context.Context, request ListDetectorTableRevisionsRequestObject) (ListDetectorTableRevisionsResponseObject, error)
+	// GetDetectorTableRevision Get one edit of the detector table with its YAML
+	// (GET /detector-table/revisions/{revision})
+	GetDetectorTableRevision(ctx context.Context, request GetDetectorTableRevisionRequestObject) (GetDetectorTableRevisionResponseObject, error)
+	// GetDetectorTableUsage Count agents and scanners by the detector table they use
+	// (GET /detector-table/usage)
+	GetDetectorTableUsage(ctx context.Context, request GetDetectorTableUsageRequestObject) (GetDetectorTableUsageResponseObject, error)
 	// GetFeedInstance The key that identifies this installation to feed servers
 	// (GET /feed-instance)
 	GetFeedInstance(ctx context.Context, request GetFeedInstanceRequestObject) (GetFeedInstanceResponseObject, error)
@@ -42669,6 +45106,214 @@ func (sh *strictHandler) UpdateDetectDir(w http.ResponseWriter, r *http.Request,
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(UpdateDetectDirResponseObject); ok {
 		if err := validResponse.VisitUpdateDetectDirResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ResetDetectorTable operation middleware
+func (sh *strictHandler) ResetDetectorTable(w http.ResponseWriter, r *http.Request) {
+	var request ResetDetectorTableRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ResetDetectorTable(ctx, request.(ResetDetectorTableRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ResetDetectorTable")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ResetDetectorTableResponseObject); ok {
+		if err := validResponse.VisitResetDetectorTableResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetDetectorTable operation middleware
+func (sh *strictHandler) GetDetectorTable(w http.ResponseWriter, r *http.Request) {
+	var request GetDetectorTableRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetDetectorTable(ctx, request.(GetDetectorTableRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetDetectorTable")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetDetectorTableResponseObject); ok {
+		if err := validResponse.VisitGetDetectorTableResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SaveDetectorTable operation middleware
+func (sh *strictHandler) SaveDetectorTable(w http.ResponseWriter, r *http.Request) {
+	var request SaveDetectorTableRequestObject
+
+	var body SaveDetectorTableJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SaveDetectorTable(ctx, request.(SaveDetectorTableRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SaveDetectorTable")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SaveDetectorTableResponseObject); ok {
+		if err := validResponse.VisitSaveDetectorTableResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CheckDetectorTable operation middleware
+func (sh *strictHandler) CheckDetectorTable(w http.ResponseWriter, r *http.Request) {
+	var request CheckDetectorTableRequestObject
+
+	var body CheckDetectorTableJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CheckDetectorTable(ctx, request.(CheckDetectorTableRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CheckDetectorTable")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CheckDetectorTableResponseObject); ok {
+		if err := validResponse.VisitCheckDetectorTableResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetDefaultDetectorTable operation middleware
+func (sh *strictHandler) GetDefaultDetectorTable(w http.ResponseWriter, r *http.Request) {
+	var request GetDefaultDetectorTableRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetDefaultDetectorTable(ctx, request.(GetDefaultDetectorTableRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetDefaultDetectorTable")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetDefaultDetectorTableResponseObject); ok {
+		if err := validResponse.VisitGetDefaultDetectorTableResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListDetectorTableRevisions operation middleware
+func (sh *strictHandler) ListDetectorTableRevisions(w http.ResponseWriter, r *http.Request) {
+	var request ListDetectorTableRevisionsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListDetectorTableRevisions(ctx, request.(ListDetectorTableRevisionsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListDetectorTableRevisions")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListDetectorTableRevisionsResponseObject); ok {
+		if err := validResponse.VisitListDetectorTableRevisionsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetDetectorTableRevision operation middleware
+func (sh *strictHandler) GetDetectorTableRevision(w http.ResponseWriter, r *http.Request, revision int64) {
+	var request GetDetectorTableRevisionRequestObject
+
+	request.Revision = revision
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetDetectorTableRevision(ctx, request.(GetDetectorTableRevisionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetDetectorTableRevision")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetDetectorTableRevisionResponseObject); ok {
+		if err := validResponse.VisitGetDetectorTableRevisionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetDetectorTableUsage operation middleware
+func (sh *strictHandler) GetDetectorTableUsage(w http.ResponseWriter, r *http.Request) {
+	var request GetDetectorTableUsageRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetDetectorTableUsage(ctx, request.(GetDetectorTableUsageRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetDetectorTableUsage")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetDetectorTableUsageResponseObject); ok {
+		if err := validResponse.VisitGetDetectorTableUsageResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

@@ -23,6 +23,7 @@ import (
 	"github.com/bomcensus/bomcensus/internal/collect/integrity"
 	"github.com/bomcensus/bomcensus/internal/collect/pkgdb"
 	"github.com/bomcensus/bomcensus/internal/collect/proc"
+	"github.com/bomcensus/bomcensus/internal/detectors"
 	"github.com/bomcensus/bomcensus/internal/report"
 	"github.com/bomcensus/bomcensus/internal/version"
 )
@@ -87,6 +88,9 @@ func Run(ctx context.Context, req report.Request, opts Options) (*report.Report,
 		Privilege:     priv,
 	}
 
+	if want[report.SectionArtifacts] || want[report.SectionContainers] {
+		rep.Detectors = r.useDetectors(req.Detectors)
+	}
 	if want[report.SectionHost] {
 		rep.Host = r.host()
 	}
@@ -163,6 +167,33 @@ type runner struct {
 	ctx      context.Context
 	hardStop time.Time
 	limit    time.Duration
+	// detectors is the detector table of the run (nil: the built-in
+	// one), detectorsDigest its digest.
+	detectors       []*artifact.Detector
+	detectorsDigest string
+}
+
+// useDetectors resolves the detector table of the request (nil: the
+// built-in table) and returns what the report says about it. Entries the
+// probe does not accept are dropped and listed; they never fail the run.
+func (r *runner) useDetectors(t *report.DetectorTable) *report.DetectorUse {
+	res := detectors.Resolve(t)
+	use := res.Use
+	if use.Error != "" {
+		r.log.Warn("detector table of the request not used; using the built-in table", "error", use.Error)
+	}
+	for _, rj := range use.Rejected {
+		r.log.Warn("detector dropped", "index", rj.Index, "id", rj.ID, "reason", rj.Reason)
+	}
+	if len(use.StaticOnly) > 0 {
+		r.log.Info("version commands not run for detectors that differ from the built-in table",
+			"detectors", strings.Join(use.StaticOnly, ","))
+	}
+	if use.Source == report.DetectorsRequest {
+		r.detectors = artifact.Load(res)
+	}
+	r.detectorsDigest = use.Digest
+	return &use
 }
 
 // bounded runs fn and waits for it until the hard stop. It reports false
@@ -234,7 +265,8 @@ func (r *runner) artifacts(owner *pkgdb.Index, running []artifact.RunningExe, op
 	if r.expired() {
 		return &report.ArtifactsSection{SectionMeta: r.skipped(false)}
 	}
-	in := artifact.Inputs{Running: running, OpenFiles: open.forRoot(r.env.Path("/")), WalkPaths: r.env.Policy.WalkPaths}
+	in := artifact.Inputs{Running: running, OpenFiles: open.forRoot(r.env.Path("/")), WalkPaths: r.env.Policy.WalkPaths,
+		Detectors: r.detectors}
 	if owner != nil {
 		in.Owner = owner.Owner
 	}

@@ -29,6 +29,7 @@ type Manage interface {
 	Directives
 	ScanLeases
 	FeedServers
+	DetectorTables
 }
 
 // ErrInUse is returned when a record cannot be deleted because another record

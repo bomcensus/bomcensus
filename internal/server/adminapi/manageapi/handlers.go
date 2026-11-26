@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/bomcensus/bomcensus/internal/server/adminapi/apierr"
+	"github.com/bomcensus/bomcensus/internal/server/detectorsvc"
 	"github.com/bomcensus/bomcensus/internal/server/feedsvc"
 	"github.com/bomcensus/bomcensus/internal/server/pkisvc"
 	"github.com/bomcensus/bomcensus/internal/server/secret"
@@ -104,6 +105,9 @@ type Config struct {
 	Matcher Matcher
 	// Clusters is optional; StoreClusters{Store} by default.
 	Clusters ClusterCredentialUse
+	// Detectors is optional; the detector table operations answer 503
+	// without it.
+	Detectors *detectorsvc.Service
 	// PrincipalID returns the ID of the authenticated principal of the
 	// request, stored as created_by.
 	PrincipalID func(ctx context.Context) string
@@ -125,6 +129,8 @@ type Handlers struct {
 	who      func(ctx context.Context) string
 	log      *slog.Logger
 	now      func() time.Time
+	// detectors is the detector table service, nil when not configured.
+	detectors *detectorsvc.Service
 }
 
 // New returns Handlers. Store, PKI, Updates and Secrets are required.
@@ -147,6 +153,7 @@ func New(cfg Config) (*Handlers, error) {
 	return &Handlers{
 		st: cfg.Store, pki: cfg.PKI, updates: cfg.Updates, secrets: cfg.Secrets, runner: cfg.ScanRunner,
 		feed: cfg.Feed, matcher: cfg.Matcher, clusters: cfg.Clusters, who: cfg.PrincipalID, log: cfg.Logger, now: cfg.Now,
+		detectors: cfg.Detectors,
 	}, nil
 }
 

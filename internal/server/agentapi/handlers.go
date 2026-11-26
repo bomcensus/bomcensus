@@ -39,6 +39,7 @@ type Handlers struct {
 	dispatch   *dispatch.Service
 	updates    Updates
 	ingest     Ingest
+	detectors  DetectorTables
 	log        *slog.Logger
 	verifier   *link.AgentVerifier
 	now        func() time.Time
@@ -65,7 +66,7 @@ func newHandlers(o Options) (*Handlers, error) {
 	h := &Handlers{
 		st: o.Store, pki: o.PKI, enroll: o.Enroll, dispatch: o.Dispatch, updates: o.Updates, ingest: o.Ingest,
 		log: o.Logger, now: o.Now, pollMax: o.PollTimeout, recheck: o.PollRecheck,
-		maxRequest: o.MaxRequestBody, maxReport: o.MaxReportSize,
+		maxRequest: o.MaxRequestBody, maxReport: o.MaxReportSize, detectors: o.Detectors,
 	}
 	if h.log == nil {
 		h.log = slog.New(slog.DiscardHandler)

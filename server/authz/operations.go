@@ -8,6 +8,8 @@ const (
 	OpApproveAgent = "ApproveAgent"
 	// OpChangeAgentTlsAnchor is POST /settings/tls/agent/anchor.
 	OpChangeAgentTlsAnchor = "ChangeAgentTlsAnchor"
+	// OpCheckDetectorTable is POST /detector-table/check.
+	OpCheckDetectorTable = "CheckDetectorTable"
 	// OpCollectAsset is POST /assets/{id}/collect.
 	OpCollectAsset = "CollectAsset"
 	// OpCreateCredential is POST /credentials.
@@ -54,6 +56,14 @@ const (
 	OpGetCurrentUser = "GetCurrentUser"
 	// OpGetDashboard is GET /dashboard.
 	OpGetDashboard = "GetDashboard"
+	// OpGetDefaultDetectorTable is GET /detector-table/default.
+	OpGetDefaultDetectorTable = "GetDefaultDetectorTable"
+	// OpGetDetectorTable is GET /detector-table.
+	OpGetDetectorTable = "GetDetectorTable"
+	// OpGetDetectorTableRevision is GET /detector-table/revisions/{revision}.
+	OpGetDetectorTableRevision = "GetDetectorTableRevision"
+	// OpGetDetectorTableUsage is GET /detector-table/usage.
+	OpGetDetectorTableUsage = "GetDetectorTableUsage"
 	// OpGetFeedInstance is GET /feed-instance.
 	OpGetFeedInstance = "GetFeedInstance"
 	// OpGetImage is GET /images/{digest}.
@@ -112,6 +122,8 @@ const (
 	OpListCredentials = "ListCredentials"
 	// OpListDetectDirs is GET /detect-dirs.
 	OpListDetectDirs = "ListDetectDirs"
+	// OpListDetectorTableRevisions is GET /detector-table/revisions.
+	OpListDetectorTableRevisions = "ListDetectorTableRevisions"
 	// OpListFeedServers is GET /feed-servers.
 	OpListFeedServers = "ListFeedServers"
 	// OpListImages is GET /images.
@@ -166,6 +178,8 @@ const (
 	OpPutIntegrityPolicy = "PutIntegrityPolicy"
 	// OpRematchFeedServer is POST /feed-servers/{id}/rematch.
 	OpRematchFeedServer = "RematchFeedServer"
+	// OpResetDetectorTable is DELETE /detector-table.
+	OpResetDetectorTable = "ResetDetectorTable"
 	// OpRevokeAgent is POST /agents/{id}/revoke.
 	OpRevokeAgent = "RevokeAgent"
 	// OpRevokeIntegrityAllowRule is DELETE /integrity/allow-rules/{id}.
@@ -178,6 +192,8 @@ const (
 	OpRotateCredentialSecret = "RotateCredentialSecret"
 	// OpRunScanTarget is POST /scan-targets/{id}/run.
 	OpRunScanTarget = "RunScanTarget"
+	// OpSaveDetectorTable is PUT /detector-table.
+	OpSaveDetectorTable = "SaveDetectorTable"
 	// OpSetUpdateSettings is PUT /update-settings.
 	OpSetUpdateSettings = "SetUpdateSettings"
 	// OpSyncK8sCluster is POST /k8s/clusters/{id}/sync.
@@ -213,6 +229,7 @@ var publicOps = map[string]bool{
 var operations = []string{
 	OpApproveAgent,
 	OpChangeAgentTlsAnchor,
+	OpCheckDetectorTable,
 	OpCollectAsset,
 	OpCreateCredential,
 	OpCreateDetectDir,
@@ -236,6 +253,10 @@ var operations = []string{
 	OpGetComponent,
 	OpGetCurrentUser,
 	OpGetDashboard,
+	OpGetDefaultDetectorTable,
+	OpGetDetectorTable,
+	OpGetDetectorTableRevision,
+	OpGetDetectorTableUsage,
 	OpGetFeedInstance,
 	OpGetImage,
 	OpGetIntegrityPolicy,
@@ -265,6 +286,7 @@ var operations = []string{
 	OpListComponents,
 	OpListCredentials,
 	OpListDetectDirs,
+	OpListDetectorTableRevisions,
 	OpListFeedServers,
 	OpListImages,
 	OpListIntegrityAllowRules,
@@ -292,12 +314,14 @@ var operations = []string{
 	OpMarkNoticesUnread,
 	OpPutIntegrityPolicy,
 	OpRematchFeedServer,
+	OpResetDetectorTable,
 	OpRevokeAgent,
 	OpRevokeIntegrityAllowRule,
 	OpRevokeRegisterKey,
 	OpRevokeTriageRule,
 	OpRotateCredentialSecret,
 	OpRunScanTarget,
+	OpSaveDetectorTable,
 	OpSetUpdateSettings,
 	OpSyncK8sCluster,
 	OpTestFeedServer,

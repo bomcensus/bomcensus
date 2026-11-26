@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"maps"
+	"reflect"
 	"slices"
 	"sync"
 	"time"
@@ -97,6 +98,11 @@ func (c *collector) setConfig(_ context.Context, cfg dto.AgentConfig) {
 		// Other directories are to be walked: collect the artifacts now
 		// rather than at their next scheduled run.
 		c.manual[report.SectionArtifacts] = true
+	}
+	if c.cfg != nil && !reflect.DeepEqual(c.cfg.DetectorsDigest, cfg.DetectorsDigest) {
+		// Another detector table: what it finds is collected now.
+		c.manual[report.SectionArtifacts] = true
+		c.manual[report.SectionContainers] = true
 	}
 	c.cfg = &cfg
 	// Recompute the schedule from the last run times.
@@ -271,7 +277,7 @@ func (c *collector) collect(ctx context.Context, sections []string, full bool) {
 	if c.cfg != nil {
 		policy = core.PolicyFromConfig(c.cfg.Policy)
 	}
-	req := &report.Request{Sections: sections, Policy: policy, Cache: c.cache}
+	req := &report.Request{Sections: sections, Policy: policy, Cache: c.cache, Detectors: c.rt.Detectors()}
 	if !full {
 		req.KnownDigests = map[string]string{}
 		for _, s := range sections {

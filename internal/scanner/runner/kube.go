@@ -151,7 +151,7 @@ func runK8sExec(ctx context.Context, job K8sExecJob, d Deps, res *Result, log *s
 		res.Targets = &targets
 		return
 	}
-	kd := kube.Deps{ClusterID: job.ClusterID, Probe: d.probe(), Policy: job.Policy, Logger: d.Logger}
+	kd := kube.Deps{ClusterID: job.ClusterID, Probe: d.probe(), Policy: job.Policy, Detectors: d.detectors(), Logger: d.Logger}
 	collect := func(ctx context.Context, t kube.ExecTarget) (r *report.Report, o kube.ContainerOutcome, err error) {
 		defer func() {
 			if v := recover(); v != nil {

@@ -65,6 +65,8 @@ type storedImageScan struct {
 	// Activity is rootActivity at the time of the scan. The artifacts
 	// depend on it (InUse, files of running packages).
 	Activity string `json:"a"`
+	// Detectors is the digest of the detector table of the scan.
+	Detectors string `json:"dt,omitempty"`
 }
 
 // reuseImageScans fills scans with the stored image scans whose container
@@ -78,7 +80,8 @@ func (r *runner) reuseImageScans(sec *report.ContainersSection, scans map[string
 		}
 		var st storedImageScan
 		if !r.env.Cache.Value(imageScanKey+ct.ImageDigest, &st) ||
-			st.Scope.Digest != ct.ImageDigest || st.Scope.FromContainer != ct.ID || !st.StartedAt.Equal(ct.StartedAt) {
+			st.Scope.Digest != ct.ImageDigest || st.Scope.FromContainer != ct.ID || !st.StartedAt.Equal(ct.StartedAt) ||
+			st.Detectors != r.detectorsDigest {
 			continue
 		}
 		if st.Activity != rootActivity(r.env.Proc, r.containerRoot(ct), running, open) {
@@ -97,6 +100,7 @@ func (r *runner) storeImageScan(ct *report.Container, img *imageScan, activity s
 	}
 	r.env.Cache.SetValue(imageScanKey+ct.ImageDigest, storedImageScan{
 		Scope: img.scope, Coverage: img.coverage, Reason: img.reason, StartedAt: ct.StartedAt, Activity: activity,
+		Detectors: r.detectorsDigest,
 	}, imageScanMaxAge)
 }
 
@@ -327,7 +331,8 @@ func (r *runner) scanImage(ctx context.Context, ct *report.Container, root strin
 	img.owner = ix
 	// The container root is image content: it is walked whole whatever the
 	// walk paths of the host are.
-	in := artifact.Inputs{Owner: ix.Owner, Running: running, OpenFiles: open.forRoot(root), WalkPaths: []string{"/"}}
+	in := artifact.Inputs{Owner: ix.Owner, Running: running, OpenFiles: open.forRoot(root), WalkPaths: []string{"/"},
+		Detectors: r.detectors}
 	arts := artifact.Collect(ctx, env, in)
 
 	img.coverage = report.CoverageFull
@@ -379,7 +384,7 @@ func (r *runner) scanUpper(ctx context.Context, ct *report.Container, root strin
 		_, img.owner = pkgdb.Collect(ctx, r.env.WithRoot(root))
 	}
 	env := r.env.WithRoot(dir)
-	in := artifact.Inputs{WalkPaths: []string{"/"}}
+	in := artifact.Inputs{WalkPaths: []string{"/"}, Detectors: r.detectors}
 	if img != nil && img.owner != nil {
 		in.Owner = img.owner.Owner
 	}

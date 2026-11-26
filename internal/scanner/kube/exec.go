@@ -113,6 +113,9 @@ type Deps struct {
 	// Policy is passed to the probe. MaxRuntimeSeconds, MemoryLimitMB and
 	// ScanContainers are overridden from the fields below.
 	Policy report.Policy
+	// Detectors is passed to the probe; nil leaves it with its built-in
+	// table.
+	Detectors *report.DetectorTable
 	// MemoryLimitMB becomes GOMEMLIMIT of the probe. The probe shares the
 	// container's memory limit, so this is kept small (ARCH 4.5).
 	MemoryLimitMB int
@@ -260,7 +263,8 @@ func CollectContainer(ctx context.Context, c *Client, t ExecTarget, d Deps) (*re
 	if len(sections) == 0 {
 		sections = FullSections
 	}
-	req := report.Request{Sections: sections, KnownDigests: t.KnownDigests, Policy: d.Policy, GoSymbols: t.GoSymbols}
+	req := report.Request{Sections: sections, KnownDigests: t.KnownDigests, Policy: d.Policy, GoSymbols: t.GoSymbols,
+		Detectors: d.Detectors}
 	req.Policy.MaxRuntimeSeconds = int(d.MaxRuntime / time.Second)
 	req.Policy.MemoryLimitMB = d.MemoryLimitMB
 	req.Policy.ScanContainers = false

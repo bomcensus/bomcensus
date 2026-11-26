@@ -77,6 +77,10 @@ type Report struct {
 	GoSymbols  *GoSymbolsSection  `json:"go_symbols,omitempty"`
 	Integrity  *IntegritySection  `json:"integrity,omitempty"`
 
+	// Detectors is the detector table used for the artifacts and the
+	// container contents. Older probes do not report it.
+	Detectors *DetectorUse `json:"detectors,omitempty"`
+
 	// Cache is opaque probe state (file hash cache). The caller stores it and
 	// passes it back in the next Request. Never uploaded to the server.
 	Cache json.RawMessage `json:"cache,omitempty"`
@@ -237,6 +241,10 @@ type Artifact struct {
 
 	Name    string `json:"name"`
 	Version string `json:"version,omitempty"`
+	// Build is the vendor build or revision number a detector found next to
+	// the version ("117458" for a Genian NAC svn revision). Builds of the
+	// same version are different components.
+	Build string `json:"build,omitempty"`
 	// Detector is the id of the known-software detector that matched.
 	Detector string `json:"detector,omitempty"`
 	Method   string `json:"method"`
@@ -432,6 +440,10 @@ type Request struct {
 	// Integrity starts or continues a package file integrity pass. It is
 	// answered in Report.Integrity when Sections names SectionIntegrity.
 	Integrity *IntegrityQuery `json:"integrity,omitempty"`
+	// Detectors replaces the probe's built-in detector table, within the
+	// limits of SECURITY.md. Nil uses the built-in table; older probes
+	// ignore it.
+	Detectors *DetectorTable `json:"detectors,omitempty"`
 }
 
 // Policy comes from the server and bounds what the probe does.

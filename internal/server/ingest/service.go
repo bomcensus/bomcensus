@@ -175,6 +175,10 @@ func subjectKind(r *report.Report) report.SubjectKind {
 
 // apply runs the whole report in one transaction.
 func (s *Service) apply(ctx context.Context, sender Sender, reportID string, r *report.Report) error {
+	if d := r.Detectors; d != nil && (d.Error != "" || len(d.Rejected) > 0) {
+		s.log.WarnContext(ctx, "probe did not use all of the detector table", "report", reportID, "sender", sender.AgentID,
+			"digest", d.Digest, "source", d.Source, "error", d.Error, "rejected", len(d.Rejected))
+	}
 	err := s.st.WithTx(ctx, func(tx store.Store) error {
 		subj, err := s.authorize(ctx, tx, sender, r)
 		if err != nil {

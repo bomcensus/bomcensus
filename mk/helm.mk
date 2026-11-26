@@ -34,7 +34,9 @@ HELM_CASES := \
 	"--set database.url=postgres://u:p@db/b --set scanner.enabled=true --set scanner.enrollment.existingSecret.name=tok" \
 	"--set database.url=postgres://u:p@db/b --set scanner.enabled=true --set scanner.nodeAgent.enabled=true --set scanner.nodeAgent.enrollment.existingSecret.name=natok" \
 	"--set database.url=postgres://u:p@db/b --set scanner.enabled=true --set scanner.nodeAgent.enabled=true" \
-	"--set database.url=postgres://u:p@db/b --set replicaCount=3 --set podDisruptionBudget.enabled=true --set agent.service.type=LoadBalancer --set agent.extraServerNames={bomcensus.example.com}"
+	"--set database.url=postgres://u:p@db/b --set replicaCount=3 --set podDisruptionBudget.enabled=true --set agent.service.type=LoadBalancer --set agent.extraServerNames={bomcensus.example.com}" \
+	"--set database.url=postgres://u:p@db/b --set detectors.existingConfigMap=my-detectors" \
+	"--set database.url=postgres://u:p@db/b --set detectors.enabled=false"
 
 .PHONY: helm-deps helm-lint helm-package
 

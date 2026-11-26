@@ -104,7 +104,7 @@ const title = (tags: string[], digest: string) => tags[0] ?? shortHash(digest)
                       <td class="py-2 pl-3.5">
                         <template v-if="i === 0">
                           <NuxtLink :to="`/components/${c.componentId}`" class="font-medium hover:underline">{{ c.name }}</NuxtLink>
-                          <span class="mono ml-1 text-xs text-ink-2">{{ c.version }}</span>
+                          <span class="mono ml-1 text-xs text-ink-2">{{ versionText(c.version, c.build) }}</span>
                           <span v-if="c.fixedVersion" class="mono ml-1 text-xs">→ {{ c.fixedVersion }}</span>
                         </template>
                       </td>

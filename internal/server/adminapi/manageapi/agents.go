@@ -78,6 +78,7 @@ func (v agentView) agent(a store.Agent) gen.Agent {
 		LastSeen:          a.EnrolledAt,
 		DetectDirIds:      orEmpty(a.DetectDirIDs),
 		ScopeId:           optString(a.ScopeID),
+		DetectorsDigest:   a.DetectorsDigest,
 	}
 	if a.LastSeen != nil {
 		out.LastSeen = *a.LastSeen

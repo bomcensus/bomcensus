@@ -51,6 +51,9 @@ const (
 	integrityCacheName = "integrity-cache.json"
 	revokedName        = "revoked.json"
 	spoolName          = "spool"
+	// detectorsName holds the detector table from the server, in its
+	// canonical JSON form.
+	detectorsName = "detectors.json"
 )
 
 // ErrLocked is returned by Open when another process holds the directory.

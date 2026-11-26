@@ -99,6 +99,12 @@ export type {
   DetectDir,
   DetectDirCreate,
   DetectDirUpdate,
+  DetectorTableCheck,
+  DetectorTableProblem,
+  DetectorTableRevision,
+  DetectorTableState,
+  DetectorTableText,
+  DetectorTableUsage,
   // settings
   TlsEndpointName,
   TlsCertMode,

@@ -163,6 +163,8 @@ type Runtime struct {
 	bundle   *pki.TrustBundle
 	config   *dto.AgentConfig
 	extra    []*x509.Certificate
+	// detectors is the detector table from the server, nil for none.
+	detectors *detectorTable
 	// revoked is the record of earlier runs that ended with agent_revoked.
 	// While it is set, connect mode presents no client certificate: the
 	// server refuses the handshake of a revoked certificate, and without
@@ -258,6 +260,11 @@ func New(opts Options) (*Runtime, error) {
 		seen:     map[string]struct{}{},
 	}
 	r.setIdentity(ident)
+	if raw, err := st.LoadDetectors(); err != nil {
+		r.log.Warn("ignoring stored detector table", "error", err)
+	} else if r.detectors, err = loadDetectorTable(raw); err != nil {
+		r.log.Warn("ignoring stored detector table", "error", err)
+	}
 	var cfg dto.AgentConfig
 	if ok, err := st.LoadServerConfig(&cfg); err != nil {
 		r.log.Warn("ignoring stored server configuration", "error", err)

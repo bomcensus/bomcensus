@@ -487,6 +487,10 @@ export type SoftwareComponent = {
     type: ComponentType;
     name: string;
     version: string;
+    /**
+     * Vendor build or revision number reported by the detector.
+     */
+    build?: string;
     purl: string;
     cpe?: string;
     sourceName?: string;
@@ -502,6 +506,10 @@ export type ComponentSummary = {
     type: ComponentType;
     name: string;
     version: string;
+    /**
+     * Vendor build or revision number reported by the detector.
+     */
+    build?: string;
     purl: string;
     cpe?: string;
     sourceName?: string;
@@ -1012,6 +1020,10 @@ export type Agent = {
      * Whether passes run, from the mode and the policy default. Absent for scanners.
      */
     integrityEnabled?: boolean;
+    /**
+     * Digest of the detector table the agent reported in its last poll; empty when it holds none, absent for agents that do not report one (their probe uses its built-in table).
+     */
+    detectorsDigest?: string;
 };
 
 export type AgentUpdate = {
@@ -1333,6 +1345,108 @@ export type DetectDirUpdate = {
 export type DetectDirList = {
     items: Array<DetectDir>;
     total: number;
+};
+
+export type DetectorTableInput = {
+    yaml: string;
+};
+
+export type DetectorTableProblem = {
+    /**
+     * Position of the detector in the table (0 based), -1 for the whole table.
+     */
+    index: number;
+    id?: string;
+    severity: 'error' | 'warning';
+    message: string;
+};
+
+export type DetectorTableCheck = {
+    /**
+     * The table has no errors and can be saved.
+     */
+    valid: boolean;
+    /**
+     * Digest of the table when it parses.
+     */
+    digest?: string;
+    /**
+     * Number of detectors when the table parses.
+     */
+    detectors?: number;
+    problems: Array<DetectorTableProblem>;
+};
+
+export type DetectorTableText = {
+    yaml: string;
+    digest: string;
+    /**
+     * The file the default table was read from, or `built-in`.
+     */
+    source: string;
+    detectors: number;
+};
+
+export type DetectorTableState = {
+    /**
+     * The table was saved by an administrator; false while the default table is in effect.
+     */
+    custom: boolean;
+    yaml: string;
+    digest: string;
+    detectors: number;
+    /**
+     * The last edit (a save or a reset); absent when the table was never edited.
+     */
+    revision?: number;
+    updatedAt?: string;
+    updatedBy?: string;
+    defaultDigest: string;
+    /**
+     * Digest of the table built into this server and its probes.
+     */
+    builtinDigest: string;
+    warnings: Array<DetectorTableProblem>;
+};
+
+export type DetectorTableRevision = {
+    revision: number;
+    /**
+     * The edit returned to the default table.
+     */
+    reset: boolean;
+    digest?: string;
+    /**
+     * Present when one revision is read.
+     */
+    yaml?: string;
+    createdAt: string;
+    createdBy: string;
+};
+
+export type DetectorTableRevisionList = {
+    items: Array<DetectorTableRevision>;
+};
+
+export type DetectorTableUsage = {
+    kind: AgentKind;
+    /**
+     * False for agents that do not report a table (older versions); their probe uses its built-in table.
+     */
+    reported: boolean;
+    /**
+     * Digest of the table; absent when the agent holds none.
+     */
+    digest?: string;
+    count: number;
+    /**
+     * The digest is the table in effect.
+     */
+    current: boolean;
+};
+
+export type DetectorTableUsageList = {
+    items: Array<DetectorTableUsage>;
 };
 
 export type CredentialKind = 'ssh_key' | 'ssh_password' | 'kubeconfig';
@@ -1742,6 +1856,10 @@ export type VulnComponent = {
     componentId: string;
     name: string;
     version: string;
+    /**
+     * Vendor build or revision number reported by the detector.
+     */
+    build?: string;
     type: ComponentType;
     purl?: string;
     fixedVersion?: string;
@@ -1843,6 +1961,10 @@ export type VulnLocation = {
     componentName: string;
     componentVersion: string;
     /**
+     * Vendor build or revision number reported by the detector.
+     */
+    componentBuild?: string;
+    /**
      * File paths (or the package database) of the component there.
      */
     locations: Array<string>;
@@ -1913,6 +2035,10 @@ export type VulnCveComponent = {
     componentId: string;
     name: string;
     version: string;
+    /**
+     * Vendor build or revision number reported by the detector.
+     */
+    build?: string;
     type: ComponentType;
     purl?: string;
     method: 'package' | 'cpe';
@@ -1947,6 +2073,10 @@ export type AssetVuln = {
     componentId: string;
     componentName: string;
     componentVersion: string;
+    /**
+     * Vendor build or revision number reported by the detector.
+     */
+    componentBuild?: string;
     componentPurl?: string;
     container?: string;
     layer: FindingLayer;
@@ -2311,6 +2441,10 @@ export type VulnImageComponent = {
     componentId: string;
     name: string;
     version: string;
+    /**
+     * Vendor build or revision number reported by the detector.
+     */
+    build?: string;
     type: ComponentType;
     purl?: string;
     locations: Array<string>;
@@ -4605,6 +4739,256 @@ export type UpdateDetectDirResponses = {
 };
 
 export type UpdateDetectDirResponse = UpdateDetectDirResponses[keyof UpdateDetectDirResponses];
+
+export type ResetDetectorTableData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/detector-table';
+};
+
+export type ResetDetectorTableErrors = {
+    /**
+     * No valid session, or wrong credentials on login.
+     */
+    401: Error;
+    /**
+     * Unexpected error.
+     */
+    default: Error;
+};
+
+export type ResetDetectorTableError = ResetDetectorTableErrors[keyof ResetDetectorTableErrors];
+
+export type ResetDetectorTableResponses = {
+    /**
+     * Default table in effect
+     */
+    200: DetectorTableState;
+};
+
+export type ResetDetectorTableResponse = ResetDetectorTableResponses[keyof ResetDetectorTableResponses];
+
+export type GetDetectorTableData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/detector-table';
+};
+
+export type GetDetectorTableErrors = {
+    /**
+     * No valid session, or wrong credentials on login.
+     */
+    401: Error;
+    /**
+     * Unexpected error.
+     */
+    default: Error;
+};
+
+export type GetDetectorTableError = GetDetectorTableErrors[keyof GetDetectorTableErrors];
+
+export type GetDetectorTableResponses = {
+    /**
+     * Table in effect
+     */
+    200: DetectorTableState;
+};
+
+export type GetDetectorTableResponse = GetDetectorTableResponses[keyof GetDetectorTableResponses];
+
+export type SaveDetectorTableData = {
+    body: DetectorTableInput;
+    path?: never;
+    query?: never;
+    url: '/detector-table';
+};
+
+export type SaveDetectorTableErrors = {
+    /**
+     * The request is malformed or a value is invalid.
+     */
+    400: Error;
+    /**
+     * No valid session, or wrong credentials on login.
+     */
+    401: Error;
+    /**
+     * The table has errors and was not saved.
+     */
+    422: DetectorTableCheck;
+    /**
+     * Unexpected error.
+     */
+    default: Error;
+};
+
+export type SaveDetectorTableError = SaveDetectorTableErrors[keyof SaveDetectorTableErrors];
+
+export type SaveDetectorTableResponses = {
+    /**
+     * Table saved
+     */
+    200: DetectorTableState;
+};
+
+export type SaveDetectorTableResponse = SaveDetectorTableResponses[keyof SaveDetectorTableResponses];
+
+export type CheckDetectorTableData = {
+    body: DetectorTableInput;
+    path?: never;
+    query?: never;
+    url: '/detector-table/check';
+};
+
+export type CheckDetectorTableErrors = {
+    /**
+     * The request is malformed or a value is invalid.
+     */
+    400: Error;
+    /**
+     * No valid session, or wrong credentials on login.
+     */
+    401: Error;
+    /**
+     * Unexpected error.
+     */
+    default: Error;
+};
+
+export type CheckDetectorTableError = CheckDetectorTableErrors[keyof CheckDetectorTableErrors];
+
+export type CheckDetectorTableResponses = {
+    /**
+     * Result of the check
+     */
+    200: DetectorTableCheck;
+};
+
+export type CheckDetectorTableResponse = CheckDetectorTableResponses[keyof CheckDetectorTableResponses];
+
+export type GetDefaultDetectorTableData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/detector-table/default';
+};
+
+export type GetDefaultDetectorTableErrors = {
+    /**
+     * No valid session, or wrong credentials on login.
+     */
+    401: Error;
+    /**
+     * Unexpected error.
+     */
+    default: Error;
+};
+
+export type GetDefaultDetectorTableError = GetDefaultDetectorTableErrors[keyof GetDefaultDetectorTableErrors];
+
+export type GetDefaultDetectorTableResponses = {
+    /**
+     * Default table
+     */
+    200: DetectorTableText;
+};
+
+export type GetDefaultDetectorTableResponse = GetDefaultDetectorTableResponses[keyof GetDefaultDetectorTableResponses];
+
+export type ListDetectorTableRevisionsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/detector-table/revisions';
+};
+
+export type ListDetectorTableRevisionsErrors = {
+    /**
+     * No valid session, or wrong credentials on login.
+     */
+    401: Error;
+    /**
+     * Unexpected error.
+     */
+    default: Error;
+};
+
+export type ListDetectorTableRevisionsError = ListDetectorTableRevisionsErrors[keyof ListDetectorTableRevisionsErrors];
+
+export type ListDetectorTableRevisionsResponses = {
+    /**
+     * Revisions
+     */
+    200: DetectorTableRevisionList;
+};
+
+export type ListDetectorTableRevisionsResponse = ListDetectorTableRevisionsResponses[keyof ListDetectorTableRevisionsResponses];
+
+export type GetDetectorTableRevisionData = {
+    body?: never;
+    path: {
+        revision: number;
+    };
+    query?: never;
+    url: '/detector-table/revisions/{revision}';
+};
+
+export type GetDetectorTableRevisionErrors = {
+    /**
+     * No valid session, or wrong credentials on login.
+     */
+    401: Error;
+    /**
+     * The resource does not exist.
+     */
+    404: Error;
+    /**
+     * Unexpected error.
+     */
+    default: Error;
+};
+
+export type GetDetectorTableRevisionError = GetDetectorTableRevisionErrors[keyof GetDetectorTableRevisionErrors];
+
+export type GetDetectorTableRevisionResponses = {
+    /**
+     * Revision
+     */
+    200: DetectorTableRevision;
+};
+
+export type GetDetectorTableRevisionResponse = GetDetectorTableRevisionResponses[keyof GetDetectorTableRevisionResponses];
+
+export type GetDetectorTableUsageData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/detector-table/usage';
+};
+
+export type GetDetectorTableUsageErrors = {
+    /**
+     * No valid session, or wrong credentials on login.
+     */
+    401: Error;
+    /**
+     * Unexpected error.
+     */
+    default: Error;
+};
+
+export type GetDetectorTableUsageError = GetDetectorTableUsageErrors[keyof GetDetectorTableUsageErrors];
+
+export type GetDetectorTableUsageResponses = {
+    /**
+     * Usage
+     */
+    200: DetectorTableUsageList;
+};
+
+export type GetDetectorTableUsageResponse = GetDetectorTableUsageResponses[keyof GetDetectorTableUsageResponses];
 
 export type ListCredentialsData = {
     body?: never;

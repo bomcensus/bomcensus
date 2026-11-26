@@ -121,6 +121,11 @@ type Server struct {
 	enrollGets   int
 	revokedCerts map[string]bool
 	requests     int
+
+	// detectors is added to poll results whose detectors_digest differs
+	// from the configuration's; detectorSends counts how often.
+	detectors     *dto.DetectorTable
+	detectorSends int
 }
 
 type session struct {
@@ -381,6 +386,21 @@ func (s *Server) SetConfig(f func(*dto.AgentConfig)) {
 	f(&s.config)
 	s.changed()
 	s.mu.Unlock()
+}
+
+// SetDetectors sets the detector table sent to agents whose digest differs
+// from the configuration's (nil sends none).
+func (s *Server) SetDetectors(t *dto.DetectorTable) {
+	s.mu.Lock()
+	s.detectors = t
+	s.mu.Unlock()
+}
+
+// DetectorSends returns how many poll results carried the detector table.
+func (s *Server) DetectorSends() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.detectorSends
 }
 
 // Queue adds a directive (any JSON object with id and type).
@@ -673,6 +693,11 @@ func (s *Server) Poll(w http.ResponseWriter, r *http.Request) {
 		last = int64(a.Counters[len(a.Counters)-1])
 	}
 	res := dto.PollResult{Config: s.config, LastCounter: last, ServerTime: time.Now().UTC(), Directives: []dto.Directive{}}
+	if s.detectors != nil && req.DetectorsDigest != nil && s.config.DetectorsDigest != nil &&
+		*req.DetectorsDigest != *s.config.DetectorsDigest {
+		res.Detectors = s.detectors
+		s.detectorSends++
+	}
 	for _, raw := range s.pendingDirectives() {
 		var d dto.Directive
 		must(s.t, d.UnmarshalJSON(raw))

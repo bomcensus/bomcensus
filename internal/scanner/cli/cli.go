@@ -305,6 +305,7 @@ func cmdRun(ctx context.Context, args []string, stderr io.Writer, ext Extensions
 			Probe:                        probes.Get,
 			Logger:                       log,
 			AllowExternalKubeCredentials: *external,
+			Detectors:                    rt.Detectors,
 		},
 		pool: pool,
 		run:  packageRunner{},

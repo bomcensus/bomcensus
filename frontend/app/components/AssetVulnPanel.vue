@@ -71,7 +71,7 @@ const columns: TableColumn<AssetVuln>[] = [
       <template #cell-severity="{ row }"><SeverityBadge :severity="row.severity" :score="row.score" /></template>
       <template #cell-component="{ row }">
         <NuxtLink :to="`/components/${row.componentId}`" class="hover:underline">{{ row.componentName }}</NuxtLink>
-        <span class="mono ml-1 text-xs text-ink-2">{{ row.componentVersion }}</span>
+        <span class="mono ml-1 text-xs text-ink-2">{{ versionText(row.componentVersion, row.componentBuild) }}</span>
       </template>
       <template #cell-where="{ row }">
         <span class="text-xs">{{ findingLayerLabel[row.layer] }}</span>

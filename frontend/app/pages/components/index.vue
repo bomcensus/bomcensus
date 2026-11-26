@@ -75,7 +75,7 @@ const originOptions = (Object.keys(originLabel) as ComponentOrigin[]).map((value
         <template #cell-name="{ row }">
           <NuxtLink :to="`/components/${encodeURIComponent(row.id)}`" class="font-medium hover:underline">{{ row.name }}</NuxtLink>
         </template>
-        <template #cell-version="{ row }"><span class="whitespace-nowrap">{{ row.version }}</span></template>
+        <template #cell-version="{ row }"><span class="whitespace-nowrap">{{ versionText(row.version, row.build) }}</span></template>
         <template #cell-type="{ row }">{{ componentTypeLabel[row.type] }}</template>
         <template #cell-origin="{ row }">{{ originLabel[row.origin] }}</template>
         <template #cell-installs="{ row }"><span class="mono whitespace-nowrap">{{ row.assetCount }}</span></template>

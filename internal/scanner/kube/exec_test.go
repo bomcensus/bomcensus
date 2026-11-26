@@ -161,6 +161,23 @@ func TestCollectFull(t *testing.T) {
 	e.assertClean(t)
 }
 
+func TestCollectPassesDetectors(t *testing.T) {
+	e := newExecEnv(t)
+	table := &report.DetectorTable{SchemaVersion: report.DetectorSchemaVersion, Detectors: []report.DetectorSpec{
+		{ID: "acme", Name: "acme", Names: []string{"acmed"}, Static: []report.DetectorStatic{{Rules: []report.DetectorRule{{Pattern: `acme (\d+)`}}}}},
+	}}
+	want, _ := report.Digest(table)
+	e.deps.Detectors = table
+	r, _, err := e.run(t)
+	if err != nil || r == nil || r.Detectors == nil || r.Detectors.Digest != want {
+		t.Fatalf("detectors seen by the probe: %+v (%v)", r, err)
+	}
+	e.deps.Detectors = nil
+	if r, _, err = e.run(t); err != nil || r.Detectors != nil {
+		t.Fatalf("without a table: %+v (%v)", r.Detectors, err)
+	}
+}
+
 func TestCollectProcessOnly(t *testing.T) {
 	e := newExecEnv(t)
 	e.tgt.Sections = ProcessSections

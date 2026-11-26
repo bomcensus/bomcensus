@@ -110,6 +110,8 @@ After installation register the cluster in the console (Kubernetes) with the sca
 | `logLevel`, `logFormat` | `info`, `json` | |
 | `embeddedScanner` | `true` | `BOMCENSUS_EMBEDDED_SCANNER` |
 | `clusterDomain` | `cluster.local` | For the certificate DNS names |
+| `detectors.enabled` | `true` | Mount the default detector table and set `BOMCENSUS_DETECTORS_FILE`; `false` uses the table built into the server |
+| `detectors.existingConfigMap` | `""` | ConfigMap with a `detectors.yaml` key instead of the chart's `files/detectors.yaml` |
 | `web.tls` | `auto` | `auto` or `manual`; `off` is implied by `ingress.enabled` |
 | `web.extraServerNames` | `[]` | Extra names of the automatic web certificate |
 | `web.service.type`, `.port`, `.nodePort`, `.annotations` | `ClusterIP`, `8080` | |

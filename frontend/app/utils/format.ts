@@ -64,3 +64,9 @@ export function shortHash(hash?: string, head = 12): string {
   const short = body.length > head + 4 ? `${body.slice(0, head)}…` : body
   return prefix ? `${prefix}:${short}` : short
 }
+
+/** "5.0.54.0720 (빌드 117458)": a version with the vendor build number a detector reported, if any. */
+export function versionText(version?: string, build?: string): string {
+  if (!version) return build ? `빌드 ${build}` : ''
+  return build ? `${version} (빌드 ${build})` : version
+}

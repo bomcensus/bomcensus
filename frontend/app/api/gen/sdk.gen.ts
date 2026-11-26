@@ -2,7 +2,7 @@
 
 import { type Client, type ClientMeta, formDataBodySerializer, type Options as Options2, type RequestResult, type TDataShape } from './client';
 import { client } from './client.gen';
-import type { ApproveAgentData, ApproveAgentErrors, ApproveAgentResponses, ChangeAgentTlsAnchorData, ChangeAgentTlsAnchorErrors, ChangeAgentTlsAnchorResponses, CollectAssetData, CollectAssetErrors, CollectAssetResponses, CreateCredentialData, CreateCredentialErrors, CreateCredentialResponses, CreateDetectDirData, CreateDetectDirErrors, CreateDetectDirResponses, CreateFeedServerData, CreateFeedServerErrors, CreateFeedServerResponses, CreateIntegrityAllowRulesData, CreateIntegrityAllowRulesErrors, CreateIntegrityAllowRulesResponses, CreateK8sClusterData, CreateK8sClusterErrors, CreateK8sClusterResponses, CreateListenTargetData, CreateListenTargetErrors, CreateListenTargetResponses, CreateRegisterKeyData, CreateRegisterKeyErrors, CreateRegisterKeyResponses, CreateScanTargetData, CreateScanTargetErrors, CreateScanTargetResponses, CreateTriageRuleData, CreateTriageRuleErrors, CreateTriageRuleResponses, DeleteCredentialData, DeleteCredentialErrors, DeleteCredentialResponses, DeleteDetectDirData, DeleteDetectDirErrors, DeleteDetectDirResponses, DeleteFeedServerData, DeleteFeedServerErrors, DeleteFeedServerResponses, DeleteK8sClusterData, DeleteK8sClusterErrors, DeleteK8sClusterResponses, DeleteListenTargetData, DeleteListenTargetErrors, DeleteListenTargetResponses, DeleteScanTargetData, DeleteScanTargetErrors, DeleteScanTargetResponses, ExportVexData, ExportVexErrors, ExportVexResponses, GetAgentData, GetAgentErrors, GetAgentResponses, GetAssetData, GetAssetErrors, GetAssetIntegrityData, GetAssetIntegrityErrors, GetAssetIntegrityResponses, GetAssetResponses, GetComponentData, GetComponentErrors, GetComponentResponses, GetCurrentUserData, GetCurrentUserErrors, GetCurrentUserResponses, GetDashboardData, GetDashboardErrors, GetDashboardResponses, GetFeedInstanceData, GetFeedInstanceErrors, GetFeedInstanceResponses, GetImageData, GetImageErrors, GetImageResponses, GetIntegrityPolicyData, GetIntegrityPolicyErrors, GetIntegrityPolicyResponses, GetIntegritySummaryData, GetIntegritySummaryErrors, GetIntegritySummaryResponses, GetK8sClusterData, GetK8sClusterErrors, GetK8sClusterResponses, GetMetaData, GetMetaErrors, GetMetaResponses, GetNoticeData, GetNoticeErrors, GetNoticeResponses, GetNoticeSummaryData, GetNoticeSummaryErrors, GetNoticeSummaryResponses, GetRegisterKeyData, GetRegisterKeyErrors, GetRegisterKeyResponses, GetTlsSettingsData, GetTlsSettingsErrors, GetTlsSettingsResponses, GetUpdateSettingsData, GetUpdateSettingsErrors, GetUpdateSettingsResponses, GetVulnerabilityData, GetVulnerabilityErrors, GetVulnerabilityResponses, GetVulnerabilitySummaryData, GetVulnerabilitySummaryErrors, GetVulnerabilitySummaryResponses, GetVulnerableComponentData, GetVulnerableComponentErrors, GetVulnerableComponentResponses, GetVulnerableImageData, GetVulnerableImageErrors, GetVulnerableImageResponses, GetVulnerableProcessData, GetVulnerableProcessErrors, GetVulnerableProcessResponses, ListAgentsData, ListAgentsErrors, ListAgentsResponses, ListAssetComponentsData, ListAssetComponentsErrors, ListAssetComponentsResponses, ListAssetGroupsData, ListAssetGroupsErrors, ListAssetGroupsResponses, ListAssetInstancesData, ListAssetInstancesErrors, ListAssetInstancesResponses, ListAssetNoticesData, ListAssetNoticesErrors, ListAssetNoticesResponses, ListAssetProcessesData, ListAssetProcessesErrors, ListAssetProcessesResponses, ListAssetsData, ListAssetsErrors, ListAssetsResponses, ListAssetVulnerabilitiesData, ListAssetVulnerabilitiesErrors, ListAssetVulnerabilitiesResponses, ListComponentAssetsData, ListComponentAssetsErrors, ListComponentAssetsResponses, ListComponentsData, ListComponentsErrors, ListComponentsResponses, ListComponentVulnerabilitiesData, ListComponentVulnerabilitiesErrors, ListComponentVulnerabilitiesResponses, ListCredentialsData, ListCredentialsErrors, ListCredentialsResponses, ListDetectDirsData, ListDetectDirsErrors, ListDetectDirsResponses, ListFeedServersData, ListFeedServersErrors, ListFeedServersResponses, ListImagesData, ListImagesErrors, ListImagesResponses, ListIntegrityAllowRulesData, ListIntegrityAllowRulesErrors, ListIntegrityAllowRulesResponses, ListIntegrityFileNodesData, ListIntegrityFileNodesErrors, ListIntegrityFileNodesResponses, ListIntegrityFilesData, ListIntegrityFilesErrors, ListIntegrityFilesResponses, ListK8sClustersData, ListK8sClustersErrors, ListK8sClustersResponses, ListK8sWorkloadPodsData, ListK8sWorkloadPodsErrors, ListK8sWorkloadPodsResponses, ListK8sWorkloadsData, ListK8sWorkloadsErrors, ListK8sWorkloadsResponses, ListListenPortsData, ListListenPortsErrors, ListListenPortsResponses, ListListenTargetsData, ListListenTargetsErrors, ListListenTargetsResponses, ListNoticesData, ListNoticesErrors, ListNoticesResponses, ListProcessesData, ListProcessesErrors, ListProcessesResponses, ListRegisterKeysData, ListRegisterKeysErrors, ListRegisterKeysResponses, ListReleasesData, ListReleasesErrors, ListReleasesResponses, ListScanTargetsData, ListScanTargetsErrors, ListScanTargetsResponses, ListTriageEventsData, ListTriageEventsErrors, ListTriageEventsResponses, ListTriageRulesData, ListTriageRulesErrors, ListTriageRulesResponses, ListVulnerabilitiesData, ListVulnerabilitiesErrors, ListVulnerabilitiesResponses, ListVulnerableComponentsData, ListVulnerableComponentsErrors, ListVulnerableComponentsResponses, ListVulnerableImagesData, ListVulnerableImagesErrors, ListVulnerableImagesResponses, ListVulnerableProcessesData, ListVulnerableProcessesErrors, ListVulnerableProcessesResponses, LoginData, LoginErrors, LoginResponses, LogoutData, LogoutErrors, LogoutResponses, MarkNoticesReadData, MarkNoticesReadErrors, MarkNoticesReadResponses, MarkNoticesUnreadData, MarkNoticesUnreadErrors, MarkNoticesUnreadResponses, PutIntegrityPolicyData, PutIntegrityPolicyErrors, PutIntegrityPolicyResponses, RematchFeedServerData, RematchFeedServerErrors, RematchFeedServerResponses, RevokeAgentData, RevokeAgentErrors, RevokeAgentResponses, RevokeIntegrityAllowRuleData, RevokeIntegrityAllowRuleErrors, RevokeIntegrityAllowRuleResponses, RevokeRegisterKeyData, RevokeRegisterKeyErrors, RevokeRegisterKeyResponses, RevokeTriageRuleData, RevokeTriageRuleErrors, RevokeTriageRuleResponses, RotateCredentialSecretData, RotateCredentialSecretErrors, RotateCredentialSecretResponses, RunScanTargetData, RunScanTargetErrors, RunScanTargetResponses, SetUpdateSettingsData, SetUpdateSettingsErrors, SetUpdateSettingsResponses, SyncK8sClusterData, SyncK8sClusterErrors, SyncK8sClusterResponses, TestFeedServerData, TestFeedServerErrors, TestFeedServerResponses, TrustFeedServerKeyData, TrustFeedServerKeyErrors, TrustFeedServerKeyResponses, UpdateAgentData, UpdateAgentErrors, UpdateAgentResponses, UpdateDetectDirData, UpdateDetectDirErrors, UpdateDetectDirResponses, UpdateFeedServerData, UpdateFeedServerErrors, UpdateFeedServerResponses, UpdateK8sClusterData, UpdateK8sClusterErrors, UpdateK8sClusterResponses, UpdateListenTargetData, UpdateListenTargetErrors, UpdateListenTargetResponses, UpdateScanTargetData, UpdateScanTargetErrors, UpdateScanTargetResponses, UpdateTlsEndpointData, UpdateTlsEndpointErrors, UpdateTlsEndpointResponses, UploadReleaseData, UploadReleaseErrors, UploadReleaseResponses } from './types.gen';
+import type { ApproveAgentData, ApproveAgentErrors, ApproveAgentResponses, ChangeAgentTlsAnchorData, ChangeAgentTlsAnchorErrors, ChangeAgentTlsAnchorResponses, CheckDetectorTableData, CheckDetectorTableErrors, CheckDetectorTableResponses, CollectAssetData, CollectAssetErrors, CollectAssetResponses, CreateCredentialData, CreateCredentialErrors, CreateCredentialResponses, CreateDetectDirData, CreateDetectDirErrors, CreateDetectDirResponses, CreateFeedServerData, CreateFeedServerErrors, CreateFeedServerResponses, CreateIntegrityAllowRulesData, CreateIntegrityAllowRulesErrors, CreateIntegrityAllowRulesResponses, CreateK8sClusterData, CreateK8sClusterErrors, CreateK8sClusterResponses, CreateListenTargetData, CreateListenTargetErrors, CreateListenTargetResponses, CreateRegisterKeyData, CreateRegisterKeyErrors, CreateRegisterKeyResponses, CreateScanTargetData, CreateScanTargetErrors, CreateScanTargetResponses, CreateTriageRuleData, CreateTriageRuleErrors, CreateTriageRuleResponses, DeleteCredentialData, DeleteCredentialErrors, DeleteCredentialResponses, DeleteDetectDirData, DeleteDetectDirErrors, DeleteDetectDirResponses, DeleteFeedServerData, DeleteFeedServerErrors, DeleteFeedServerResponses, DeleteK8sClusterData, DeleteK8sClusterErrors, DeleteK8sClusterResponses, DeleteListenTargetData, DeleteListenTargetErrors, DeleteListenTargetResponses, DeleteScanTargetData, DeleteScanTargetErrors, DeleteScanTargetResponses, ExportVexData, ExportVexErrors, ExportVexResponses, GetAgentData, GetAgentErrors, GetAgentResponses, GetAssetData, GetAssetErrors, GetAssetIntegrityData, GetAssetIntegrityErrors, GetAssetIntegrityResponses, GetAssetResponses, GetComponentData, GetComponentErrors, GetComponentResponses, GetCurrentUserData, GetCurrentUserErrors, GetCurrentUserResponses, GetDashboardData, GetDashboardErrors, GetDashboardResponses, GetDefaultDetectorTableData, GetDefaultDetectorTableErrors, GetDefaultDetectorTableResponses, GetDetectorTableData, GetDetectorTableErrors, GetDetectorTableResponses, GetDetectorTableRevisionData, GetDetectorTableRevisionErrors, GetDetectorTableRevisionResponses, GetDetectorTableUsageData, GetDetectorTableUsageErrors, GetDetectorTableUsageResponses, GetFeedInstanceData, GetFeedInstanceErrors, GetFeedInstanceResponses, GetImageData, GetImageErrors, GetImageResponses, GetIntegrityPolicyData, GetIntegrityPolicyErrors, GetIntegrityPolicyResponses, GetIntegritySummaryData, GetIntegritySummaryErrors, GetIntegritySummaryResponses, GetK8sClusterData, GetK8sClusterErrors, GetK8sClusterResponses, GetMetaData, GetMetaErrors, GetMetaResponses, GetNoticeData, GetNoticeErrors, GetNoticeResponses, GetNoticeSummaryData, GetNoticeSummaryErrors, GetNoticeSummaryResponses, GetRegisterKeyData, GetRegisterKeyErrors, GetRegisterKeyResponses, GetTlsSettingsData, GetTlsSettingsErrors, GetTlsSettingsResponses, GetUpdateSettingsData, GetUpdateSettingsErrors, GetUpdateSettingsResponses, GetVulnerabilityData, GetVulnerabilityErrors, GetVulnerabilityResponses, GetVulnerabilitySummaryData, GetVulnerabilitySummaryErrors, GetVulnerabilitySummaryResponses, GetVulnerableComponentData, GetVulnerableComponentErrors, GetVulnerableComponentResponses, GetVulnerableImageData, GetVulnerableImageErrors, GetVulnerableImageResponses, GetVulnerableProcessData, GetVulnerableProcessErrors, GetVulnerableProcessResponses, ListAgentsData, ListAgentsErrors, ListAgentsResponses, ListAssetComponentsData, ListAssetComponentsErrors, ListAssetComponentsResponses, ListAssetGroupsData, ListAssetGroupsErrors, ListAssetGroupsResponses, ListAssetInstancesData, ListAssetInstancesErrors, ListAssetInstancesResponses, ListAssetNoticesData, ListAssetNoticesErrors, ListAssetNoticesResponses, ListAssetProcessesData, ListAssetProcessesErrors, ListAssetProcessesResponses, ListAssetsData, ListAssetsErrors, ListAssetsResponses, ListAssetVulnerabilitiesData, ListAssetVulnerabilitiesErrors, ListAssetVulnerabilitiesResponses, ListComponentAssetsData, ListComponentAssetsErrors, ListComponentAssetsResponses, ListComponentsData, ListComponentsErrors, ListComponentsResponses, ListComponentVulnerabilitiesData, ListComponentVulnerabilitiesErrors, ListComponentVulnerabilitiesResponses, ListCredentialsData, ListCredentialsErrors, ListCredentialsResponses, ListDetectDirsData, ListDetectDirsErrors, ListDetectDirsResponses, ListDetectorTableRevisionsData, ListDetectorTableRevisionsErrors, ListDetectorTableRevisionsResponses, ListFeedServersData, ListFeedServersErrors, ListFeedServersResponses, ListImagesData, ListImagesErrors, ListImagesResponses, ListIntegrityAllowRulesData, ListIntegrityAllowRulesErrors, ListIntegrityAllowRulesResponses, ListIntegrityFileNodesData, ListIntegrityFileNodesErrors, ListIntegrityFileNodesResponses, ListIntegrityFilesData, ListIntegrityFilesErrors, ListIntegrityFilesResponses, ListK8sClustersData, ListK8sClustersErrors, ListK8sClustersResponses, ListK8sWorkloadPodsData, ListK8sWorkloadPodsErrors, ListK8sWorkloadPodsResponses, ListK8sWorkloadsData, ListK8sWorkloadsErrors, ListK8sWorkloadsResponses, ListListenPortsData, ListListenPortsErrors, ListListenPortsResponses, ListListenTargetsData, ListListenTargetsErrors, ListListenTargetsResponses, ListNoticesData, ListNoticesErrors, ListNoticesResponses, ListProcessesData, ListProcessesErrors, ListProcessesResponses, ListRegisterKeysData, ListRegisterKeysErrors, ListRegisterKeysResponses, ListReleasesData, ListReleasesErrors, ListReleasesResponses, ListScanTargetsData, ListScanTargetsErrors, ListScanTargetsResponses, ListTriageEventsData, ListTriageEventsErrors, ListTriageEventsResponses, ListTriageRulesData, ListTriageRulesErrors, ListTriageRulesResponses, ListVulnerabilitiesData, ListVulnerabilitiesErrors, ListVulnerabilitiesResponses, ListVulnerableComponentsData, ListVulnerableComponentsErrors, ListVulnerableComponentsResponses, ListVulnerableImagesData, ListVulnerableImagesErrors, ListVulnerableImagesResponses, ListVulnerableProcessesData, ListVulnerableProcessesErrors, ListVulnerableProcessesResponses, LoginData, LoginErrors, LoginResponses, LogoutData, LogoutErrors, LogoutResponses, MarkNoticesReadData, MarkNoticesReadErrors, MarkNoticesReadResponses, MarkNoticesUnreadData, MarkNoticesUnreadErrors, MarkNoticesUnreadResponses, PutIntegrityPolicyData, PutIntegrityPolicyErrors, PutIntegrityPolicyResponses, RematchFeedServerData, RematchFeedServerErrors, RematchFeedServerResponses, ResetDetectorTableData, ResetDetectorTableErrors, ResetDetectorTableResponses, RevokeAgentData, RevokeAgentErrors, RevokeAgentResponses, RevokeIntegrityAllowRuleData, RevokeIntegrityAllowRuleErrors, RevokeIntegrityAllowRuleResponses, RevokeRegisterKeyData, RevokeRegisterKeyErrors, RevokeRegisterKeyResponses, RevokeTriageRuleData, RevokeTriageRuleErrors, RevokeTriageRuleResponses, RotateCredentialSecretData, RotateCredentialSecretErrors, RotateCredentialSecretResponses, RunScanTargetData, RunScanTargetErrors, RunScanTargetResponses, SaveDetectorTableData, SaveDetectorTableErrors, SaveDetectorTableResponses, SetUpdateSettingsData, SetUpdateSettingsErrors, SetUpdateSettingsResponses, SyncK8sClusterData, SyncK8sClusterErrors, SyncK8sClusterResponses, TestFeedServerData, TestFeedServerErrors, TestFeedServerResponses, TrustFeedServerKeyData, TrustFeedServerKeyErrors, TrustFeedServerKeyResponses, UpdateAgentData, UpdateAgentErrors, UpdateAgentResponses, UpdateDetectDirData, UpdateDetectDirErrors, UpdateDetectDirResponses, UpdateFeedServerData, UpdateFeedServerErrors, UpdateFeedServerResponses, UpdateK8sClusterData, UpdateK8sClusterErrors, UpdateK8sClusterResponses, UpdateListenTargetData, UpdateListenTargetErrors, UpdateListenTargetResponses, UpdateScanTargetData, UpdateScanTargetErrors, UpdateScanTargetResponses, UpdateTlsEndpointData, UpdateTlsEndpointErrors, UpdateTlsEndpointResponses, UploadReleaseData, UploadReleaseErrors, UploadReleaseResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -856,6 +856,140 @@ export const updateDetectDir = <ThrowOnError extends boolean = false>(options: O
         'Content-Type': 'application/json',
         ...options.headers
     }
+});
+
+/**
+ * Return to the default detector table
+ *
+ * Recorded as a revision; earlier revisions are kept.
+ */
+export const resetDetectorTable = <ThrowOnError extends boolean = false>(options?: Options<ResetDetectorTableData, ThrowOnError>): RequestResult<ResetDetectorTableResponses, ResetDetectorTableErrors, ThrowOnError> => (options?.client ?? client).delete<ResetDetectorTableResponses, ResetDetectorTableErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'bomcensus_session',
+            type: 'apiKey'
+        }],
+    url: '/detector-table',
+    ...options
+});
+
+/**
+ * Get the detector table in effect
+ *
+ * The known-software detector table that agents and scanners pass to
+ * their probes: the table an administrator saved, or the default
+ * table of the server. Warnings say which detectors probes use with
+ * static rules only.
+ *
+ */
+export const getDetectorTable = <ThrowOnError extends boolean = false>(options?: Options<GetDetectorTableData, ThrowOnError>): RequestResult<GetDetectorTableResponses, GetDetectorTableErrors, ThrowOnError> => (options?.client ?? client).get<GetDetectorTableResponses, GetDetectorTableErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'bomcensus_session',
+            type: 'apiKey'
+        }],
+    url: '/detector-table',
+    ...options
+});
+
+/**
+ * Save a detector table
+ *
+ * Checks the YAML as probes will and saves it as a new revision. A
+ * table with errors is not saved; the answer lists them. Agents and
+ * scanners get the new table with their next poll.
+ *
+ */
+export const saveDetectorTable = <ThrowOnError extends boolean = false>(options: Options<SaveDetectorTableData, ThrowOnError>): RequestResult<SaveDetectorTableResponses, SaveDetectorTableErrors, ThrowOnError> => (options.client ?? client).put<SaveDetectorTableResponses, SaveDetectorTableErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'bomcensus_session',
+            type: 'apiKey'
+        }],
+    url: '/detector-table',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Check a detector table without saving it
+ */
+export const checkDetectorTable = <ThrowOnError extends boolean = false>(options: Options<CheckDetectorTableData, ThrowOnError>): RequestResult<CheckDetectorTableResponses, CheckDetectorTableErrors, ThrowOnError> => (options.client ?? client).post<CheckDetectorTableResponses, CheckDetectorTableErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'bomcensus_session',
+            type: 'apiKey'
+        }],
+    url: '/detector-table/check',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Get the default detector table
+ *
+ * The table used while none is saved (BOMCENSUS_DETECTORS_FILE, else the one built into the server).
+ */
+export const getDefaultDetectorTable = <ThrowOnError extends boolean = false>(options?: Options<GetDefaultDetectorTableData, ThrowOnError>): RequestResult<GetDefaultDetectorTableResponses, GetDefaultDetectorTableErrors, ThrowOnError> => (options?.client ?? client).get<GetDefaultDetectorTableResponses, GetDefaultDetectorTableErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'bomcensus_session',
+            type: 'apiKey'
+        }],
+    url: '/detector-table/default',
+    ...options
+});
+
+/**
+ * List the edits of the detector table
+ *
+ * Newest first, at most 200.
+ */
+export const listDetectorTableRevisions = <ThrowOnError extends boolean = false>(options?: Options<ListDetectorTableRevisionsData, ThrowOnError>): RequestResult<ListDetectorTableRevisionsResponses, ListDetectorTableRevisionsErrors, ThrowOnError> => (options?.client ?? client).get<ListDetectorTableRevisionsResponses, ListDetectorTableRevisionsErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'bomcensus_session',
+            type: 'apiKey'
+        }],
+    url: '/detector-table/revisions',
+    ...options
+});
+
+/**
+ * Get one edit of the detector table with its YAML
+ */
+export const getDetectorTableRevision = <ThrowOnError extends boolean = false>(options: Options<GetDetectorTableRevisionData, ThrowOnError>): RequestResult<GetDetectorTableRevisionResponses, GetDetectorTableRevisionErrors, ThrowOnError> => (options.client ?? client).get<GetDetectorTableRevisionResponses, GetDetectorTableRevisionErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'bomcensus_session',
+            type: 'apiKey'
+        }],
+    url: '/detector-table/revisions/{revision}',
+    ...options
+});
+
+/**
+ * Count agents and scanners by the detector table they use
+ *
+ * Approved agents and scanners grouped by the table digest of their
+ * last poll. Agents that report none are older versions; their probe
+ * uses its built-in table.
+ *
+ */
+export const getDetectorTableUsage = <ThrowOnError extends boolean = false>(options?: Options<GetDetectorTableUsageData, ThrowOnError>): RequestResult<GetDetectorTableUsageResponses, GetDetectorTableUsageErrors, ThrowOnError> => (options?.client ?? client).get<GetDetectorTableUsageResponses, GetDetectorTableUsageErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'bomcensus_session',
+            type: 'apiKey'
+        }],
+    url: '/detector-table/usage',
+    ...options
 });
 
 /**

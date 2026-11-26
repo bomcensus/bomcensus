@@ -30,7 +30,7 @@ const vuMatchedIn = `m.component_id = c.id AND m.feed_server_id = $1 AND m.revis
 func (d *DB) PendingMatches(ctx context.Context, e store.MatchEpoch, limit int) ([]store.Component, error) {
 	rows, err := d.q.Query(ctx, `
 		SELECT c.id, c.type, c.name, c.version, c.arch, c.distro, c.purl, c.cpe,
-			c.source_name, c.source_version, c.vendor, c.origin, c.modularity
+			c.source_name, c.source_version, c.vendor, c.origin, c.modularity, c.build
 		FROM components c
 		WHERE `+vuLive+`
 			AND NOT EXISTS (SELECT 1 FROM component_matches m WHERE `+vuMatchedIn+`)
@@ -45,7 +45,7 @@ func (d *DB) PendingMatches(ctx context.Context, e store.MatchEpoch, limit int) 
 	for rows.Next() {
 		var c store.Component
 		if err := rows.Scan(&c.ID, &c.Type, &c.Name, &c.Version, &c.Arch, &c.Distro, &c.PURL, &c.CPE,
-			&c.SourceName, &c.SourceVersion, &c.Vendor, &c.Origin, &c.Modularity); err != nil {
+			&c.SourceName, &c.SourceVersion, &c.Vendor, &c.Origin, &c.Modularity, &c.Build); err != nil {
 			return nil, mgErr("pending matches", err)
 		}
 		out = append(out, c)

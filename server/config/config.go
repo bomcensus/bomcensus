@@ -40,6 +40,7 @@ const (
 	EnvEmbeddedScanner   = "BOMCENSUS_EMBEDDED_SCANNER"
 	EnvLogLevel          = "BOMCENSUS_LOG_LEVEL"
 	EnvLogFormat         = "BOMCENSUS_LOG_FORMAT"
+	EnvDetectorsFile     = "BOMCENSUS_DETECTORS_FILE"
 )
 
 // Defaults.
@@ -140,6 +141,10 @@ type Config struct {
 	ReleaseDir string
 	// EmbeddedScanner runs the scanner inside the server process.
 	EmbeddedScanner bool
+	// DetectorsFile is the default known-software detector table (YAML),
+	// used until an administrator saves one; empty uses the table built
+	// into the server.
+	DetectorsFile string
 
 	LogLevel  slog.Level
 	LogFormat LogFormat
@@ -175,6 +180,7 @@ func Parse(lookup func(string) (string, bool), hostname string, p Purpose) (Conf
 		AgentListen:       orDefault(get(EnvAgentListen), DefaultAgentListen),
 		MasterKeyFile:     get(EnvMasterKeyFile),
 		ReleaseDir:        get(EnvReleaseDir),
+		DetectorsFile:     get(EnvDetectorsFile),
 	}
 	// The key is taken untrimmed from the environment; the secret package
 	// ignores surrounding white space when it decodes it.

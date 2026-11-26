@@ -1693,6 +1693,185 @@ paths:
         default:
           $ref: "#/components/responses/UnexpectedError"
 
+  /detector-table:
+    get:
+      tags: [detection]
+      operationId: getDetectorTable
+      summary: Get the detector table in effect
+      description: |
+        The known-software detector table that agents and scanners pass to
+        their probes: the table an administrator saved, or the default
+        table of the server. Warnings say which detectors probes use with
+        static rules only.
+      responses:
+        "200":
+          description: Table in effect
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DetectorTableState"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+    put:
+      tags: [detection]
+      operationId: saveDetectorTable
+      summary: Save a detector table
+      description: |
+        Checks the YAML as probes will and saves it as a new revision. A
+        table with errors is not saved; the answer lists them. Agents and
+        scanners get the new table with their next poll.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DetectorTableInput"
+      responses:
+        "200":
+          description: Table saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DetectorTableState"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          description: The table has errors and was not saved.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DetectorTableCheck"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+    delete:
+      tags: [detection]
+      operationId: resetDetectorTable
+      summary: Return to the default detector table
+      description: Recorded as a revision; earlier revisions are kept.
+      responses:
+        "200":
+          description: Default table in effect
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DetectorTableState"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /detector-table/check:
+    post:
+      tags: [detection]
+      operationId: checkDetectorTable
+      summary: Check a detector table without saving it
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DetectorTableInput"
+      responses:
+        "200":
+          description: Result of the check
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DetectorTableCheck"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /detector-table/default:
+    get:
+      tags: [detection]
+      operationId: getDefaultDetectorTable
+      summary: Get the default detector table
+      description: The table used while none is saved (BOMCENSUS_DETECTORS_FILE, else the one built into the server).
+      responses:
+        "200":
+          description: Default table
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DetectorTableText"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /detector-table/revisions:
+    get:
+      tags: [detection]
+      operationId: listDetectorTableRevisions
+      summary: List the edits of the detector table
+      description: Newest first, at most 200.
+      responses:
+        "200":
+          description: Revisions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DetectorTableRevisionList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /detector-table/revisions/{revision}:
+    parameters:
+      - name: revision
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+    get:
+      tags: [detection]
+      operationId: getDetectorTableRevision
+      summary: Get one edit of the detector table with its YAML
+      responses:
+        "200":
+          description: Revision
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DetectorTableRevision"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
+  /detector-table/usage:
+    get:
+      tags: [detection]
+      operationId: getDetectorTableUsage
+      summary: Count agents and scanners by the detector table they use
+      description: |
+        Approved agents and scanners grouped by the table digest of their
+        last poll. Agents that report none are older versions; their probe
+        uses its built-in table.
+      responses:
+        "200":
+          description: Usage
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DetectorTableUsageList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
   /credentials:
     get:
       tags: [scans]
@@ -3745,6 +3924,9 @@ components:
           type: string
         version:
           type: string
+        build:
+          description: Vendor build or revision number reported by the detector.
+          type: string
         purl:
           type: string
         cpe:
@@ -3772,6 +3954,9 @@ components:
         name:
           type: string
         version:
+          type: string
+        build:
+          description: Vendor build or revision number reported by the detector.
           type: string
         purl:
           type: string
@@ -4524,6 +4709,12 @@ components:
         integrityEnabled:
           description: Whether passes run, from the mode and the policy default. Absent for scanners.
           type: boolean
+        detectorsDigest:
+          description: >-
+            Digest of the detector table the agent reported in its last poll;
+            empty when it holds none, absent for agents that do not report one
+            (their probe uses its built-in table).
+          type: string
     AgentUpdate:
       type: object
       properties:
@@ -5023,6 +5214,142 @@ components:
             $ref: "#/components/schemas/DetectDir"
         total:
           type: integer
+
+    DetectorTableInput:
+      type: object
+      required: [yaml]
+      properties:
+        yaml:
+          type: string
+          maxLength: 524288
+    DetectorTableProblem:
+      type: object
+      required: [index, severity, message]
+      properties:
+        index:
+          description: Position of the detector in the table (0 based), -1 for the whole table.
+          type: integer
+        id:
+          type: string
+        severity:
+          type: string
+          enum: [error, warning]
+        message:
+          type: string
+    DetectorTableCheck:
+      type: object
+      required: [valid, problems]
+      properties:
+        valid:
+          description: The table has no errors and can be saved.
+          type: boolean
+        digest:
+          description: Digest of the table when it parses.
+          type: string
+        detectors:
+          description: Number of detectors when the table parses.
+          type: integer
+        problems:
+          type: array
+          items:
+            $ref: "#/components/schemas/DetectorTableProblem"
+    DetectorTableText:
+      type: object
+      required: [yaml, digest, source, detectors]
+      properties:
+        yaml:
+          type: string
+        digest:
+          type: string
+        source:
+          description: The file the default table was read from, or `built-in`.
+          type: string
+        detectors:
+          type: integer
+    DetectorTableState:
+      type: object
+      required: [custom, yaml, digest, detectors, defaultDigest, builtinDigest, warnings]
+      properties:
+        custom:
+          description: The table was saved by an administrator; false while the default table is in effect.
+          type: boolean
+        yaml:
+          type: string
+        digest:
+          type: string
+        detectors:
+          type: integer
+        revision:
+          description: The last edit (a save or a reset); absent when the table was never edited.
+          type: integer
+          format: int64
+        updatedAt:
+          type: string
+          format: date-time
+        updatedBy:
+          type: string
+        defaultDigest:
+          type: string
+        builtinDigest:
+          description: Digest of the table built into this server and its probes.
+          type: string
+        warnings:
+          type: array
+          items:
+            $ref: "#/components/schemas/DetectorTableProblem"
+    DetectorTableRevision:
+      type: object
+      required: [revision, reset, createdAt, createdBy]
+      properties:
+        revision:
+          type: integer
+          format: int64
+        reset:
+          description: The edit returned to the default table.
+          type: boolean
+        digest:
+          type: string
+        yaml:
+          description: Present when one revision is read.
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        createdBy:
+          type: string
+    DetectorTableRevisionList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/DetectorTableRevision"
+    DetectorTableUsage:
+      type: object
+      required: [kind, reported, count, current]
+      properties:
+        kind:
+          $ref: "#/components/schemas/AgentKind"
+        reported:
+          description: False for agents that do not report a table (older versions); their probe uses its built-in table.
+          type: boolean
+        digest:
+          description: Digest of the table; absent when the agent holds none.
+          type: string
+        count:
+          type: integer
+        current:
+          description: The digest is the table in effect.
+          type: boolean
+    DetectorTableUsageList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/DetectorTableUsage"
 
     CredentialKind:
       type: string
@@ -5602,6 +5929,9 @@ components:
           type: string
         version:
           type: string
+        build:
+          description: Vendor build or revision number reported by the detector.
+          type: string
         type:
           $ref: "#/components/schemas/ComponentType"
         purl:
@@ -5751,6 +6081,9 @@ components:
           type: string
         componentVersion:
           type: string
+        componentBuild:
+          description: Vendor build or revision number reported by the detector.
+          type: string
         locations:
           description: File paths (or the package database) of the component there.
           type: array
@@ -5883,6 +6216,9 @@ components:
           type: string
         version:
           type: string
+        build:
+          description: Vendor build or revision number reported by the detector.
+          type: string
         type:
           $ref: "#/components/schemas/ComponentType"
         purl:
@@ -5949,6 +6285,9 @@ components:
         componentName:
           type: string
         componentVersion:
+          type: string
+        componentBuild:
+          description: Vendor build or revision number reported by the detector.
           type: string
         componentPurl:
           type: string
@@ -6489,6 +6828,9 @@ components:
         name:
           type: string
         version:
+          type: string
+        build:
+          description: Vendor build or revision number reported by the detector.
           type: string
         type:
           $ref: "#/components/schemas/ComponentType"

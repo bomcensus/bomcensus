@@ -1,0 +1,337 @@
+# Copyright (C) 2026 JC-Lab
+# SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-bomcensus-Commercial
+# Additional terms apply. See LICENSING.md.
+
+# Known-software detectors: the table built into the probe.
+#
+# This file is the only source. The probe embeds it (internal/detectors),
+# and `make generate` copies it to the manager Helm chart, where it is the
+# default table administrators start from (Settings, Detectors). A table
+# saved in the console replaces it for agents and scanners; a probe accepts
+# from such a table only what SECURITY.md (detector tables) allows.
+#
+# To add software, append an entry: match by base name (names, path.Match
+# patterns) and optionally trailing path components (paths), give fixed
+# version arguments (exec) and a parse rule for their output, and at least
+# one static rule for when the command cannot be run. Patterns are Go
+# regular expressions (RE2). A rule takes the group named "version" if
+# there is one, else the first group; a group named "build" is the vendor
+# build or revision number. Rules are checked against captured real outputs
+# in internal/collect/artifact/testdata/versions.txtar; add the output of
+# the new software there too.
+#
+# Static rules, tried in order:
+#   (none)         scan the matched file
+#   file           scan a file relative to the matched file's directory
+#                  (glob characters allowed)
+#   entry          read one zip entry of the matched file (or of file)
+#   build_setting  match one Go build setting of the matched file
+#   go_main        take the main module version of a Go binary
+#   limit          bytes scanned; 0 means the default (1 MiB for files and
+#                  zip entries, 256 MiB for the matched file)
+#
+# Go binaries are never executed, so detectors for Go software (Docker,
+# containerd) have static rules only. purl and cpe are templates; {version}
+# is replaced.
+
+schema_version: 1
+detectors:
+
+  - id: openjdk
+    name: openjdk
+    names: [java]
+    paths: [bin/java]
+    # The heap and reservation flags let the JVM start under the address
+    # space limit; they do not change the output.
+    exec: ['-XX:+IgnoreUnrecognizedVMOptions', '-Xmx64m', '-XX:CompressedClassSpaceSize=64m', '-XX:ReservedCodeCacheSize=32m', '-XX:-UsePerfData', '-version']
+    env:
+      - {name: JAVA_HOME, up: 2}
+    address_space_mb: 4096
+    parse:
+      - pattern: '(?m)^openjdk version "([^"]+)"'
+      - pattern: '(?m)^java version "([^"]+)"'
+        name: jdk
+        purl: 'pkg:generic/oracle/jdk@{version}'
+        cpe: 'cpe:2.3:a:oracle:jdk:{version}:*:*:*:*:*:*:*'
+    static:
+      - file: '../release'
+        rules:
+          - pattern: '(?m)^JAVA_VERSION="([^"]+)"'
+      - file: '../../release'
+        rules:
+          - pattern: '(?m)^JAVA_VERSION="([^"]+)"'
+    purl: 'pkg:generic/openjdk@{version}'
+    cpe: 'cpe:2.3:a:oracle:openjdk:{version}:*:*:*:*:*:*:*'
+
+  - id: nodejs
+    name: node
+    names: [node, nodejs]
+    exec: ['--version']
+    parse:
+      - pattern: '(?m)^v(\d+\.\d+\.\d+)\s*$'
+    static:
+      - rules:
+          - pattern: 'nodejs\.org/download/release/v(\d+\.\d+\.\d+)/'
+    purl: 'pkg:generic/node@{version}'
+    cpe: 'cpe:2.3:a:nodejs:node.js:{version}:*:*:*:*:*:*:*'
+
+  - id: php
+    name: php
+    names: [php, 'php[0-9]*', 'php-cgi*']
+    exec: ['-v']
+    parse:
+      - pattern: '(?m)^PHP (\d+\.\d+\.\d+[^\s]*) \('
+    static:
+      - rules:
+          - pattern: 'X-Powered-By: PHP/(\d+\.\d+\.\d+)'
+    purl: 'pkg:generic/php@{version}'
+    cpe: 'cpe:2.3:a:php:php:{version}:*:*:*:*:*:*:*'
+
+  - id: php-fpm
+    name: php
+    names: ['php-fpm*']
+    exec: ['-v']
+    parse:
+      - pattern: '(?m)^PHP (\d+\.\d+\.\d+[^\s]*) \(fpm'
+    static:
+      - rules:
+          - pattern: 'X-Powered-By: PHP/(\d+\.\d+\.\d+)'
+    purl: 'pkg:generic/php@{version}'
+    cpe: 'cpe:2.3:a:php:php:{version}:*:*:*:*:*:*:*'
+
+  - id: python
+    name: python
+    names: [python, python2, python3, 'python2.[0-9]*', 'python3.[0-9]*']
+    exec: ['--version']
+    parse:
+      - pattern: '(?m)^Python (\d+\.\d+\.\d+\S*)'
+    static:
+      # PY_VERSION is stored right before the Py_GetVersion format.
+      - rules:
+          - pattern: '\x00(\d+\.\d+\.\d+(?:[abc]|rc)?\d*)\x00%\.80s \(%\.80s\) %\.80s'
+      - file: '../lib/libpython[23].*.so*'
+        rules:
+          - pattern: '\x00(\d+\.\d+\.\d+(?:[abc]|rc)?\d*)\x00%\.80s \(%\.80s\) %\.80s'
+      - file: '../lib/*/libpython[23].*.so*'
+        rules:
+          - pattern: '\x00(\d+\.\d+\.\d+(?:[abc]|rc)?\d*)\x00%\.80s \(%\.80s\) %\.80s'
+    purl: 'pkg:generic/python@{version}'
+    cpe: 'cpe:2.3:a:python:python:{version}:*:*:*:*:*:*:*'
+
+  - id: ruby
+    name: ruby
+    names: [ruby, 'ruby[0-9]*']
+    exec: ['--version']
+    parse:
+      - pattern: '(?m)^ruby (\d+\.\d+\.\d+)'
+    static:
+      - rules:
+          - pattern: 'ruby (\d+\.\d+\.\d+)(?:p\d+)? \(\d{4}-\d\d-\d\d'
+      - file: '../lib/libruby.so*'
+        rules:
+          - pattern: 'ruby (\d+\.\d+\.\d+)(?:p\d+)? \(\d{4}-\d\d-\d\d'
+      - file: '../lib/*/libruby*.so*'
+        rules:
+          - pattern: 'ruby (\d+\.\d+\.\d+)(?:p\d+)? \(\d{4}-\d\d-\d\d'
+    purl: 'pkg:generic/ruby@{version}'
+    cpe: 'cpe:2.3:a:ruby-lang:ruby:{version}:*:*:*:*:*:*:*'
+
+  - id: perl
+    name: perl
+    names: [perl, 'perl5*']
+    exec: ['-v']
+    parse:
+      - pattern: 'This is perl \d+, version \d+, subversion \d+ \(v(\d+\.\d+\.\d+)\)'
+    static:
+      - rules:
+          - pattern: 'is not supported by Perl (5\.\d+\.\d+)'
+          - pattern: '/perl5/(5\.\d+\.\d+)/'
+      - file: '../lib/*/libperl.so*'
+        rules:
+          - pattern: 'is not supported by Perl (5\.\d+\.\d+)'
+    purl: 'pkg:generic/perl@{version}'
+    cpe: 'cpe:2.3:a:perl:perl:{version}:*:*:*:*:*:*:*'
+
+  - id: nginx
+    name: nginx
+    names: [nginx]
+    exec: ['-v']
+    parse:
+      - pattern: 'nginx version: nginx/(\d+\.\d+\.\d+)'
+      - pattern: 'nginx version: openresty/(\d+\.\d+\.\d+(?:\.\d+)?)'
+        name: openresty
+        purl: 'pkg:generic/openresty@{version}'
+        cpe: 'cpe:2.3:a:openresty:openresty:{version}:*:*:*:*:*:*:*'
+    static:
+      - rules:
+          - pattern: 'nginx version: nginx/(\d+\.\d+\.\d+)'
+          - pattern: 'nginx version: openresty/(\d+\.\d+\.\d+(?:\.\d+)?)'
+            name: openresty
+            purl: 'pkg:generic/openresty@{version}'
+            cpe: 'cpe:2.3:a:openresty:openresty:{version}:*:*:*:*:*:*:*'
+    purl: 'pkg:generic/nginx@{version}'
+    cpe: 'cpe:2.3:a:f5:nginx:{version}:*:*:*:*:*:*:*'
+
+  - id: httpd
+    name: httpd
+    names: [httpd, apache2]
+    exec: ['-v']
+    parse:
+      - pattern: 'Server version: Apache/(\d+\.\d+\.\d+)'
+    static:
+      - rules:
+          - pattern: '\x00Apache/(\d+\.\d+\.\d+)'
+    purl: 'pkg:generic/apache/httpd@{version}'
+    cpe: 'cpe:2.3:a:apache:http_server:{version}:*:*:*:*:*:*:*'
+
+  - id: redis
+    name: redis
+    names: [redis-server]
+    exec: ['--version']
+    parse:
+      - pattern: 'Redis server v=(\d+\.\d+\.\d+)'
+    static:
+      # REDIS_VERSION followed by the build id (host name and time).
+      - rules:
+          - pattern: '\x00(\d+\.\d+\.\d+)[^\x00]{1,128}-\d{9,}\x00'
+    purl: 'pkg:generic/redis@{version}'
+    cpe: 'cpe:2.3:a:redis:redis:{version}:*:*:*:*:*:*:*'
+
+  - id: postgresql
+    name: postgresql
+    names: [postgres]
+    exec: ['--version']
+    parse:
+      - pattern: '\(PostgreSQL\) (\d+(?:\.\d+)+)'
+    static:
+      - rules:
+          - pattern: 'PostgreSQL (\d+(?:\.\d+)+)(?: \([^)\x00]*\))? on '
+    purl: 'pkg:generic/postgresql@{version}'
+    cpe: 'cpe:2.3:a:postgresql:postgresql:{version}:*:*:*:*:*:*:*'
+
+  - id: mysql
+    name: mysql
+    names: [mysqld, mariadbd]
+    exec: ['--version']
+    parse:
+      - pattern: 'Ver (\d+\.\d+\.\d+)-MariaDB'
+        name: mariadb
+        purl: 'pkg:generic/mariadb@{version}'
+        cpe: 'cpe:2.3:a:mariadb:mariadb:{version}:*:*:*:*:*:*:*'
+      - pattern: 'Ver (\d+\.\d+\.\d+)'
+    static:
+      - rules:
+          - pattern: '\x00(\d+\.\d+\.\d+)-MariaDB'
+            name: mariadb
+            purl: 'pkg:generic/mariadb@{version}'
+            cpe: 'cpe:2.3:a:mariadb:mariadb:{version}:*:*:*:*:*:*:*'
+          - pattern: '/mysql-(\d+\.\d+\.\d+)/'
+    purl: 'pkg:generic/mysql@{version}'
+    cpe: 'cpe:2.3:a:oracle:mysql:{version}:*:*:*:*:*:*:*'
+
+  - id: mongodb
+    name: mongodb
+    names: [mongod, mongos]
+    exec: ['--version']
+    parse:
+      - pattern: '(?m)^(?:db|mongos) version v(\d+\.\d+\.\d+)'
+    # The version is stored as a bare string with nothing stable next to
+    # it, so there is no static rule.
+    purl: 'pkg:generic/mongodb@{version}'
+    cpe: 'cpe:2.3:a:mongodb:mongodb:{version}:*:*:*:*:*:*:*'
+
+  - id: openssl
+    name: openssl
+    names: [openssl]
+    exec: [version]
+    parse:
+      - pattern: '(?m)^OpenSSL (\d+\.\d+\.\d+[a-z]?)'
+    static:
+      - rules:
+          - pattern: 'OpenSSL (\d+\.\d+\.\d+[a-z]?) {1,2}\d{1,2} [A-Z][a-z]{2} \d{4}'
+    purl: 'pkg:generic/openssl@{version}'
+    cpe: 'cpe:2.3:a:openssl:openssl:{version}:*:*:*:*:*:*:*'
+
+  - id: tomcat
+    name: tomcat
+    names: [catalina.jar]
+    paths: [lib/catalina.jar, server/lib/catalina.jar]
+    archive: true
+    static:
+      - entry: META-INF/MANIFEST.MF
+        rules:
+          - pattern: '(?m)^Implementation-Version: *(\d+\.\d+\.\d+\S*)'
+      - file: '../RELEASE-NOTES'
+        rules:
+          - pattern: 'Apache Tomcat Version (\d+\.\d+\.\d+\S*)'
+    purl: 'pkg:maven/org.apache.tomcat/tomcat@{version}'
+    cpe: 'cpe:2.3:a:apache:tomcat:{version}:*:*:*:*:*:*:*'
+
+    # Genian NAC policy server. /.version holds the build tag
+    # "NAC-<target>-R-<svn revision>-<version>.<MMDD>"; NVD ranges use the
+    # version with the MMDD suffix (5.0.42.0827). The svn revision is the
+    # build. V6 is Genian ZTNA. The binary only has the three-part version.
+  - id: genian-nac
+    name: genian-nac
+    names: [centerd]
+    paths: [usr/geni/centerd]
+    static:
+      - file: '../../.version'
+        rules:
+          - pattern: '(?m)^NAC-[A-Z0-9]+-R-(?P<build>\d+)-(?P<version>6\.\d+\.\d+(?:\.\d+)?)\s*$'
+            name: genian-ztna
+            purl: 'pkg:generic/genians/genian-ztna@{version}'
+            cpe: 'cpe:2.3:a:genians:genian_ztna:{version}:*:*:*:*:*:*:*'
+          - pattern: '(?m)^NAC-[A-Z0-9]+-R-(?P<build>\d+)-(?P<version>\d+\.\d+\.\d+(?:\.\d+)?)\s*$'
+      - rules:
+          - pattern: '\x00(6\.\d+\.\d+)\x00License version mismatched\x00'
+            name: genian-ztna
+            purl: 'pkg:generic/genians/genian-ztna@{version}'
+            cpe: 'cpe:2.3:a:genians:genian_ztna:{version}:*:*:*:*:*:*:*'
+          - pattern: '\x00(\d+\.\d+\.\d+)\x00License version mismatched\x00'
+    purl: 'pkg:generic/genians/genian-nac@{version}'
+    cpe: 'cpe:2.3:a:genians:genian_nac:{version}:*:*:*:*:*:*:*'
+
+  - id: dockerd
+    name: docker
+    names: [dockerd]
+    static:
+      - build_setting: '-ldflags'
+        rules:
+          - pattern: 'dockerversion\.Version=([0-9][^"\\\s]*)'
+      - go_main: true
+    purl: 'pkg:golang/github.com/docker/docker@v{version}'
+    cpe: 'cpe:2.3:a:docker:docker:{version}:*:*:*:*:*:*:*'
+
+  - id: docker-cli
+    name: docker-cli
+    names: [docker]
+    static:
+      - build_setting: '-ldflags'
+        rules:
+          - pattern: 'cli/version\.Version=([0-9][^"\\\s]*)'
+      - go_main: true
+    purl: 'pkg:golang/github.com/docker/cli@v{version}'
+    cpe: 'cpe:2.3:a:docker:docker:{version}:*:*:*:*:*:*:*'
+
+  - id: containerd
+    name: containerd
+    names: [containerd, 'containerd-shim*', ctr]
+    static:
+      - build_setting: '-ldflags'
+        rules:
+          - pattern: 'containerd(?:/v2)?/version\.Version=v?([0-9][^"\\\s]*)'
+      - go_main: true
+    purl: 'pkg:golang/github.com/containerd/containerd@v{version}'
+    cpe: 'cpe:2.3:a:linuxfoundation:containerd:{version}:*:*:*:*:*:*:*'
+
+  - id: runc
+    name: runc
+    names: [runc]
+    static:
+      - go_main: true
+      - build_setting: '-ldflags'
+        rules:
+          - pattern: 'main\.version=v?([0-9][^"\\\s]*)'
+    purl: 'pkg:golang/github.com/opencontainers/runc@v{version}'
+    cpe: 'cpe:2.3:a:linuxfoundation:runc:{version}:*:*:*:*:*:*:*'

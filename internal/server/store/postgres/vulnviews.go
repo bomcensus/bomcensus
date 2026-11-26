@@ -104,7 +104,7 @@ func (d *DB) VulnComponents(ctx context.Context, o store.VulnViewOptions) ([]sto
 			JOIN component_vulns cv ON cv.component_id = x.component_id AND cv.vuln_id = x.vuln_id
 			GROUP BY x.component_id
 		)
-		SELECT c.id::text, c.type, c.name, c.version, c.purl, per.vulns, per.hot, per.kev,
+		SELECT c.id::text, c.type, c.name, c.version, c.build, c.purl, per.vulns, per.hot, per.kev,
 			per.critical, per.high, per.medium, per.low, per.negligible, per.unknown, per.score, per.epss, per.assets, per.deferred,
 			ex.listening, ex.running, ex.installed, ex.unknown_exposure,
 			coalesce(fix.fixes, '{}'), coalesce(fix.unfixed, 0)
@@ -120,7 +120,7 @@ func (d *DB) VulnComponents(ctx context.Context, o store.VulnViewOptions) ([]sto
 	for rows.Next() {
 		var r store.VulnComponentRow
 		var score, epss *float32
-		if err := rows.Scan(&r.Component.ID, &r.Component.Type, &r.Component.Name, &r.Component.Version, &r.Component.PURL,
+		if err := rows.Scan(&r.Component.ID, &r.Component.Type, &r.Component.Name, &r.Component.Version, &r.Component.Build, &r.Component.PURL,
 			&r.VulnIDs, &r.HotVulnIDs, &r.KEVVulnIDs,
 			&r.Severity.Critical, &r.Severity.High, &r.Severity.Medium, &r.Severity.Low, &r.Severity.Negligible, &r.Severity.Unknown,
 			&score, &epss, &r.Assets, &r.Deferred,
@@ -239,7 +239,7 @@ func (d *DB) OpenFindings(ctx context.Context, f store.OpenFindingFilter) ([]sto
 	rows, err := d.q.Query(ctx, `
 		SELECT `+vuMetaCols+`,
 			f.id::text, f.asset_id::text, a.name, a.kind, f.container, f.layer, f.image_digest,
-			c.id::text, c.type, c.name, c.version, c.purl,
+			c.id::text, c.type, c.name, c.version, c.build, c.purl,
 			f.vuln_id, f.exposure, coalesce(f.reachability, ''), f.processes::text, f.first_seen,
 			coalesce(loc.locs, '{}'), coalesce(loc.method, ''),
 			coalesce(cv.method, ''), coalesce(cv.ecosystem, ''), coalesce(cv.fix_state, 'unknown'),
@@ -283,7 +283,7 @@ func (d *DB) OpenFindings(ctx context.Context, f store.OpenFindingFilter) ([]sto
 		var hasRule, active bool
 		var rule trNullRule
 		if err := vuScanMeta(rows, &o.Meta, &o.ID, &o.AssetID, &o.AssetName, &o.AssetKind, &o.Container, &o.Layer, &o.ImageDigest,
-			&o.Component.ID, &o.Component.Type, &o.Component.Name, &o.Component.Version, &o.Component.PURL,
+			&o.Component.ID, &o.Component.Type, &o.Component.Name, &o.Component.Version, &o.Component.Build, &o.Component.PURL,
 			&o.VulnID, &o.Exposure, &o.Reachability, &procs, &o.FirstSeen,
 			&o.Locations, &o.Method,
 			&o.Match.Method, &o.Match.Ecosystem, &o.Match.FixState, &o.Match.FixedVersion, &o.Match.CPEMatch,
@@ -507,7 +507,7 @@ func (d *DB) ImageVulns(ctx context.Context, digest string, at time.Time) ([]sto
 		return nil, err
 	}
 	rows, err := d.q.Query(ctx, `
-		SELECT `+vuMetaCols+`, c.id::text, c.type, c.name, c.version, c.purl, ic.locations,
+		SELECT `+vuMetaCols+`, c.id::text, c.type, c.name, c.version, c.build, c.purl, ic.locations,
 			cv.method, cv.ecosystem, cv.fix_state, cv.fixed_version, cv.cpe_match, cv.range_source,
 			cv.platforms, cv.advisories::text, cv.severity,
 			coalesce(t.rule_id IS NOT NULL AND (t.expires_at IS NULL OR t.expires_at > $2), false)
@@ -530,7 +530,7 @@ func (d *DB) ImageVulns(ctx context.Context, digest string, at time.Time) ([]sto
 		var v store.ImageVuln
 		var adv string
 		if err := vuScanMeta(rows, &v.Meta, &v.Component.ID, &v.Component.Type, &v.Component.Name, &v.Component.Version,
-			&v.Component.PURL, &v.Locations, &v.Match.Method, &v.Match.Ecosystem, &v.Match.FixState, &v.Match.FixedVersion,
+			&v.Component.Build, &v.Component.PURL, &v.Locations, &v.Match.Method, &v.Match.Ecosystem, &v.Match.FixState, &v.Match.FixedVersion,
 			&v.Match.CPEMatch, &v.Match.RangeSource, &v.Match.Platforms, &adv, &v.Match.Severity, &v.Deferred); err != nil {
 			return nil, mgErr("image vulnerabilities", err)
 		}

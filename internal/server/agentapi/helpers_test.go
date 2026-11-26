@@ -237,6 +237,7 @@ type env struct {
 type envOpts struct {
 	pollTimeout time.Duration
 	maxFailures int
+	detectors   DetectorTables
 }
 
 func newEnv(t *testing.T, o envOpts) *env {
@@ -258,7 +259,7 @@ func newEnv(t *testing.T, o envOpts) *env {
 	}
 	e.handler, err = NewHandler(Options{
 		Store: e.db, PKI: e.pki, Enroll: e.enroll, Dispatch: e.dispatch, Ingest: e.ingest, Logger: log,
-		PollTimeout: o.pollTimeout, PollRecheck: 300 * time.Millisecond,
+		PollTimeout: o.pollTimeout, PollRecheck: 300 * time.Millisecond, Detectors: o.detectors,
 	})
 	if err != nil {
 		t.Fatal(err)

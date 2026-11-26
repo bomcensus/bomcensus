@@ -109,7 +109,10 @@ type Options struct {
 	// Updates and Ingest may be nil; their operations then answer 503.
 	Updates Updates
 	Ingest  Ingest
-	Logger  *slog.Logger
+	// Detectors, when set, is the detector table announced to agents and
+	// handed to those whose table differs (PROTOCOL.md).
+	Detectors DetectorTables
+	Logger    *slog.Logger
 
 	// PollTimeout is the longest a poll waits for directives (default 30 s).
 	PollTimeout time.Duration
@@ -123,6 +126,13 @@ type Options struct {
 	MaxReportSize int64
 
 	Now func() time.Time
+}
+
+// DetectorTables provides the detector table in effect
+// (detectorsvc.Service).
+type DetectorTables interface {
+	// Current returns the digest and canonical JSON of the table.
+	Current(ctx context.Context) (digest string, table []byte, err error)
 }
 
 // NewAgentVerifier returns the agent certificate verifier backed by p,

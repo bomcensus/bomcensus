@@ -103,6 +103,9 @@ type Agent struct {
 	DetectPaths  []string
 	// Integrity is the agent's integrity mode (IntegrityInherit, ...).
 	Integrity string
+	// DetectorsDigest is the digest of the detector table the agent
+	// reported in its last poll, nil when it reports none.
+	DetectorsDigest *string
 
 	EnrolledAt time.Time
 	ApprovedAt *time.Time
@@ -164,6 +167,9 @@ type AgentPollStatus struct {
 	UpdateMessage      string
 	Features           []string
 	SeenAt             time.Time
+	// DetectorsDigest is the digest of the agent's detector table, nil
+	// for agents that do not report one.
+	DetectorsDigest *string
 }
 
 // Optional agent and scanner features.

@@ -338,6 +338,18 @@ func scReads() []scRead {
 				t.Errorf("agent counts %+v", c)
 			}
 		}},
+		{name: "DetectorTableUsage", call: ctxDB(func(ctx context.Context, db *DB, f F) (any, error) {
+			return db.DetectorTableUsage(ctx)
+		}), check: func(t *testing.T, v any) {
+			// The agent of a and the shared scanner.
+			n := 0
+			for _, u := range v.([]store.DetectorTableUsage) {
+				n += u.Count
+			}
+			if n != 2 {
+				t.Errorf("detector table usage %+v", v)
+			}
+		}},
 		{name: "GetAgent", wantOwn: true, byID: true, call: ctxDB(func(ctx context.Context, db *DB, f F) (any, error) {
 			return db.GetAgent(ctx, f.AgentID)
 		})},
@@ -831,6 +843,8 @@ var scUnscoped = map[string]string{
 	"CreateDetectDir":         "detect directory definitions; assigning one checks the owner's scope",
 	"ListDetectDirs":          "detect directory definitions", "GetDetectDir": "detect directory definitions",
 	"UpdateDetectDir": "detect directory definitions", "DeleteDetectDir": "detect directory definitions",
+	"LatestDetectorTable": "detector table, global", "GetDetectorTable": "detector table, global",
+	"AddDetectorTable": "detector table, global", "ListDetectorTables": "detector table, global",
 	"EnqueueDirective":      "internal agent queue; callers check the agent or asset first",
 	"ListPendingDirectives": "internal agent queue", "MarkDirectivesDelivered": "internal agent queue",
 	"AckDirectives": "internal agent queue", "DeleteExpiredDirectives": "internal agent queue",
