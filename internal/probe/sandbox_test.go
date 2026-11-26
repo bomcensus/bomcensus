@@ -11,7 +11,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -20,6 +19,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -28,6 +28,7 @@ import (
 	"github.com/bomcensus/bomcensus/internal/collect"
 	"github.com/bomcensus/bomcensus/internal/collect/artifact"
 	"github.com/bomcensus/bomcensus/internal/report"
+	"github.com/bomcensus/bomcensus/internal/sandbox/sandboxtest"
 )
 
 // The sandbox cannot be undone, so every test applies it in a child: the
@@ -241,9 +242,8 @@ func versionsThroughCollector(spec string) []versionRun {
 }
 
 // versionThroughHelper runs the detector's version command for the file at
-// p through the exec helper of the artifact package, the way its version
-// execution does (exechelper.go): the binary re-executed with the helper
-// argument, limits, the file on fd 3 and a status pipe on fd 4.
+// p through the exec helper of the artifact package, with the limits and
+// the sandbox of the collector but without its checks of the file.
 func versionThroughHelper(detector, p string) versionRun {
 	v := versionRun{Path: p}
 	var det *artifact.Detector
@@ -262,47 +262,19 @@ func versionThroughHelper(detector, p string) versionRun {
 		return v
 	}
 	defer exe.Close()
-	statusR, statusW, err := os.Pipe()
-	if err != nil {
-		v.Err = err.Error()
-		return v
+	var env []string
+	for _, e := range det.Env {
+		env = append(env, e.Name+"="+parentN(p, e.Up))
 	}
-	defer statusR.Close()
-	as := uint64(2 << 30)
-	if det.AddressSpaceMB > 0 {
-		as = uint64(det.AddressSpaceMB) << 20
-	}
-	var nproc unix.Rlimit
-	unix.Getrlimit(unix.RLIMIT_NPROC, &nproc)
-	args := []string{"__bomcensus_exec_helper", "10", strconv.FormatUint(as, 10), "64", strconv.FormatUint(nproc.Max, 10), "--", p}
-	args = append(args, det.Exec...)
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "/proc/self/exe", args...)
-	cmd.Env = []string{}
-	for _, e := range det.Env {
-		cmd.Env = append(cmd.Env, e.Name+"="+parentN(p, e.Up))
-	}
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout, cmd.Stderr = &stdout, &stderr
-	cmd.ExtraFiles = []*os.File{exe, statusW}
-	err = cmd.Start()
-	statusW.Close()
+	out, err := artifact.RunCommand(ctx, exe, append([]string{p}, det.Exec...), env, det.AddressSpaceMB)
 	if err != nil {
-		v.Err = err.Error()
+		v.Err = "helper: " + err.Error()
 		return v
 	}
-	msg, _ := io.ReadAll(statusR)
-	err = cmd.Wait()
-	v.Output = stdout.String() + stderr.String()
-	if cmd.ProcessState != nil {
-		v.ExitCode = cmd.ProcessState.ExitCode()
-	}
-	if len(msg) > 0 {
-		v.Err = "helper: " + string(msg)
-	} else if err != nil && v.ExitCode < 0 {
-		v.Err = err.Error()
-	}
+	v.Output = out.Stdout + out.Stderr
+	v.ExitCode = out.ExitCode
 	return v
 }
 
@@ -407,7 +379,7 @@ func runRestrictedChild(t *testing.T) (childResult, string) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(p, data, 0o755); err != nil {
+		if err := os.WriteFile(p, sandboxtest.HideGoBuildInfo(data), 0o755); err != nil {
 			t.Fatal(err)
 		}
 		os.Chmod(p, 0o755)
@@ -449,11 +421,21 @@ func runRestrictedChild(t *testing.T) (childResult, string) {
 }
 
 func TestSandboxRestrictions(t *testing.T) {
+	sc, inMatrix := sandboxtest.Current(t)
 	if os.Geteuid() == 0 {
+		if inMatrix {
+			t.Fatalf("scenario %s, running as root: run TestSandboxRoot", sc.Name)
+		}
 		t.Skip("running as root: TestSandboxRoot covers this")
+	}
+	if inMatrix && sc.Root() {
+		t.Fatalf("scenario %s starts as root, running as uid %d", sc.Name, os.Geteuid())
 	}
 	r, _ := runRestrictedChild(t)
 	if r.Sandbox.Seccomp != 2 {
+		if inMatrix {
+			t.Fatalf("seccomp filter not installed: %s", r.Summary)
+		}
 		t.Skip("seccomp filters not available")
 	}
 	checkDenied(t, r)
@@ -463,6 +445,95 @@ func TestSandboxRestrictions(t *testing.T) {
 		}
 	}
 	checkVersions(t, r, false)
+	if inMatrix {
+		checkScenario(t, sc, r)
+	}
+}
+
+// checkScenario checks what the scenario of the sandbox matrix promises:
+// the privilege step, the Landlock ABI, and whom version commands ran as,
+// or that none ran.
+func checkScenario(t *testing.T, sc sandboxtest.Scenario, r childResult) {
+	t.Helper()
+	s := r.Sandbox
+	if abi := sandboxtest.LandlockABI(t); s.LandlockABI != abi {
+		t.Errorf("sandbox reports Landlock ABI %d, %d available", s.LandlockABI, abi)
+	}
+	if !s.NoNewPrivs || s.Seccomp != 2 {
+		t.Errorf("no_new_privs %v, seccomp %d", s.NoNewPrivs, s.Seccomp)
+	}
+	var step SandboxStep
+	for _, st := range s.Steps {
+		if st.Name == "privileges" {
+			step = st
+		}
+	}
+	readCaps := []string{"CAP_DAC_READ_SEARCH", "CAP_SYS_PTRACE"}
+	wantStatus, wantUID, wantCaps := StepSkipped, os.Getuid(), []string(nil)
+	switch sc.Privilege {
+	case sandboxtest.RootKeep:
+		wantStatus, wantUID = StepKept, 0
+	case sandboxtest.RootDrop:
+		wantStatus, wantUID, wantCaps = StepApplied, unprivilegedID, readCaps
+	case sandboxtest.RootNoCaps:
+		wantStatus, wantUID, wantCaps = StepKept, 0, []string{}
+	case sandboxtest.User:
+		wantCaps = []string{}
+	case sandboxtest.UserCaps:
+		wantCaps = readCaps
+	}
+	if step.Status != wantStatus || s.UID != wantUID {
+		t.Errorf("privileges: %s (%s), uid %d; want %s, uid %d", step.Status, step.Detail, s.UID, wantStatus, wantUID)
+	}
+	if wantCaps != nil && !slices.Equal(s.Capabilities, wantCaps) && !(len(wantCaps) == 0 && len(s.Capabilities) == 0) {
+		t.Errorf("capabilities %v, want %v", s.Capabilities, wantCaps)
+	}
+
+	if !sc.CommandsRun() {
+		for p, v := range r.Helper {
+			if v.Err == "" || v.Output != "" {
+				t.Errorf("%s: version command ran through the helper: %+v", p, v)
+			}
+		}
+		if len(r.Artifacts) == 0 {
+			t.Error("no running runtime found by the collector")
+		}
+		for _, v := range r.Artifacts {
+			if v.Method == report.MethodExec || v.Output != "" {
+				t.Errorf("running %s: version command ran: %+v", v.Path, v)
+			}
+		}
+		return
+	}
+	if len(r.Helper) == 0 || len(r.Artifacts) == 0 {
+		t.Fatalf("version commands not checked: helper %d, collector %d", len(r.Helper), len(r.Artifacts))
+	}
+	runs := slices.Clone(r.Artifacts)
+	for _, v := range r.Helper {
+		runs = append(runs, v)
+	}
+	identified := 0
+	wantUIDs := strings.Repeat(strconv.Itoa(sc.CommandUID())+" ", 4)
+	for _, v := range runs {
+		uid := statusField(v.Output, "Uid")
+		if uid == "" {
+			continue // a real runtime, which does not print its credentials
+		}
+		identified++
+		got := strings.Join(strings.Fields(uid), " ") + " "
+		if got != wantUIDs || statusField(v.Output, "CapEff") != "0000000000000000" || statusField(v.Output, "CapPrm") != "0000000000000000" ||
+			statusField(v.Output, "NoNewPrivs") != "1" || statusField(v.Output, "Seccomp") != "2" {
+			t.Errorf("version command of %s ran with%s, want uid %d without capabilities", v.Path, fakeIdentity(v.Output), sc.CommandUID())
+		}
+	}
+	if identified < 2 {
+		t.Errorf("fake node ran %d times with credentials, want through the helper and the collector", identified)
+	}
+	for _, v := range r.Artifacts {
+		if v.Method != report.MethodExec {
+			t.Errorf("running %s: method %s", v.Path, v.Method)
+		}
+	}
 }
 
 // checkDenied verifies that everything the sandbox forbids failed.
@@ -491,9 +562,13 @@ func checkDenied(t *testing.T, r childResult) {
 func checkVersions(t *testing.T, r childResult, allowStatic bool) {
 	t.Helper()
 	for name, v := range r.Helper {
-		if v.Err != "" || v.ExitCode != 0 || v.Output == "" {
+		switch {
+		case allowStatic && v.Err != "" && v.Output == "":
+			// A root probe that cannot switch users runs nothing.
+			t.Logf("%s through the exec helper: not run: %s", name, v.Err)
+		case v.Err != "" || v.ExitCode != 0 || v.Output == "":
 			t.Errorf("%s through the exec helper: exit %d err %q output %q", name, v.ExitCode, v.Err, v.Output)
-		} else {
+		default:
 			t.Logf("%s through the exec helper: %s%s", name, firstLine(v.Output), fakeIdentity(v.Output))
 		}
 	}
@@ -519,12 +594,13 @@ func firstLine(s string) string {
 }
 
 // TestSandboxRoot checks the privilege drop. It runs only as root and only
-// when asked to, for example inside a container:
-//
-//	CGO_ENABLED=0 go test -c -o probe.test ./internal/probe
-//	docker run --rm -v $PWD/probe.test:/probe.test -e BOMCENSUS_PROBE_ROOT_TEST=1 IMAGE \
-//	    /probe.test -test.run 'TestSandbox' -test.v
+// when asked to; scripts/sandbox-matrix.sh runs it in containers and on the
+// host under each root scenario.
 func TestSandboxRoot(t *testing.T) {
+	sc, inMatrix := sandboxtest.Current(t)
+	if inMatrix && (!sc.Root() || os.Geteuid() != 0) {
+		t.Fatalf("scenario %s, uid %d: run TestSandboxRestrictions", sc.Name, os.Geteuid())
+	}
 	if os.Geteuid() != 0 || os.Getenv(envRootTest) == "" {
 		t.Skip("needs root and " + envRootTest + "=1")
 	}
@@ -535,6 +611,9 @@ func TestSandboxRoot(t *testing.T) {
 	r, _ := runRestrictedChild(t)
 	s := r.Sandbox
 	drop := before.permitted.has(unix.CAP_DAC_READ_SEARCH) && before.permitted.has(unix.CAP_SYS_PTRACE)
+	if inMatrix && drop != (sc.Privilege == sandboxtest.RootDrop) {
+		t.Errorf("scenario %s, but the read capabilities are %v", sc.Name, map[bool]string{true: "available", false: "missing"}[drop])
+	}
 	var step SandboxStep
 	for _, st := range s.Steps {
 		if st.Name == "privileges" {
@@ -593,6 +672,9 @@ func TestSandboxRoot(t *testing.T) {
 		t.Errorf("binary not executable by others, but the child was not re-executed from memory: %s", r.SelfExe)
 	}
 	if r.Sandbox.Seccomp != 2 {
+		if inMatrix {
+			t.Fatalf("seccomp filter not installed: %s", r.Summary)
+		}
 		t.Skip("seccomp filters not available")
 	}
 	checkDenied(t, r)
@@ -607,7 +689,17 @@ func TestSandboxRoot(t *testing.T) {
 	// command does not run (static extraction is used instead).
 	canSwitch := drop || (before.effective.has(unix.CAP_SETUID) && before.effective.has(unix.CAP_SETGID))
 	checkVersions(t, r, !canSwitch)
-	for _, v := range r.Artifacts {
+	if inMatrix {
+		if canSwitch != sc.CommandsRun() {
+			t.Errorf("scenario %s, but version commands can switch users: %v", sc.Name, canSwitch)
+		}
+		checkScenario(t, sc, r)
+	}
+	runs := slices.Clone(r.Artifacts)
+	for _, v := range r.Helper {
+		runs = append(runs, v)
+	}
+	for _, v := range runs {
 		uid := strings.Fields(statusField(v.Output, "Uid"))
 		if len(uid) > 0 && (uid[0] != strconv.Itoa(unprivilegedID) || statusField(v.Output, "CapEff") != "0000000000000000") {
 			t.Errorf("version command of %s ran as %s", v.Path, fakeIdentity(v.Output))
@@ -625,50 +717,40 @@ func capSetOf(names []string) capSet {
 	return s
 }
 
-// fakeNodeSource is a program detected as node. Run without arguments it
-// sleeps; with --version it prints a version and, on stderr, its own
-// credentials, so that tests see whom a version command ran as.
-const fakeNodeSource = `#include <stdio.h>
-#include <string.h>
-#include <unistd.h>
-int main(int argc, char **argv) {
-	if (argc > 1 && strcmp(argv[1], "--version") == 0) {
-		char line[256];
-		FILE *f = fopen("/proc/self/status", "r");
-		printf("v1.2.3\n");
-		while (f && fgets(line, sizeof line, f))
-			if (!strncmp(line, "Uid:", 4) || !strncmp(line, "CapEff:", 7) || !strncmp(line, "CapPrm:", 7) ||
-			    !strncmp(line, "NoNewPrivs:", 11) || !strncmp(line, "Seccomp:", 8))
-				fputs(line, stderr);
-		return 0;
-	}
-	sleep(120);
-	return 0;
-}
-`
-
-// envFakeNode names a prebuilt fake node, for runs without a C compiler.
+// envFakeNode names a prebuilt testdata/fakenode, for runs without a Go
+// toolchain (scripts/sandbox-matrix.sh).
 const envFakeNode = "BOMCENSUS_PROBE_TEST_FAKE_NODE"
 
-// fakeNode returns a static build of fakeNodeSource, or "" when none can
-// be built.
+var (
+	fakeNodeOnce sync.Once
+	fakeNodePath string
+	fakeNodeErr  error
+)
+
+// fakeNode returns a build of testdata/fakenode, a program detected as
+// node that prints its credentials.
 func fakeNode(t *testing.T) string {
+	t.Helper()
 	if p := os.Getenv(envFakeNode); p != "" {
 		return p
 	}
-	cc, err := exec.LookPath("cc")
-	if err != nil {
-		return ""
+	fakeNodeOnce.Do(func() {
+		dir, err := os.MkdirTemp("", "probe-fakenode-")
+		if err != nil {
+			fakeNodeErr = err
+			return
+		}
+		fakeNodePath = filepath.Join(dir, "node")
+		cmd := exec.Command("go", "build", "-o", fakeNodePath, "./testdata/fakenode")
+		cmd.Env = append(os.Environ(), "CGO_ENABLED=0")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			fakeNodeErr = &buildError{out: string(out), err: err}
+		}
+	})
+	if fakeNodeErr != nil {
+		t.Fatalf("build fake node: %v", fakeNodeErr)
 	}
-	dir := t.TempDir()
-	src := filepath.Join(dir, "node.c")
-	os.WriteFile(src, []byte(fakeNodeSource), 0o644)
-	out := filepath.Join(dir, "node")
-	if b, err := exec.Command(cc, "-static", "-O2", "-o", out, src).CombinedOutput(); err != nil {
-		t.Logf("fake node not built: %v %s", err, b)
-		return ""
-	}
-	return out
+	return fakeNodePath
 }
 
 // fakeIdentity extracts the credentials the fake node printed.

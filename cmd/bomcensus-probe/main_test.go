@@ -28,6 +28,12 @@ var (
 func probeBinary(t *testing.T) string {
 	t.Helper()
 	buildOnce.Do(func() {
+		// A prebuilt binary lets the tests run where no Go toolchain is
+		// installed (scripts/sandbox-matrix.sh).
+		if p := os.Getenv("BOMCENSUS_TEST_PROBE_BINARY"); p != "" {
+			binPath = p
+			return
+		}
 		dir, err := os.MkdirTemp("", "bomcensus-probe-test-")
 		if err != nil {
 			buildErr = err

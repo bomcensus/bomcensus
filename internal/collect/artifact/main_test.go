@@ -56,70 +56,19 @@ func widenTestProcessMargin() {
 	defaultExecLimits.NProcMargin = max(margin, defaultExecLimits.NProcMargin)
 }
 
-// helperSource is a small program used as a version command.
-const helperSource = `package main
-
-import (
-	"fmt"
-	"os"
-	"os/exec"
-	"strings"
-	"time"
-)
-
-func main() {
-	switch os.Args[1] {
-	case "version":
-		fmt.Println("fakesw version 1.2.3")
-		fmt.Fprintln(os.Stderr, "some warning")
-		os.Exit(3)
-	case "sleep":
-		time.Sleep(time.Minute)
-	case "big":
-		os.Stdout.WriteString(strings.Repeat("o", 200<<10))
-		os.Stderr.WriteString(strings.Repeat("e", 100<<10))
-	case "env":
-		for _, e := range os.Environ() {
-			fmt.Println(e)
-		}
-	case "status":
-		b, _ := os.ReadFile("/proc/self/status")
-		os.Stdout.Write(b)
-		l, _ := os.ReadFile("/proc/self/limits")
-		os.Stdout.Write(l)
-		in, _ := os.Readlink("/proc/self/fd/0")
-		fmt.Printf("stdin=%s\n", in)
-		ns, _ := os.Readlink("/proc/self/ns/net")
-		fmt.Printf("netns:\t%s\n", ns)
-		if len(os.Args) > 2 {
-			f, err := os.Create(os.Args[2])
-			if err == nil {
-				_, err = f.Write([]byte("x"))
-				f.Close()
-			}
-			fmt.Printf("write=%v\n", err)
-		}
-	case "fork":
-		cmd := exec.Command(os.Args[0], "sleep")
-		cmd.Stdout = os.Stdout
-		cmd.Start()
-		fmt.Printf("child=%d\n", cmd.Process.Pid)
-	}
-}
-`
-
 var (
 	helperOnce sync.Once
 	helperPath string
 	helperErr  error
 )
 
-// testHelperBinary builds helperSource once.
+// testHelperBinary builds testdata/fakesw once.
 func testHelperBinary(t *testing.T) string {
 	t.Helper()
 	helperOnce.Do(func() {
 		// A prebuilt helper lets the tests run where no Go toolchain is
-		// installed, for example as root inside a container.
+		// installed, for example as root inside a container
+		// (scripts/sandbox-matrix.sh).
 		if p := os.Getenv("BOMCENSUS_TEST_HELPER"); p != "" {
 			helperPath = p
 			return
@@ -129,7 +78,12 @@ func testHelperBinary(t *testing.T) string {
 			helperErr = err
 			return
 		}
-		helperPath, helperErr = goBuild(dir, map[string]string{"main.go": helperSource, "go.mod": "module helper\n\ngo 1.22\n"}, "fakesw")
+		helperPath = filepath.Join(dir, "fakesw")
+		cmd := exec.Command("go", "build", "-o", helperPath, "./testdata/fakesw")
+		cmd.Env = append(os.Environ(), "CGO_ENABLED=0")
+		if b, err := cmd.CombinedOutput(); err != nil {
+			helperErr = &buildError{out: string(b), err: err}
+		}
 	})
 	if helperErr != nil {
 		t.Fatalf("build helper: %v", helperErr)

@@ -4,5 +4,9 @@
 
 package main
 
-// maybeRunExecHelper does nothing: no version command is run on Windows.
-func maybeRunExecHelper() {}
+import "github.com/bomcensus/bomcensus/internal/sandbox"
+
+// maybeRunExecHelper runs the check program of the version command sandbox
+// (self-test runs the probe as one). Version commands are not run on
+// Windows yet.
+func maybeRunExecHelper() { sandbox.MaybeRunCheck() }

@@ -314,8 +314,11 @@ foreach ($exe in @($Sc, $Tar, $Icacls)) {
 }
 
 # --- 1. Directories -------------------------------------------------------
-#   %ProgramFiles%\bomcensus    SYSTEM and Administrators write; Users and
-#                               the agent account read and execute
+#   %ProgramFiles%\bomcensus    SYSTEM and Administrators write; Users, the
+#                               agent account and AppContainers (the probe's
+#                               version command sandbox, ALL APPLICATION
+#                               PACKAGES and ALL RESTRICTED APPLICATION
+#                               PACKAGES) read and execute
 #   %ProgramData%\bomcensus     SYSTEM and Administrators; Users may list it
 #     agent\                    SYSTEM, Administrators, the agent account
 #     scanner\                  SYSTEM, Administrators, the scanner account
@@ -329,7 +332,7 @@ $RX = '0x1200a9'
 $Modify = '0x1301bf'
 $Admin = "(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)"
 
-Set-SecureDirectory $Install "D:PAI$Admin(A;OICI;$RX;;;BU)(A;OICI;$RX;;;$AgentSid)(A;OICI;$RX;;;$ScannerSid)"
+Set-SecureDirectory $Install "D:PAI$Admin(A;OICI;$RX;;;BU)(A;OICI;$RX;;;$AgentSid)(A;OICI;$RX;;;$ScannerSid)(A;OICI;$RX;;;AC)(A;OICI;$RX;;;S-1-15-2-2)"
 Set-SecureDirectory $Data "D:PAI$Admin(A;;$RX;;;BU)"
 Set-SecureDirectory $State "D:PAI$Admin(A;OICI;FA;;;$AgentSid)"
 Set-SecureDirectory $Spool "D:PAI$Admin(A;OICI;$Modify;;;$AgentSid)(A;OICI;$Modify;;;OW)"

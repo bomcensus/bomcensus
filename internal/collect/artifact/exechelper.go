@@ -14,6 +14,10 @@ import (
 	"strconv"
 	"syscall"
 	"unsafe"
+
+	"golang.org/x/sys/unix"
+
+	"github.com/bomcensus/bomcensus/internal/sandbox"
 )
 
 // helperArg is the hidden first argument that turns the current binary into
@@ -39,25 +43,38 @@ const (
 )
 
 // MaybeRunExecHelper turns the process into the exec helper when it was
-// started as one, and never returns in that case. Binaries that collect
-// artifacts must call it first thing in main, before anything else runs;
-// tests call it from TestMain.
+// started as one, or into the sandbox check program (versionexec_check.go)
+// when it was started as a version command for that, and never returns in
+// these cases. Binaries that collect artifacts must call it first thing in
+// main, before anything else runs; tests call it from TestMain.
 func MaybeRunExecHelper() {
-	if len(os.Args) < 2 || os.Args[1] != helperArg {
+	if len(os.Args) < 2 {
 		return
 	}
-	// prctl and capset act on the calling thread, which must be the one
-	// that executes the target.
+	switch os.Args[1] {
+	case helperArg:
+	case checkArg:
+		os.Exit(runCommandChecks())
+	default:
+		return
+	}
+	// prctl, capset, Landlock and seccomp act on the calling thread, which
+	// must be the one that executes the target.
 	runtime.LockOSThread()
 	err := execHelper(os.Args[2:])
-	status := os.NewFile(helperStatusFD, "status")
-	if status != nil {
-		_, _ = status.WriteString(err.Error())
-	}
+	msg := []byte(err.Error())
+	_, _ = unix.Write(helperStatusFD, msg)
 	os.Exit(127)
 }
 
 // execHelper takes: cpu-seconds address-space nofile nproc -- argv...
+//
+// In this order it: marks every descriptor but 0 to 2 close-on-exec, sets
+// umask 077 and the rlimits (never above the current hard limits),
+// no_new_privs, clears the ambient, bounding and all other capability
+// sets, refuses to continue as uid 0, puts the thread into a Landlock
+// domain (where the kernel has Landlock), installs the command's seccomp
+// filter and executes the target from its descriptor.
 func execHelper(args []string) error {
 	if len(args) < 6 || args[4] != "--" {
 		return errors.New("bad helper arguments")
@@ -72,7 +89,15 @@ func execHelper(args []string) error {
 	}
 	cpu, as, nofile, nproc := lim[0], lim[1], lim[2], lim[3]
 	argv := args[5:]
-	syscall.CloseOnExec(helperStatusFD)
+
+	// Descriptors the probe inherited without close-on-exec would reach
+	// the target otherwise. The descriptor of the target itself is
+	// close-on-exec too: the kernel opens /proc/self/fd/3 before it closes
+	// it, and only ELF files are executed, which need no path to it.
+	if err := cloexecFrom(helperExeFD); err != nil {
+		return fmt.Errorf("close descriptors: %w", err)
+	}
+	syscall.Umask(0o077)
 
 	for _, l := range []struct {
 		res int
@@ -84,7 +109,7 @@ func execHelper(args []string) error {
 		{syscall.RLIMIT_NOFILE, nofile},
 		{rlimitNPROC, nproc},
 	} {
-		if err := syscall.Setrlimit(l.res, &syscall.Rlimit{Cur: l.val, Max: l.val}); err != nil {
+		if err := setrlimitAtMost(l.res, l.val); err != nil {
 			return fmt.Errorf("setrlimit %d: %w", l.res, err)
 		}
 	}
@@ -103,12 +128,61 @@ func execHelper(args []string) error {
 	if err := dropCapabilities(); err != nil {
 		return fmt.Errorf("drop capabilities: %w", err)
 	}
+	// The probe starts the helper as uid 65534 when it is root itself; a
+	// helper that is still root got here some other way.
+	if os.Getuid() == 0 || os.Geteuid() == 0 {
+		return errors.New("refusing to run a version command as root")
+	}
 	// Last: the Go runtime of the helper has already reserved its memory.
-	if err := syscall.Setrlimit(syscall.RLIMIT_AS, &syscall.Rlimit{Cur: as, Max: as}); err != nil {
+	if err := setrlimitAtMost(syscall.RLIMIT_AS, as); err != nil {
 		return fmt.Errorf("setrlimit address space: %w", err)
 	}
-	err := syscall.Exec("/proc/self/fd/"+strconv.Itoa(helperExeFD), argv, os.Environ())
+	if _, err := sandbox.RestrictCommand("/"); err != nil {
+		return err
+	}
+	prog, err := sandbox.CommandFilter(os.Getpid())
+	if err != nil {
+		return err
+	}
+	if err := sandbox.Install(prog, false); err != nil {
+		return err
+	}
+	err = syscall.Exec("/proc/self/fd/"+strconv.Itoa(helperExeFD), argv, os.Environ())
 	return fmt.Errorf("exec: %w", err)
+}
+
+// cloexecFrom marks every descriptor from first on close-on-exec.
+func cloexecFrom(first int) error {
+	if unix.CloseRange(uint(first), ^uint(0), unix.CLOSE_RANGE_CLOEXEC) == nil {
+		return nil
+	}
+	// Kernels before 5.11, or close_range denied by a container runtime's
+	// seccomp profile.
+	ents, err := os.ReadDir("/proc/self/fd")
+	if err != nil {
+		return err
+	}
+	for _, e := range ents {
+		fd, err := strconv.Atoi(e.Name())
+		if err != nil || fd < first {
+			continue
+		}
+		if _, err := unix.FcntlInt(uintptr(fd), unix.F_SETFD, unix.FD_CLOEXEC); err != nil && !errors.Is(err, unix.EBADF) {
+			return err
+		}
+	}
+	return nil
+}
+
+// setrlimitAtMost sets the soft and hard limit of res to val, or to the
+// current hard limit when that is lower: raising it needs a capability,
+// and a lower limit is only stricter.
+func setrlimitAtMost(res int, val uint64) error {
+	var cur syscall.Rlimit
+	if err := syscall.Getrlimit(res, &cur); err == nil && cur.Max < val {
+		val = cur.Max
+	}
+	return syscall.Setrlimit(res, &syscall.Rlimit{Cur: val, Max: val})
 }
 
 func prctl(option int, arg uintptr) error {

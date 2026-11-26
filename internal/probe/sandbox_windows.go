@@ -7,15 +7,20 @@ package probe
 // The self-restriction of sandbox.go (privilege drop, no_new_privs,
 // seccomp) and the memory re-execution of reexec.go have no Windows
 // counterpart yet. The functions below keep the command's interface and
-// report plainly that nothing was restricted.
+// report plainly that nothing was restricted. Version commands have their
+// own sandbox (internal/sandbox), which CheckSandbox checks.
 
 import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
 	"strings"
+	"time"
 
 	"golang.org/x/sys/windows"
+
+	"github.com/bomcensus/bomcensus/internal/sandbox"
 )
 
 // Step outcomes.
@@ -81,10 +86,32 @@ func ApplySandbox(log *slog.Logger) *SandboxResult {
 	return res
 }
 
-// CheckSandbox reports the one fact there is to check: the restrictions
-// the Linux probe applies are absent.
+// CheckSandbox reports that the restrictions the Linux probe applies to
+// itself are absent, and runs the own binary as a version command, which
+// tries from inside what the command sandbox must deny
+// (sandbox.CheckCommand).
 func CheckSandbox(...string) []SandboxCheck {
-	return []SandboxCheck{{Name: "sandbox", OK: false, Detail: "not available on Windows"}}
+	return append([]SandboxCheck{{Name: "sandbox", OK: false, Detail: "not available on Windows"}}, checkCommands()...)
+}
+
+func checkCommands() []SandboxCheck {
+	const name = "version command"
+	exe, err := os.Executable()
+	if err != nil {
+		return []SandboxCheck{{Name: name, Detail: err.Error()}}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	checks, err := sandbox.CheckCommand(ctx, exe, 512, sandbox.CheckTargets{MemoryMB: 1024})
+	if err != nil {
+		return []SandboxCheck{{Name: name, Detail: err.Error() + " (the probe's directory must grant ALL APPLICATION PACKAGES " +
+			"read and execute, as Program Files does)"}}
+	}
+	out := []SandboxCheck{{Name: name, OK: true, Detail: "ran"}}
+	for _, c := range checks {
+		out = append(out, SandboxCheck{Name: "command: " + c.Name, OK: c.OK, Detail: c.Detail})
+	}
+	return out
 }
 
 // EnsureExecutableAfterDrop does nothing on Windows: the probe does not

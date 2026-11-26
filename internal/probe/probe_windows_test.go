@@ -57,7 +57,17 @@ func TestSandboxWindows(t *testing.T) {
 	if len(res.Steps) != 1 || res.Steps[0].Status != StepSkipped {
 		t.Errorf("steps = %+v", res.Steps)
 	}
-	if c := CheckSandbox(); len(c) != 1 || c[0].OK {
+	// The probe itself is not restricted; the version command check
+	// runs or says why not (the test binary's directory may not be
+	// readable for AppContainers).
+	c := CheckSandbox()
+	if len(c) < 2 || c[0].Name != "sandbox" || c[0].OK || c[1].Name != "version command" {
 		t.Errorf("checks = %+v", c)
+	}
+	for _, x := range c[1:] {
+		t.Logf("%-40s %-5v %s", x.Name, x.OK, x.Detail)
+		if c[1].OK && !x.OK {
+			t.Errorf("%s: %s", x.Name, x.Detail)
+		}
 	}
 }

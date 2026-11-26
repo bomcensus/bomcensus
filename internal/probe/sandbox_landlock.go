@@ -9,20 +9,16 @@ package probe
 import (
 	"fmt"
 
-	"golang.org/x/sys/unix"
+	"github.com/bomcensus/bomcensus/internal/sandbox"
 )
 
 // landlockABI returns the Landlock ABI version of the kernel, 0 when
 // Landlock is not available.
-func landlockABI() int {
-	v, _, e := unix.Syscall(unix.SYS_LANDLOCK_CREATE_RULESET, 0, 0, unix.LANDLOCK_CREATE_RULESET_VERSION)
-	if e != 0 || int(v) < 0 {
-		return 0
-	}
-	return int(v)
-}
+func landlockABI() int { return sandbox.LandlockABI() }
 
-// landlockStep records why Landlock is not applied (see sandbox.go).
+// landlockStep records why Landlock is not applied to the probe (see
+// sandbox.go). Version commands are put into a Landlock domain by the exec
+// helper.
 func landlockStep() SandboxStep {
 	detail := "not available in the kernel"
 	if abi := landlockABI(); abi > 0 {
