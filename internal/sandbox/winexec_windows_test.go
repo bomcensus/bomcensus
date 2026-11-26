@@ -361,9 +361,14 @@ func TestCheckProgramControl(t *testing.T) {
 		t.Logf("%-40s %-5v %s", c.Name, c.OK, c.Detail)
 		allowed[c.Name] = !c.OK
 	}
-	must := []string{"process_create", "com_wmi_connect", "com_task_scheduler_connect", "net_tcp_loopback", "input_desktop_open",
+	must := []string{"process_create", "com_wmi_connect", "com_task_scheduler_connect", "net_tcp_loopback",
 		"net_tcp_loopback_accepted", "net_udp_loopback_received", "named_pipe", "reg_hkcu_write",
 		fmt.Sprintf("open_process_%d", tg.PIDs[0]), "file_write " + tg.WriteDirs[0], "file_read " + os.TempDir()}
+	// A service in session 0 (LocalSystem in the matrix) has no input
+	// desktop to open.
+	if tryOpenInputDesktop() == nil {
+		must = append(must, "input_desktop_open")
+	}
 	if tg.WindowClass != "" {
 		must = append(must, "window_find")
 	}

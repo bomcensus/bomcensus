@@ -379,7 +379,7 @@ func privilegeName(l windows.LUID) string {
 }
 
 func envCheck(report func(string, bool, string)) {
-	var names []string
+	var names, own []string
 	for _, e := range os.Environ() {
 		k, _, _ := strings.Cut(e, "=")
 		if k != "" {
@@ -387,9 +387,16 @@ func envCheck(report func(string, bool, string)) {
 		}
 	}
 	sort.Strings(names)
+	for _, n := range names {
+		// Windows on Arm sets PROCESSOR_ARCHITECTURE in every process,
+		// for the architecture the process runs as.
+		if n != "PROCESSOR_ARCHITECTURE" {
+			own = append(own, n)
+		}
+	}
 	// LOCALAPPDATA, TEMP and TMP are the AppContainer's folder.
 	want := []string{"BOMCENSUS_SANDBOX_CHECK", "LOCALAPPDATA", "SYSTEMROOT", "TEMP", "TMP"}
-	report("environment", strings.Join(names, ",") == strings.Join(want, ","), strings.Join(names, ","))
+	report("environment", strings.Join(own, ",") == strings.Join(want, ","), strings.Join(names, ","))
 	report("temp_dir", strings.Contains(strings.ToLower(os.Getenv("TEMP")), `\packages\`), os.Getenv("TEMP"))
 }
 

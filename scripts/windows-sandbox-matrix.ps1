@@ -80,13 +80,15 @@ Write-Host "runtimes: $Runtimes"
 
 # The command of one scenario, as a batch file that writes the logs and
 # the exit codes.
-function Write-ScenarioScript([string]$name) {
+# $pre are commands run before the tests.
+function Write-ScenarioScript([string]$name, [string[]]$pre = @()) {
     $out = Join-Path $Logs "$name.test.log"
     $self = Join-Path $Logs "$name.selftest.json"
     $done = Join-Path $Logs "$name.exit"
     $bat = Join-Path $Bin "$name.cmd"
     @(
         '@echo off'
+        $pre
         "set `"BOMCENSUS_TEST_RUNTIMES=$Runtimes`""
         "`"$SandboxTest`" -test.v -test.count=1 > `"$out`" 2>&1"
         'set T=%ERRORLEVEL%'
@@ -126,12 +128,22 @@ function Invoke-System {
 }
 
 function Invoke-User {
-    $bat, $done = Write-ScenarioScript 'user'
     $name = 'bcsbxtest'
     $plain = [Convert]::ToBase64String((1..24 | ForEach-Object { [byte](Get-Random -Maximum 256) })) + 'aA1!'
     $secure = ConvertTo-SecureString $plain -AsPlainText -Force
-    New-LocalUser -Name $name -Password $secure -PasswordNeverExpires -AccountNeverExpires | Out-Null
+    $user = New-LocalUser -Name $name -Password $secure -PasswordNeverExpires -AccountNeverExpires
     try {
+        # Start-Process -Credential passes this account's environment on:
+        # take the profile folders from the user's profile, loaded by then.
+        $key = "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList\$($user.SID.Value)"
+        $bat, $done = Write-ScenarioScript 'user' @(
+            "for /f `"tokens=2,*`" %%a in ('reg query `"$key`" /v ProfileImagePath ^| find `"ProfileImagePath`"') do set `"USERPROFILE=%%b`""
+            'set "LOCALAPPDATA=%USERPROFILE%\AppData\Local"'
+            'set "APPDATA=%USERPROFILE%\AppData\Roaming"'
+            'set "TEMP=%LOCALAPPDATA%\Temp"'
+            'set "TMP=%TEMP%"'
+            'if not exist "%TEMP%" mkdir "%TEMP%"'
+        )
         Add-LocalGroupMember -Group (Get-LocalGroup -SID 'S-1-5-32-545') -Member $name
         & icacls.exe $Logs /grant "${name}:(OI)(CI)M" | Out-Null
         $cred = New-Object System.Management.Automation.PSCredential(".\$name", $secure)
