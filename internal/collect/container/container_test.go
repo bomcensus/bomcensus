@@ -196,16 +196,19 @@ func TestContainerdCRI(t *testing.T) {
 			ID: "409e30b3c16a8b2fa979860a02041d9c5c92708e422cc8df037dd475bf03d09c", Name: "default/demo/demo", Runtime: "containerd",
 			ImageRef: "docker.io/library/alpine:3.20", ImageDigest: alpineDigest,
 			Running: true, StartedAt: time.Unix(0, 1795187584356708402).UTC(), InitPID: 798, UpperDir: snap + "20/fs",
+			Pod: &report.PodRef{UID: "02df285d-a56b-4457-a509-40cc9ed37ff5", Namespace: "default", Name: "demo", Container: "demo"},
 		},
 		"kube-system/coredns-7896679cc-bqqv5/coredns": {
 			ID: "2a76ed4f1e98d1ab3b852d34ea92fdc192199425becf352f40131877d2f545fb", Name: "kube-system/coredns-7896679cc-bqqv5/coredns", Runtime: "containerd",
 			ImageRef: "docker.io/rancher/mirrored-coredns-coredns:1.12.3", ImageDigest: corednsDigest,
 			Running: true, StartedAt: time.Unix(0, 1795187473274127925).UTC(), InitPID: 517, UpperDir: snap + "17/fs",
+			Pod: &report.PodRef{UID: "b73d9d32-0fe8-49bb-9068-30f449848929", Namespace: "kube-system", Name: "coredns-7896679cc-bqqv5", Container: "coredns"},
 		},
 		"default/oneshot/oneshot": {
 			ID: "c09d940cd58f26b761b3472cb93afbf074dcc86721d5f432176fc45454d626cf", Name: "default/oneshot/oneshot", Runtime: "containerd",
 			ImageRef: "docker.io/library/busybox:1.36", ImageDigest: busyboxDigest,
 			StartedAt: time.Unix(0, 1795188255655565987).UTC(), UpperDir: snap + "23/fs",
+			Pod: &report.PodRef{UID: "eaf6fb08-bec2-473e-ba56-d8c467734e7c", Namespace: "default", Name: "oneshot", Container: "oneshot"},
 		},
 	}
 	plain, ok := got["plain"]
@@ -217,6 +220,9 @@ func TestContainerdCRI(t *testing.T) {
 		t.Errorf("containers:\n got %+v\nwant %+v", got, want)
 	}
 	// Without CRI the start time comes from the task's init.pid.
+	if plain.Pod != nil {
+		t.Errorf("plain ctr container has a pod: %+v", plain.Pod)
+	}
 	if !plain.Running || plain.InitPID != 1799 || plain.ImageDigest != alpineDigest || plain.UpperDir != snap+"25/fs" || plain.StartedAt.IsZero() {
 		t.Errorf("plain = %+v", plain)
 	}
@@ -600,4 +606,28 @@ func TestChainIDs(t *testing.T) {
 func sha256Digest(data []byte) string {
 	sum := sha256.Sum256(data)
 	return "sha256:" + hex.EncodeToString(sum[:])
+}
+
+func TestPodRef(t *testing.T) {
+	full := map[string]string{
+		labelPodUID: "u1", labelPodNamespace: "ns", labelPodName: "p", labelContainer: "c",
+	}
+	if got := podRef(full); got == nil || *got != (report.PodRef{UID: "u1", Namespace: "ns", Name: "p", Container: "c"}) {
+		t.Errorf("podRef = %+v", got)
+	}
+	for name, mod := range map[string]func(map[string]string){
+		"no uid":            func(m map[string]string) { delete(m, labelPodUID) },
+		"no container":      func(m map[string]string) { delete(m, labelContainer) },
+		"dockershim POD":    func(m map[string]string) { m[labelContainer] = "POD" },
+		"cri-dockerd pause": func(m map[string]string) { m[labelDockerType] = "podsandbox" },
+	} {
+		m := map[string]string{}
+		for k, v := range full {
+			m[k] = v
+		}
+		mod(m)
+		if got := podRef(m); got != nil {
+			t.Errorf("%s: podRef = %+v", name, got)
+		}
+	}
 }

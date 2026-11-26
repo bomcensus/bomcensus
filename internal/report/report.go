@@ -402,6 +402,17 @@ type Container struct {
 	// Runtime lists artifacts added or changed after start, when the writable
 	// layer could be told apart.
 	RuntimeArtifacts []Artifact `json:"runtime_artifacts,omitempty"`
+	// Pod is set for a container that the kubelet created for a pod.
+	Pod *PodRef `json:"pod,omitempty"`
+}
+
+// PodRef identifies the Kubernetes pod container a runtime container runs,
+// as the kubelet labels it.
+type PodRef struct {
+	UID       string `json:"uid"`
+	Namespace string `json:"namespace"`
+	Name      string `json:"name"`
+	Container string `json:"container"`
 }
 
 type Image struct {
