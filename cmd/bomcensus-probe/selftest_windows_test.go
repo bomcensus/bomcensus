@@ -14,8 +14,9 @@ import (
 const sandboxLogMarker = "step=sandbox status=skipped"
 
 func TestSelfTest(t *testing.T) {
+	// The one check, the missing sandbox, fails.
 	out, stderr, code := runProbe(t, "", "self-test", "--json")
-	if code != 0 {
+	if code != 1 {
 		t.Fatalf("exit %d\n%s", code, stderr)
 	}
 	var res struct {

@@ -431,6 +431,8 @@ journalctl -u bomcensus-agent -u 'bomcensus-probe@*' -u bomcensus-updater -u bom
 /opt/bomcensus/current/bomcensus-probe self-test   # as root: shows what the sandbox applied
 ```
 
+`self-test` exits with status 1 when a check fails.
+
 Each probe run logs `sandbox step=...` lines. `seccomp status=applied` and `capabilities kept as given: CAP_DAC_READ_SEARCH,CAP_SYS_PTRACE` are the expected result. A probe that is started by the unit as `bomcensus-probe` does not switch users; the unit provides the user and the two capabilities.
 
 ### 4.6 Without systemd, or without root

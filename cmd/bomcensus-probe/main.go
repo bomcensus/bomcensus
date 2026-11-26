@@ -24,7 +24,8 @@
 // unit does. It is the probe container of the Kubernetes node agent.
 //
 // Exit status: 0 when a report was written (also a partial one), 1 when no
-// report could be produced, 2 for usage errors.
+// report could be produced, 2 for usage errors. self-test exits 1 when a
+// check failed.
 package main
 
 import (
@@ -257,18 +258,30 @@ func runSelfTest(_ context.Context, args []string, _ io.Reader, stdout, stderr i
 	probe.EnsureExecutableAfterDrop(log)
 	res := probe.ApplySandbox(log)
 	checks := probe.CheckSandbox("version")
+	var failed []string
+	for _, c := range checks {
+		if !c.OK {
+			failed = append(failed, c.Name)
+		}
+	}
 	if *asJSON {
 		enc := json.NewEncoder(stdout)
 		enc.SetIndent("", "  ")
-		return enc.Encode(struct {
+		if err := enc.Encode(struct {
 			*probe.SandboxResult
 			Checks []probe.SandboxCheck `json:"checks"`
-		}{res, checks})
+		}{res, checks}); err != nil {
+			return err
+		}
+	} else {
+		fmt.Fprint(stdout, res.String())
+		fmt.Fprintln(stdout, "checks:")
+		for _, c := range checks {
+			fmt.Fprintf(stdout, "  %-45s %-4s %s\n", c.Name, map[bool]string{true: "ok", false: "FAIL"}[c.OK], strings.TrimSpace(c.Detail))
+		}
 	}
-	fmt.Fprint(stdout, res.String())
-	fmt.Fprintln(stdout, "checks:")
-	for _, c := range checks {
-		fmt.Fprintf(stdout, "  %-45s %-4s %s\n", c.Name, map[bool]string{true: "ok", false: "FAIL"}[c.OK], strings.TrimSpace(c.Detail))
+	if len(failed) > 0 {
+		return fmt.Errorf("self-test: %d checks failed: %s", len(failed), strings.Join(failed, ", "))
 	}
 	return nil
 }
