@@ -30,8 +30,8 @@ const columns: TableColumn<K8sCluster>[] = [
   { key: 'exec', label: 'exec 수집', sort: 'execEnabled' },
   { key: 'scanner', label: 'Scanner', hideBelow: 'lg' },
   { key: 'workloads', label: '워크로드', align: 'right', sort: 'workloadCount', sortDesc: true },
-  { key: 'excluded', label: '제외', align: 'right', hideBelow: 'sm' },
-  { key: 'syncStatus', label: '동기화' },
+  { key: 'excluded', label: '제외', align: 'right', sort: 'excludedCount', sortDesc: true, hideBelow: 'sm' },
+  { key: 'syncStatus', label: '동기화', sort: 'syncStatus' },
   { key: 'lastSync', label: '최근 동기화', align: 'right', sort: 'lastSync', sortDesc: true, hideBelow: 'sm' },
 ]
 

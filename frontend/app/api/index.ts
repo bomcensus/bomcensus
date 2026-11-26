@@ -63,6 +63,7 @@ export const listAssetComponents = (id: string, query?: Query<gen.ListAssetCompo
   call(sdk.listAssetComponents({ path: { id }, query }))
 export const listAssetProcesses = (id: string, query?: Query<gen.ListAssetProcessesData>) =>
   call(sdk.listAssetProcesses({ path: { id }, query }))
+export const getAssetProcess = (id: string, processId: string) => call(sdk.getAssetProcess({ path: { id, processId } }))
 export const listAssetInstances = (id: string, query?: Query<gen.ListAssetInstancesData>) =>
   call(sdk.listAssetInstances({ path: { id }, query }))
 export const collectAsset = (id: string) => call(sdk.collectAsset({ path: { id } }))

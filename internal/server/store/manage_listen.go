@@ -36,6 +36,22 @@ type ListenTarget struct {
 	LeaseOwner     string
 	LeaseExpiresAt *time.Time
 	CreatedAt      time.Time
+	// AgentHostname is the hostname of the bound agent. Read-only; set by
+	// ListListenTargets.
+	AgentHostname string
+}
+
+// ListenTargetFilter narrows ListListenTargets. Zero fields do not filter.
+type ListenTargetFilter struct {
+	// Q is a case-insensitive substring of the address or of the bound
+	// agent's hostname.
+	Q     string
+	State ListenTargetState
+	// AgentIDs keeps targets bound to one of these agents.
+	AgentIDs []string
+	// Sort is one of address, agent, state, createdAt, lastConnectedAt,
+	// optionally prefixed with "-" for descending. Default address.
+	Sort string
 }
 
 // ListenTargets stores listen targets and the per-target dial lease that
@@ -46,8 +62,8 @@ type ListenTargets interface {
 	// exists.
 	CreateListenTarget(ctx context.Context, t ListenTarget) (ListenTarget, error)
 	GetListenTarget(ctx context.Context, id string) (ListenTarget, error)
-	// ListListenTargets returns all targets ordered by address.
-	ListListenTargets(ctx context.Context) ([]ListenTarget, error)
+	// ListListenTargets returns targets in f.Sort order and the total count.
+	ListListenTargets(ctx context.Context, f ListenTargetFilter, p Page) ([]ListenTarget, int, error)
 	// UpdateListenTarget replaces the address and register key of t.ID.
 	// A changed address resets the state to new and clears the last error;
 	// the bound agent and the lease are kept. ErrConflict when the address

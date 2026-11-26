@@ -382,7 +382,7 @@ func scReads() []scRead {
 			return db.GetListenTarget(ctx, f.ListenID)
 		})},
 		{name: "ListListenTargets", wantOwn: true, call: ctxDB(func(ctx context.Context, db *DB, f F) (any, error) {
-			return db.ListListenTargets(ctx)
+			return two(db.ListListenTargets(ctx, store.ListenTargetFilter{}, scPage()))
 		})},
 		{name: "ListCredentials", wantOwn: true, call: ctxDB(func(ctx context.Context, db *DB, f F) (any, error) {
 			return db.ListCredentials(ctx)

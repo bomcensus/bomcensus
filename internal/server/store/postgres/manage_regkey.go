@@ -111,30 +111,63 @@ func (d *DB) GetRegisterKey(ctx context.Context, id string) (store.RegisterKey, 
 	return k, nil
 }
 
-// mgRegisterKeyWhere filters with $1 q, $2 target, $3 scope id and the
-// scope of the call.
+// mgRegisterKeyRank is the state of a register key at $4 as a rank:
+// 0 valid, 1 exhausted, 2 expired, 3 revoked (store.RegisterKey.Usable).
+const mgRegisterKeyRank = `(CASE WHEN revoked_at IS NOT NULL THEN 3
+	WHEN expires_at IS NOT NULL AND expires_at <= $4 THEN 2
+	WHEN max_uses > 0 AND used_count >= max_uses THEN 1 ELSE 0 END)`
+
+// mgRegisterKeyStates are the state names by rank.
+var mgRegisterKeyStates = map[string]int{"valid": 0, "exhausted": 1, "expired": 2, "revoked": 3}
+
+var mgRegisterKeySort = map[string]string{
+	"name":      "lower(name)",
+	"target":    "target_kind",
+	"state":     mgRegisterKeyRank,
+	"expiresAt": "expires_at",
+	"usedCount": "used_count",
+	"approval":  "approval",
+	"createdAt": "created_at",
+}
+
+// mgRegisterKeyWhere filters with $1 q, $2 target, $3 scope id, $4 now,
+// $5 state rank (-1 for any) and the scope of the call.
 func mgRegisterKeyWhere(sc sqlScope) string {
 	return `
 	WHERE ($1 = '' OR strpos(lower(name), lower($1)) > 0 OR strpos(lower(id), lower($1)) > 0)
 	  AND ($2 = '' OR target_kind = $2)
 	  AND ($3 = '' OR scope_id = $3)
+	  AND ($5 < 0 OR ` + mgRegisterKeyRank + ` = $5)
 	  AND ` + sc.shared("target_kind", "scope_id")
 }
 
 // ListRegisterKeys implements store.RegisterKeys.
 func (d *DB) ListRegisterKeys(ctx context.Context, f store.RegisterKeyFilter, p store.Page) ([]store.RegisterKey, int, error) {
+	const op = "list register keys"
 	p = p.Normalize()
-	q, sc, err := scoped(ctx, "list register keys", f.Q, string(f.Target), f.ScopeID)
+	state := -1
+	if f.State != "" {
+		r, ok := mgRegisterKeyStates[f.State]
+		if !ok {
+			return nil, 0, fmt.Errorf("postgres: %s: state %q: %w", op, f.State, store.ErrInvalid)
+		}
+		state = r
+	}
+	order, err := mgOrder(op, f.Sort, "-createdAt", mgRegisterKeySort, true, "created_at DESC, id")
+	if err != nil {
+		return nil, 0, err
+	}
+	q, sc, err := scoped(ctx, op, f.Q, string(f.Target), f.ScopeID, mgOrNow(f.Now), state)
 	if err != nil {
 		return nil, 0, err
 	}
 	args := q.args
 	n := len(args)
 	rows, err := d.q.Query(ctx, `SELECT `+mgRegisterKeyColumns+`, count(*) OVER () FROM register_keys`+
-		mgRegisterKeyWhere(sc)+fmt.Sprintf(` ORDER BY created_at DESC, id LIMIT $%d OFFSET $%d`, n+1, n+2),
+		mgRegisterKeyWhere(sc)+order+fmt.Sprintf(` LIMIT $%d OFFSET $%d`, n+1, n+2),
 		append(args, p.Limit, p.Offset)...)
 	if err != nil {
-		return nil, 0, mgErr("list register keys", err)
+		return nil, 0, mgErr(op, err)
 	}
 	defer rows.Close()
 	out := []store.RegisterKey{}
@@ -142,16 +175,16 @@ func (d *DB) ListRegisterKeys(ctx context.Context, f store.RegisterKeyFilter, p 
 	for rows.Next() {
 		k, err := mgScanRegisterKey(rows, &total)
 		if err != nil {
-			return nil, 0, mgErr("list register keys", err)
+			return nil, 0, mgErr(op, err)
 		}
 		out = append(out, k)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, 0, mgErr("list register keys", err)
+		return nil, 0, mgErr(op, err)
 	}
 	if len(out) == 0 && p.Offset > 0 {
 		if err := d.q.QueryRow(ctx, `SELECT count(*) FROM register_keys`+mgRegisterKeyWhere(sc), args[:n]...).Scan(&total); err != nil {
-			return nil, 0, mgErr("list register keys", err)
+			return nil, 0, mgErr(op, err)
 		}
 	}
 	return out, total, nil

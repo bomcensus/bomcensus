@@ -6,6 +6,7 @@ package postgres
 
 import (
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -173,6 +174,50 @@ func TestNotices(t *testing.T) {
 	ivMust(t, err)
 	if n := ntOne(t)(db.ListNotices(ctx, store.NoticeFilter{}, scPage())); n.Assets != 2 {
 		t.Fatalf("after removal %+v", n)
+	}
+}
+
+// TestNoticeSort orders notices by a field; a notice without a date comes
+// last in both directions.
+func TestNoticeSort(t *testing.T) {
+	db := newTestDB(t)
+	ctx := ivCtx(t)
+	srv, err := db.GetActiveFeedServer(ctx)
+	ivMust(t, err)
+	web := ivHost(t, db, "web-01")
+	openssl := ivDeb("openssl", "3.0.13")
+	_, err = db.ReplaceAssetComponents(ctx, store.ComponentScope{AssetID: web, Source: store.SourcePackages},
+		ivPkgObs(openssl), store.ReplaceOptions{At: ivT0})
+	ivMust(t, err)
+	ids, err := db.LookupComponentIDs(ctx, []store.Component{openssl})
+	ivMust(t, err)
+	a, b, c := ntNotice("kisa-a"), ntNotice("kisa-b"), ntNotice("tmax-c")
+	a.Title, b.Title, c.Title = "Beta", "alpha", "Gamma"
+	later := a.Published.Add(24 * time.Hour)
+	b.Published, c.Published, c.Source = &later, nil, "tmaxsoft"
+	ivMust(t, db.SaveMatches(ctx, store.MatchBatch{Epoch: store.MatchEpoch{ServerID: srv.ID, Revision: 1}, At: ivT0,
+		Components: []store.ComponentMatch{{ComponentID: ids[0], Status: store.MatchChecked, Notices: []string{a.ID, b.ID, c.ID}}},
+		Notices:    []store.Notice{a, b, c}}))
+	for sort, want := range map[string]string{
+		"":           "kisa-b,kisa-a,tmax-c",
+		"published":  "kisa-a,kisa-b,tmax-c",
+		"-published": "kisa-b,kisa-a,tmax-c",
+		"title":      "kisa-b,kisa-a,tmax-c",
+		"-title":     "tmax-c,kisa-a,kisa-b",
+		"-source":    "tmax-c,kisa-b,kisa-a",
+	} {
+		rows, total, err := db.ListNotices(ctx, store.NoticeFilter{Sort: sort}, scPage())
+		ivMust(t, err)
+		var got []string
+		for _, r := range rows {
+			got = append(got, r.ID)
+		}
+		if total != 3 || strings.Join(got, ",") != want {
+			t.Fatalf("sort %q: %v (total %d), want %s", sort, got, total, want)
+		}
+	}
+	if _, _, err := db.ListNotices(ctx, store.NoticeFilter{Sort: "rank"}, scPage()); !errors.Is(err, store.ErrInvalid) {
+		t.Fatalf("unknown sort: %v", err)
 	}
 }
 

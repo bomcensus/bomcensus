@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -155,6 +156,33 @@ func ntScan(r mgRow, n *store.NoticeRow) error {
 	return nil
 }
 
+// ntSorts are the sort keys of ListNotices.
+var ntSorts = map[string]string{
+	"published":    "n.published",
+	"title":        "lower(n.title)",
+	"source":       "n.source",
+	"assets":       "s.assets",
+	"last_matched": "s.last_matched",
+}
+
+// ntOrder is the ORDER BY clause of a notice sort; values that are absent
+// come last in both directions.
+func ntOrder(sort string) (string, error) {
+	if sort == "" {
+		return ` ORDER BY (s.new_assets > 0) DESC, n.published DESC NULLS LAST, n.notice_id`, nil
+	}
+	key, desc := strings.CutPrefix(sort, "-")
+	expr, ok := ntSorts[key]
+	if !ok {
+		return "", ivInvalid("list notices", fmt.Sprintf("unknown sort key %q", sort))
+	}
+	dir := " ASC"
+	if desc {
+		dir = " DESC"
+	}
+	return " ORDER BY " + expr + dir + " NULLS LAST, n.published DESC NULLS LAST, n.notice_id", nil
+}
+
 // ListNotices implements store.Notices.
 func (d *DB) ListNotices(ctx context.Context, f store.NoticeFilter, p store.Page) ([]store.NoticeRow, int, error) {
 	const op = "list notices"
@@ -179,7 +207,10 @@ func (d *DB) ListNotices(ctx context.Context, f store.NoticeFilter, p store.Page
 				WHERE sw->>'vendor' ILIKE %[1]s OR sw->>'product' ILIKE %[1]s))`, ivLike(f.Q))
 	}
 	from += q.whereSQL()
-	order := ` ORDER BY (s.new_assets > 0) DESC, n.published DESC NULLS LAST, n.notice_id`
+	order, err := ntOrder(f.Sort)
+	if err != nil {
+		return nil, 0, err
+	}
 	var out []store.NoticeRow
 	total, err := ivPage(ctx, d, op, q, ntCols, from, order, p, func(rows pgx.Rows) error {
 		var n store.NoticeRow

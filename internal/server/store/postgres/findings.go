@@ -62,7 +62,7 @@ func (d *DB) FindingInputs(ctx context.Context, assetID string) (store.FindingIn
 		return store.FindingInputs{}, fmt.Errorf("postgres: begin: %w", err)
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck // read only
-	return (&DB{pool: d.pool, q: tx, inTx: true}).findingInputs(ctx, assetID)
+	return (&DB{pool: d.pool, q: tx, inTx: true, feat: d.feat}).findingInputs(ctx, assetID)
 }
 
 func (d *DB) findingInputs(ctx context.Context, assetID string) (store.FindingInputs, error) {

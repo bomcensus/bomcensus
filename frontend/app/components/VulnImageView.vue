@@ -11,11 +11,21 @@ import { getVulnerableImage, listVulnerableImages, type QueryOf } from '~/api'
 const props = defineProps<{ selected: string }>()
 const emit = defineEmits<{ select: [digest: string] }>()
 
-const { items, total, pending, error, refresh, q, page, size } = useServerList(
+const { items, total, pending, error, refresh, q, filters, sort, page, size } = useServerList(
   'vulns:images',
   (p) => listVulnerableImages(p as QueryOf<typeof listVulnerableImages>),
-  { pageSize: 50 },
+  { filters: { severity: '', kev: false }, sort: 'rank', pageSize: 50 },
 )
+const severityOptions = (['critical', 'high', 'medium', 'low', 'negligible'] as const).map((s) => ({ value: s, label: severityLabel[s] }))
+// 'rank' is the server's risk order (running first, then KEV, EPSS and CVSS).
+const sortOptions = [
+  { value: 'rank', label: '위험도순' },
+  { value: '-score', label: 'CVSS 높은 순' },
+  { value: '-epss', label: 'EPSS 높은 순' },
+  { value: '-cves', label: 'CVE 많은 순' },
+  { value: '-containers', label: '실행 중 컨테이너 많은 순' },
+  { value: 'tag', label: '태그순' },
+]
 const current = computed(() => props.selected || items.value[0]?.digest || '')
 const { data: detail, error: detailError, refresh: refreshDetail } = useLoad(
   () => `vulns:image:${current.value}`,
@@ -28,6 +38,16 @@ const title = (tags: string[], digest: string) => tags[0] ?? shortHash(digest)
   <div>
     <FilterBar :count="total" unit="개">
       <SearchInput v-model="q" placeholder="태그, digest" />
+      <SelectFilter v-model="filters.severity" label="심각도" :options="severityOptions" />
+      <label class="inline-flex items-center gap-1.5 text-sm">
+        <input v-model="filters.kev" type="checkbox" class="size-[15px] accent-(--accent)" /> KEV만
+      </label>
+      <label class="inline-flex items-center">
+        <span class="sr-only">정렬</span>
+        <select v-model="sort" class="select max-w-44" :class="sort !== 'rank' ? 'border-accent text-accent' : ''">
+          <option v-for="o in sortOptions" :key="o.value" :value="o.value">정렬: {{ o.label }}</option>
+        </select>
+      </label>
     </FilterBar>
     <div class="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]">
       <Panel flush class="min-w-0 self-start">

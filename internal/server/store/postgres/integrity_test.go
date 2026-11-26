@@ -64,6 +64,17 @@ func TestIntegrityChunksAndResolution(t *testing.T) {
 	if len(gs) != 2 || gs[0].Path != "/usr/bin/at" || gs[1].ActualSHA256 != itSHA('b') {
 		t.Fatalf("after the pass: %+v", gs)
 	}
+	for sort, first := range map[string]string{
+		"path": "/usr/bin/at", "-path": page, "package": "/usr/bin/at", "-package": page,
+		"first_seen": "/usr/bin/at", "-first_seen": page, "-last_seen": page,
+	} {
+		if gs := itGroups(t, db, store.IntegrityFilter{Sort: sort}); len(gs) != 2 || gs[0].Path != first {
+			t.Fatalf("sort %s: %+v", sort, gs)
+		}
+	}
+	if _, _, err := db.ListIntegrityGroups(ctx, store.IntegrityFilter{Sort: "status"}, store.Page{}); !errors.Is(err, store.ErrInvalid) {
+		t.Fatalf("unknown sort: %v", err)
+	}
 	p, err = db.LastCompletedIntegrityPass(ctx, a)
 	ivMust(t, err)
 	if p.Checked != 150 || p.Coverage != "partial" || p.CompletedAt == nil {

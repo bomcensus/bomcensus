@@ -94,6 +94,20 @@ func TestReplaceProcessesAndEvents(t *testing.T) {
 	if total != 2 || len(all) != 1 || all[0].Asset.Name != "web-02" {
 		t.Fatalf("search page: %d %+v", total, all)
 	}
+	// One process by id: only on its own asset.
+	one, total, err := db.ListProcesses(ctx, store.ProcessFilter{AssetID: asset, ID: procs[1].ID}, store.Page{})
+	ivMust(t, err)
+	if total != 1 || one[0].ID != procs[1].ID || one[0].PID != procs[1].PID {
+		t.Fatalf("by id: %+v", one)
+	}
+	for name, f := range map[string]store.ProcessFilter{
+		"other asset": {AssetID: other, ID: procs[1].ID},
+		"bad id":      {AssetID: asset, ID: "x"},
+	} {
+		if rows, total, err := db.ListProcesses(ctx, f, store.Page{}); err != nil || total != 0 || len(rows) != 0 {
+			t.Fatalf("by id, %s: %d %+v %v", name, total, rows, err)
+		}
+	}
 	if _, _, err := db.ListProcesses(ctx, store.ProcessFilter{View: "bogus"}, store.Page{}); err == nil {
 		t.Fatal("bad view accepted")
 	}

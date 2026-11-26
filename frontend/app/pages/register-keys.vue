@@ -16,7 +16,7 @@ useHead({ title: 'Register Key · bomcensus' })
 const { items: keys, total, pending, error, refresh, q, filters, sort, page, size } = useServerList(
   'register-keys',
   (p) => listRegisterKeys(p as QueryOf<typeof listRegisterKeys>),
-  { filters: { target: '', state: '' }, sort: '-createdAt', url: true },
+  { filters: { target: '', state: '' }, sort: 'state', url: true },
 )
 const { data: groups } = useLoad('asset-groups', () => fetchAll((page) => listAssetGroups(page)), () => [])
 

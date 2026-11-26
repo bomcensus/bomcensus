@@ -7,6 +7,7 @@
 <script setup lang="ts">
 import type { ComponentAssetRow, ComponentVulnerability, DetectMethod } from '~/types'
 import type { TableColumn } from '~/types/table'
+import type { TriState } from '~/composables/useServerList'
 import { getComponent, listComponentAssets, listComponentVulnerabilities, type QueryOf } from '~/api'
 
 const route = useRoute()
@@ -26,7 +27,7 @@ const {
   page: installedPage,
   size: installedSize,
 } = useServerList(`component:${id}:assets`, (p) => listComponentAssets(id, p as QueryOf<typeof listComponentAssets>), {
-  filters: { method: '', inUse: false },
+  filters: { method: '', inUse: '' as TriState },
   sort: 'asset',
 })
 const methodOptions = (Object.keys(detectMethodLabel) as DetectMethod[]).map((value) => ({ value, label: detectMethodLabel[value] }))
@@ -170,9 +171,7 @@ function showRaw(row: ComponentAssetRow) {
             <FilterBar :count="installedTotal" unit="곳">
               <SearchInput v-model="installedQuery" placeholder="자산, 컨테이너, 경로" />
               <SelectFilter v-model="installedFilters.method" label="탐지 방법" :options="methodOptions" />
-              <label class="inline-flex items-center gap-1.5 text-sm">
-                <input v-model="installedFilters.inUse" type="checkbox" class="accent-(--accent)" /> 실행 중만
-              </label>
+              <SelectFilter v-model="installedFilters.inUse" label="실행" :options="triStateOptions('실행 중', '실행 안 함')" />
             </FilterBar>
           </div>
           <LoadError v-if="installedError" :error="installedError" @retry="refreshInstalled" />

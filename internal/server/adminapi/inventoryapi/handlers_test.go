@@ -573,6 +573,21 @@ func TestProcessesAndPorts(t *testing.T) {
 	_, err = h.ListAssetProcesses(ctx, gen.ListAssetProcessesRequestObject{Id: uuid.NewString()})
 	wantStatus(t, "processes of missing asset", err, http.StatusNotFound)
 
+	// One process: found on its asset, not on another one.
+	ap, err = h.ListAssetProcesses(ctx, gen.ListAssetProcessesRequestObject{Id: f.web})
+	must(t, err)
+	want := ap.(gen.ListAssetProcesses200JSONResponse).Items[1]
+	g, err := h.GetAssetProcess(ctx, gen.GetAssetProcessRequestObject{Id: f.web, ProcessId: want.Id})
+	must(t, err)
+	if got := gen.ProcessInfo(g.(gen.GetAssetProcess200JSONResponse)); got.Id != want.Id || got.Pid != want.Pid ||
+		len(got.Listen) != len(want.Listen) || got.AssetName != "web-1" {
+		t.Fatalf("process: %+v, want %+v", got, want)
+	}
+	_, err = h.GetAssetProcess(ctx, gen.GetAssetProcessRequestObject{Id: f.db1, ProcessId: want.Id})
+	wantStatus(t, "process of another asset", err, http.StatusNotFound)
+	_, err = h.GetAssetProcess(ctx, gen.GetAssetProcessRequestObject{Id: f.web, ProcessId: "not-a-uuid"})
+	wantStatus(t, "invalid process id", err, http.StatusNotFound)
+
 	lp, err := h.ListListenPorts(ctx, gen.ListListenPortsRequestObject{})
 	must(t, err)
 	ll := lp.(gen.ListListenPorts200JSONResponse)
@@ -764,6 +779,16 @@ func TestKubernetes(t *testing.T) {
 	if stg.Name != "stg" || !stg.ExecEnabled || stg.SyncStatus != gen.K8sSyncStatusNever || len(stg.Filter.NsExclude) != 1 ||
 		stg.Filter.LabelInclude == nil {
 		t.Fatalf("created: %+v", stg)
+	}
+	// prd failed its last sync and excludes one workload; stg never synced.
+	for srt, want := range map[gen.ListK8sClustersParamsSort]string{
+		"syncStatus": "prd,stg", "-syncStatus": "stg,prd", "excludedCount": "stg,prd", "-excludedCount": "prd,stg",
+	} {
+		r, err := h.ListK8sClusters(ctx, gen.ListK8sClustersRequestObject{Params: gen.ListK8sClustersParams{Sort: &srt}})
+		must(t, err)
+		if got := names(r.(gen.ListK8sClusters200JSONResponse).Items, func(c gen.K8sCluster) string { return c.Name }); got != want {
+			t.Fatalf("clusters by %s: %s", srt, got)
+		}
 	}
 
 	// Update: switching to in_cluster drops the credential.

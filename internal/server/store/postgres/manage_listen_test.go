@@ -132,7 +132,7 @@ func TestManageListenLeasesConcurrent(t *testing.T) {
 		}(fmt.Sprintf("replica-%d", r))
 	}
 	wg.Wait()
-	all, err := db.ListListenTargets(ctx)
+	all, _, err := db.ListListenTargets(ctx, store.ListenTargetFilter{}, store.Page{Limit: 1000})
 	if err != nil {
 		t.Fatal(err)
 	}

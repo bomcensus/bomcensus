@@ -103,8 +103,15 @@ type ScanTarget struct {
 
 // ScanTargetFilter narrows ListScanTargets. Zero fields do not filter.
 type ScanTargetFilter struct {
-	Q       string // case-insensitive substring of name or address
-	ScopeID string
+	Q            string // case-insensitive substring of name or address
+	ScopeID      string
+	ScannerID    string
+	CredentialID string
+	// LastResult keeps targets whose last run had this result.
+	LastResult ScanResult
+	// Sort is one of name, address, lastRun, optionally prefixed with "-"
+	// for descending. Default name. Targets never run sort lowest.
+	Sort string
 }
 
 // ScanTargets stores SSH scan targets.
@@ -114,7 +121,7 @@ type ScanTargets interface {
 	// exist.
 	CreateScanTarget(ctx context.Context, t ScanTarget) (ScanTarget, error)
 	GetScanTarget(ctx context.Context, id string) (ScanTarget, error)
-	// ListScanTargets returns targets ordered by name and the total count.
+	// ListScanTargets returns targets in f.Sort order and the total count.
 	ListScanTargets(ctx context.Context, f ScanTargetFilter, p Page) ([]ScanTarget, int, error)
 	// UpdateScanTarget replaces name, address, port, credential, scanner,
 	// sudo, interval and integrity mode. Host key, asset and last run are

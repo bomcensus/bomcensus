@@ -92,44 +92,26 @@ func scanTargetDTO(t store.ScanTarget, pol integritysvc.Policy) gen.ScanTarget {
 // ListScanTargets implements listScanTargets.
 func (h *Handlers) ListScanTargets(ctx context.Context, req gen.ListScanTargetsRequestObject) (gen.ListScanTargetsResponseObject, error) {
 	p := req.Params
-	f := store.ScanTargetFilter{Q: deref(p.Q), ScopeID: deref(p.ScopeId)}
-	all, err := collectAll(func(pg store.Page) ([]store.ScanTarget, int, error) { return h.st.ListScanTargets(ctx, f, pg) })
+	f := store.ScanTargetFilter{
+		Q:            deref(p.Q),
+		ScopeID:      deref(p.ScopeId),
+		ScannerID:    deref(p.ScannerId),
+		CredentialID: deref(p.CredentialId),
+		LastResult:   store.ScanResult(deref(p.LastResult)),
+	}
+	if p.Sort != nil {
+		f.Sort = string(*p.Sort)
+	}
+	targets, total, err := h.st.ListScanTargets(ctx, f, pageOf(p.Limit, p.Offset))
 	if err != nil {
 		return nil, err
 	}
-	kept := all[:0]
-	for _, t := range all {
-		if (p.ScannerId == nil || t.ScannerID == *p.ScannerId) &&
-			(p.CredentialId == nil || t.CredentialID == *p.CredentialId) &&
-			(p.LastResult == nil || (t.LastRun != nil && string(t.LastRun.Result) == string(*p.LastResult))) {
-			kept = append(kept, t)
-		}
-	}
-	field, desc := parseSort(p.Sort, "name")
-	sortBy(kept, desc, func(x, y store.ScanTarget) int {
-		var c int
-		switch field {
-		case "address":
-			c = cmp.Compare(x.Address, y.Address)
-		case "lastRun":
-			var xa, ya *store.ScanRun = x.LastRun, y.LastRun
-			switch {
-			case xa == nil && ya != nil:
-				c = -1
-			case xa != nil && ya == nil:
-				c = 1
-			case xa != nil:
-				c = xa.At.Compare(ya.At)
-			}
-		}
-		return cmp.Or(c, cmpFold(x.Name, y.Name), cmp.Compare(x.ID, y.ID))
-	})
 	pol, err := integritysvc.Load(ctx, h.st)
 	if err != nil {
 		return nil, err
 	}
-	out := gen.ListScanTargets200JSONResponse{Items: []gen.ScanTarget{}, Total: len(kept)}
-	for _, t := range paginate(kept, pageOf(p.Limit, p.Offset)) {
+	out := gen.ListScanTargets200JSONResponse{Items: make([]gen.ScanTarget, 0, len(targets)), Total: total}
+	for _, t := range targets {
 		out.Items = append(out.Items, scanTargetDTO(t, pol))
 	}
 	return out, nil

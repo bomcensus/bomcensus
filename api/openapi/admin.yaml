@@ -390,6 +390,33 @@ paths:
         default:
           $ref: "#/components/responses/UnexpectedError"
 
+  /assets/{id}/processes/{processId}:
+    parameters:
+      - $ref: "#/components/parameters/PathId"
+      - name: processId
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      tags: [assets]
+      operationId: getAssetProcess
+      summary: One current process of an asset
+      description: "`404` when the asset has no current process with this id."
+      responses:
+        "200":
+          description: Process
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProcessInfo"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
   /assets/{id}/instances:
     parameters:
       - $ref: "#/components/parameters/PathId"
@@ -758,6 +785,7 @@ paths:
       tags: [kubernetes]
       operationId: listK8sClusters
       summary: List Kubernetes clusters
+      description: "Sort `syncStatus` puts failed clusters first, then never synced ones."
       parameters:
         - $ref: "#/components/parameters/QueryQ"
         - $ref: "#/components/parameters/QueryScopeId"
@@ -765,7 +793,7 @@ paths:
           in: query
           schema:
             type: string
-            enum: [name, "-name", version, "-version", connection, "-connection", execEnabled, "-execEnabled", workloadCount, "-workloadCount", lastSync, "-lastSync"]
+            enum: [name, "-name", version, "-version", connection, "-connection", execEnabled, "-execEnabled", workloadCount, "-workloadCount", excludedCount, "-excludedCount", syncStatus, "-syncStatus", lastSync, "-lastSync"]
             default: name
         - $ref: "#/components/parameters/QueryLimit"
         - $ref: "#/components/parameters/QueryOffset"
@@ -1001,13 +1029,20 @@ paths:
       tags: [agents]
       operationId: listAgents
       summary: List agents and scanners
-      description: "`q` matches hostname, description, address, id, OS and listen address."
+      description: |
+        `q` matches hostname, description, address, id, OS and listen address.
+        `outdated=true` keeps agents and scanners that are not revoked and either run another
+        version than the deployed one (update settings `targetVersion`) or are not `up_to_date`.
       parameters:
         - $ref: "#/components/parameters/QueryQ"
         - name: kind
           in: query
           schema:
             $ref: "#/components/schemas/AgentKind"
+        - name: outdated
+          in: query
+          schema:
+            type: boolean
         - name: status
           in: query
           schema:
@@ -1036,7 +1071,7 @@ paths:
           in: query
           schema:
             type: string
-            enum: [hostname, "-hostname", status, "-status", version, "-version", connMode, "-connMode", tlsMode, "-tlsMode", privilege, "-privilege", address, "-address", enrolledAt, "-enrolledAt", lastSeen, "-lastSeen"]
+            enum: [hostname, "-hostname", status, "-status", version, "-version", connMode, "-connMode", tlsMode, "-tlsMode", privilege, "-privilege", updateState, "-updateState", address, "-address", enrolledAt, "-enrolledAt", lastSeen, "-lastSeen"]
             default: hostname
         - $ref: "#/components/parameters/QueryLimit"
         - $ref: "#/components/parameters/QueryOffset"
@@ -2473,9 +2508,20 @@ paths:
       tags: [vulnerabilities]
       operationId: listVulnerableProcesses
       summary: Executables of processes that load vulnerable components
-      description: "Ordered by listening processes, then CVSS; items rated only negligible come last. `q` matches the executable path."
+      description: |
+        Ordered by listening processes, then CVSS; items rated only negligible come last. `q` matches the executable path.
+        Another `sort` orders by that field and keeps this order among equal values;
+        items without the value come last.
       parameters:
         - $ref: "#/components/parameters/QueryQ"
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [rank, exe, "-exe", score, "-score", cves, "-cves", assets, "-assets", listening, "-listening"]
+            default: rank
+        - $ref: "#/components/parameters/QuerySeverity"
+        - $ref: "#/components/parameters/QueryKev"
         - $ref: "#/components/parameters/QueryIncludeDeferred"
         - $ref: "#/components/parameters/QueryIncludeNegligible"
         - $ref: "#/components/parameters/QueryLimit"
@@ -2532,8 +2578,20 @@ paths:
         Every image with known content, running or not. Rules with a
         component scope apply; asset and group scopes do not, an image
         belonging to no asset. `q` matches digest and tags.
+        Ordered by running images, then known exploitation, EPSS and CVSS;
+        items rated only negligible come last. Another `sort` orders by that
+        field (`tag` is the first tag, else the digest) and keeps this order
+        among equal values; items without the value come last.
       parameters:
         - $ref: "#/components/parameters/QueryQ"
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [rank, tag, "-tag", score, "-score", epss, "-epss", cves, "-cves", components, "-components", containers, "-containers"]
+            default: rank
+        - $ref: "#/components/parameters/QuerySeverity"
+        - $ref: "#/components/parameters/QueryKev"
         - $ref: "#/components/parameters/QueryIncludeDeferred"
         - $ref: "#/components/parameters/QueryIncludeNegligible"
         - $ref: "#/components/parameters/QueryLimit"
@@ -2703,10 +2761,17 @@ paths:
         listed, with the counts of those assets. Read notices are left out
         unless `includeRead` is set; a read notice is unread again when an
         asset starts matching it after it was read (`newAssets`). Unread
-        notices come first, then the newest. `q` matches the id, title,
+        notices come first, then the newest (`sort` `rank`). `q` matches the id, title,
         summary, the CVE and advisory ids and the software names.
+        Another `sort` orders by that field; notices without a date come last.
       parameters:
         - $ref: "#/components/parameters/QueryQ"
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [rank, published, "-published", title, "-title", source, "-source", assets, "-assets", lastMatched, "-lastMatched"]
+            default: rank
         - name: source
           in: query
           description: Keep the notices of this source (`kisa`, `tmaxsoft`).
@@ -2905,6 +2970,12 @@ paths:
         SHA-256 form one item, most assets first. Findings an active allow rule
         hides are left out unless `includeAllowed`.
       parameters:
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [assets, "-assets", path, "-path", package, "-package", firstSeen, "-firstSeen", lastSeen, "-lastSeen"]
+            default: "-assets"
         - name: status
           in: query
           schema:

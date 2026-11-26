@@ -8,6 +8,7 @@
 import { Pencil, RefreshCw, Trash2 } from '@lucide/vue'
 import type { K8sWorkload } from '~/types'
 import type { TableColumn } from '~/types/table'
+import type { TriState } from '~/composables/useServerList'
 import {
   deleteK8sCluster,
   fetchAll,
@@ -55,7 +56,7 @@ const {
 } = useServerList(
   `k8s:${id}:workloads`,
   (p) => listK8sWorkloads(id, p as QueryOf<typeof listK8sWorkloads>),
-  { filters: { namespace: '' }, sort: 'namespace', url: true },
+  { filters: { namespace: '', excluded: '' as TriState }, sort: 'namespace', url: true },
 )
 const { data: namespaces } = useLoad(`k8s:${id}:namespaces`, async () => (await listK8sNamespaces(id)).items, () => [])
 
@@ -257,6 +258,7 @@ async function remove() {
       <FilterBar :count="workloadTotal" unit="개" class="mt-4">
         <SearchInput v-model="q" placeholder="이름, namespace, 종류" />
         <SelectFilter v-model="filters.namespace" label="namespace" :options="namespaceOptions" />
+        <SelectFilter v-model="filters.excluded" label="수집" :options="triStateOptions('제외됨', '수집 대상')" />
       </FilterBar>
 
       <Panel title="워크로드" flush>

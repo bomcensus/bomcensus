@@ -196,4 +196,57 @@ func TestVulnerableProcesses(t *testing.T) {
 	}
 	_, err = f.h.GetVulnerableProcess(ctx, gen.GetVulnerableProcessRequestObject{Params: gen.GetVulnerableProcessParams{Exe: "/nope"}})
 	wantStatus(t, "unknown process", err, http.StatusNotFound)
+
+	// Filters and sorts: nginx loads CVE-C, rated high and not known exploited.
+	yes, no := true, false
+	high, critical := gen.SeverityHigh, gen.SeverityCritical
+	for name, c := range map[string]struct {
+		prm  gen.ListVulnerableProcessesParams
+		want int
+	}{
+		"kev":          {gen.ListVulnerableProcessesParams{Kev: &yes}, 0},
+		"not kev":      {gen.ListVulnerableProcessesParams{Kev: &no}, 1},
+		"high":         {gen.ListVulnerableProcessesParams{Severity: &high}, 1},
+		"critical":     {gen.ListVulnerableProcessesParams{Severity: &critical}, 0},
+		"by score":     {gen.ListVulnerableProcessesParams{Sort: ptr(gen.ListVulnerableProcessesParamsSort("-score"))}, 1},
+		"by exe":       {gen.ListVulnerableProcessesParams{Sort: ptr(gen.ListVulnerableProcessesParamsSortExe)}, 1},
+		"by listening": {gen.ListVulnerableProcessesParams{Sort: ptr(gen.ListVulnerableProcessesParamsSort("-listening"))}, 1},
+	} {
+		pl, err := f.h.ListVulnerableProcesses(ctx, gen.ListVulnerableProcessesRequestObject{Params: c.prm})
+		must(t, err)
+		if l := pl.(gen.ListVulnerableProcesses200JSONResponse); l.Total != c.want {
+			t.Fatalf("processes %s: %+v", name, l)
+		}
+	}
+	_, err = f.h.ListVulnerableProcesses(ctx, gen.ListVulnerableProcessesRequestObject{Params: gen.ListVulnerableProcessesParams{
+		Sort: ptr(gen.ListVulnerableProcessesParamsSort("pid"))}})
+	wantStatus(t, "unknown process sort", err, http.StatusBadRequest)
+
+	// Images: the nginx image holds CVE-C.
+	il, err := f.h.ListVulnerableImages(ctx, gen.ListVulnerableImagesRequestObject{})
+	must(t, err)
+	all := il.(gen.ListVulnerableImages200JSONResponse)
+	if all.Total == 0 {
+		t.Fatalf("images %+v", all)
+	}
+	for name, c := range map[string]struct {
+		prm  gen.ListVulnerableImagesParams
+		want int
+	}{
+		"kev":      {gen.ListVulnerableImagesParams{Kev: &yes}, 0},
+		"not kev":  {gen.ListVulnerableImagesParams{Kev: &no}, all.Total},
+		"high":     {gen.ListVulnerableImagesParams{Severity: &high}, all.Total},
+		"critical": {gen.ListVulnerableImagesParams{Severity: &critical}, 0},
+		"by tag":   {gen.ListVulnerableImagesParams{Sort: ptr(gen.ListVulnerableImagesParamsSortTag)}, all.Total},
+		"by cves":  {gen.ListVulnerableImagesParams{Sort: ptr(gen.ListVulnerableImagesParamsSort("-cves"))}, all.Total},
+	} {
+		il, err := f.h.ListVulnerableImages(ctx, gen.ListVulnerableImagesRequestObject{Params: c.prm})
+		must(t, err)
+		if l := il.(gen.ListVulnerableImages200JSONResponse); l.Total != c.want {
+			t.Fatalf("images %s: %+v", name, l)
+		}
+	}
+	_, err = f.h.ListVulnerableImages(ctx, gen.ListVulnerableImagesRequestObject{Params: gen.ListVulnerableImagesParams{
+		Sort: ptr(gen.ListVulnerableImagesParamsSort("digest"))}})
+	wantStatus(t, "unknown image sort", err, http.StatusBadRequest)
 }

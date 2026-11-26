@@ -3081,6 +3081,42 @@ export type ListAssetProcessesResponses = {
 
 export type ListAssetProcessesResponse = ListAssetProcessesResponses[keyof ListAssetProcessesResponses];
 
+export type GetAssetProcessData = {
+    body?: never;
+    path: {
+        id: string;
+        processId: string;
+    };
+    query?: never;
+    url: '/assets/{id}/processes/{processId}';
+};
+
+export type GetAssetProcessErrors = {
+    /**
+     * No valid session, or wrong credentials on login.
+     */
+    401: Error;
+    /**
+     * The resource does not exist.
+     */
+    404: Error;
+    /**
+     * Unexpected error.
+     */
+    default: Error;
+};
+
+export type GetAssetProcessError = GetAssetProcessErrors[keyof GetAssetProcessErrors];
+
+export type GetAssetProcessResponses = {
+    /**
+     * Process
+     */
+    200: ProcessInfo;
+};
+
+export type GetAssetProcessResponse = GetAssetProcessResponses[keyof GetAssetProcessResponses];
+
 export type ListAssetInstancesData = {
     body?: never;
     path: {
@@ -3527,7 +3563,7 @@ export type ListK8sClustersData = {
          * Keep the records of this data scope.
          */
         scopeId?: string;
-        sort?: 'name' | '-name' | 'version' | '-version' | 'connection' | '-connection' | 'execEnabled' | '-execEnabled' | 'workloadCount' | '-workloadCount' | 'lastSync' | '-lastSync';
+        sort?: 'name' | '-name' | 'version' | '-version' | 'connection' | '-connection' | 'execEnabled' | '-execEnabled' | 'workloadCount' | '-workloadCount' | 'excludedCount' | '-excludedCount' | 'syncStatus' | '-syncStatus' | 'lastSync' | '-lastSync';
         limit?: number;
         offset?: number;
     };
@@ -3893,13 +3929,14 @@ export type ListAgentsData = {
          */
         q?: string;
         kind?: AgentKind;
+        outdated?: boolean;
         status?: AgentStatus;
         connMode?: ConnMode;
         tlsMode?: TlsMode;
         updateState?: UpdateState;
         registerKeyId?: string;
         version?: string;
-        sort?: 'hostname' | '-hostname' | 'status' | '-status' | 'version' | '-version' | 'connMode' | '-connMode' | 'tlsMode' | '-tlsMode' | 'privilege' | '-privilege' | 'address' | '-address' | 'enrolledAt' | '-enrolledAt' | 'lastSeen' | '-lastSeen';
+        sort?: 'hostname' | '-hostname' | 'status' | '-status' | 'version' | '-version' | 'connMode' | '-connMode' | 'tlsMode' | '-tlsMode' | 'privilege' | '-privilege' | 'updateState' | '-updateState' | 'address' | '-address' | 'enrolledAt' | '-enrolledAt' | 'lastSeen' | '-lastSeen';
         limit?: number;
         offset?: number;
     };
@@ -5969,6 +6006,15 @@ export type ListVulnerableProcessesData = {
          * Free-text search, case-insensitive substring match.
          */
         q?: string;
+        sort?: 'rank' | 'exe' | '-exe' | 'score' | '-score' | 'cves' | '-cves' | 'assets' | '-assets' | 'listening' | '-listening';
+        /**
+         * Keep items with a vulnerability of this rating.
+         */
+        severity?: Severity;
+        /**
+         * Keep items with a known exploited vulnerability.
+         */
+        kev?: boolean;
         /**
          * Keep findings an active triage rule defers.
          */
@@ -6056,6 +6102,15 @@ export type ListVulnerableImagesData = {
          * Free-text search, case-insensitive substring match.
          */
         q?: string;
+        sort?: 'rank' | 'tag' | '-tag' | 'score' | '-score' | 'epss' | '-epss' | 'cves' | '-cves' | 'components' | '-components' | 'containers' | '-containers';
+        /**
+         * Keep items with a vulnerability of this rating.
+         */
+        severity?: Severity;
+        /**
+         * Keep items with a known exploited vulnerability.
+         */
+        kev?: boolean;
         /**
          * Keep findings an active triage rule defers.
          */
@@ -6285,6 +6340,7 @@ export type ListNoticesData = {
          * Free-text search, case-insensitive substring match.
          */
         q?: string;
+        sort?: 'rank' | 'published' | '-published' | 'title' | '-title' | 'source' | '-source' | 'assets' | '-assets' | 'lastMatched' | '-lastMatched';
         /**
          * Keep the notices of this source (`kisa`, `tmaxsoft`).
          */
@@ -6565,6 +6621,7 @@ export type ListIntegrityFilesData = {
     body?: never;
     path?: never;
     query?: {
+        sort?: 'assets' | '-assets' | 'path' | '-path' | 'package' | '-package' | 'firstSeen' | '-firstSeen' | 'lastSeen' | '-lastSeen';
         status?: IntegrityStatus;
         assetId?: string;
         /**

@@ -58,6 +58,9 @@ type NoticeFilter struct {
 	Q string
 	// IncludeRead keeps notices that are read.
 	IncludeRead bool
+	// Sort is "" (unread first, then the newest), published, title,
+	// source, assets or last_matched, prefixed with "-" for descending.
+	Sort string
 }
 
 // NoticeRow is a notice with what matches it in the scope.

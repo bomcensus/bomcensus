@@ -165,6 +165,7 @@ func Run(ctx context.Context, cfg config.Config, log *slog.Logger, opts Options)
 	if err := migrateStore(ctx, db); err != nil {
 		return err
 	}
+	warnSearchIndexes(ctx, db, log)
 	dets, err := detectorsvc.New(detectorsvc.Config{Store: db, DefaultFile: cfg.DetectorsFile,
 		Logger: log.With("component", "detectors")})
 	if err != nil {

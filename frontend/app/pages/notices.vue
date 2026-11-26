@@ -8,7 +8,7 @@
 import type { NoticeMatch } from '~/types'
 import type { TableColumn } from '~/types/table'
 import { ExternalLink } from '@lucide/vue'
-import { getNotice, getNoticeSummary, listNotices, markNoticesRead, markNoticesUnread, toApiError } from '~/api'
+import { getNotice, getNoticeSummary, listNotices, markNoticesRead, markNoticesUnread, toApiError, type QueryOf } from '~/api'
 
 useHead({ title: '보안 공지 · bomcensus' })
 
@@ -28,6 +28,16 @@ function go(id: string) {
 const q = ref('')
 const source = ref('')
 const showRead = ref(false)
+// 'rank' is the server's order (unread first, then the newest) and stays out of the query.
+const sort = ref('rank')
+const sortOptions = [
+  { value: 'rank', label: '안 읽은 것, 최신순' },
+  { value: '-published', label: '공지일 최신순' },
+  { value: 'published', label: '공지일 오래된 순' },
+  { value: '-assets', label: '자산 많은 순' },
+  { value: '-lastMatched', label: '최근 일치순' },
+  { value: 'title', label: '제목순' },
+]
 const qDebounced = ref('')
 let qTimer: ReturnType<typeof setTimeout> | undefined
 watch(q, (v) => {
@@ -42,6 +52,7 @@ const conditions = computed(() => ({
   q: qDebounced.value || undefined,
   source: source.value || undefined,
   includeRead: showRead.value ? true : undefined,
+  sort: sort.value === 'rank' ? undefined : (sort.value as QueryOf<typeof listNotices>['sort']),
 }))
 watch([() => JSON.stringify(conditions.value), size], () => (page.value = 0))
 const filters = computed(() => ({ ...conditions.value, limit: size.value, offset: page.value * size.value }))
@@ -117,6 +128,12 @@ const matchedAssets = computed(() => new Set(detail.value?.matches.map((m) => m.
       <label class="inline-flex items-center gap-1.5 text-sm">
         <input v-model="showRead" type="checkbox" class="size-[15px] accent-(--accent)" /> 읽은 공지 포함
         <span v-if="summary" class="mono text-xs text-ink-3">{{ summary.total - summary.unread }}</span>
+      </label>
+      <label class="inline-flex items-center">
+        <span class="sr-only">정렬</span>
+        <select v-model="sort" class="select max-w-44" :class="sort !== 'rank' ? 'border-accent text-accent' : ''">
+          <option v-for="o in sortOptions" :key="o.value" :value="o.value">정렬: {{ o.label }}</option>
+        </select>
       </label>
       <template v-if="checked.length">
         <AppButton size="sm" :disabled="busy" @click="mark(checked, true)">읽음으로 표시 ({{ checked.length }})</AppButton>

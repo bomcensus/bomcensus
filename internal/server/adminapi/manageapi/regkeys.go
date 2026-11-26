@@ -5,7 +5,6 @@
 package manageapi
 
 import (
-	"cmp"
 	"context"
 	"net/netip"
 	"slices"
@@ -68,39 +67,23 @@ func registerKeyDTO(k store.RegisterKey, now time.Time) gen.RegisterKey {
 // ListRegisterKeys implements listRegisterKeys.
 func (h *Handlers) ListRegisterKeys(ctx context.Context, req gen.ListRegisterKeysRequestObject) (gen.ListRegisterKeysResponseObject, error) {
 	p := req.Params
-	f := store.RegisterKeyFilter{Q: deref(p.Q), Target: store.AgentKind(deref(p.Target)), ScopeID: deref(p.ScopeId)}
-	all, err := collectAll(func(pg store.Page) ([]store.RegisterKey, int, error) { return h.st.ListRegisterKeys(ctx, f, pg) })
+	now := h.now()
+	f := store.RegisterKeyFilter{
+		Q:       deref(p.Q),
+		Target:  store.AgentKind(deref(p.Target)),
+		ScopeID: deref(p.ScopeId),
+		State:   string(deref(p.State)),
+		Now:     now,
+	}
+	if p.Sort != nil {
+		f.Sort = string(*p.Sort)
+	}
+	keys, total, err := h.st.ListRegisterKeys(ctx, f, pageOf(p.Limit, p.Offset))
 	if err != nil {
 		return nil, err
 	}
-	now := h.now()
-	kept := all[:0]
-	for _, k := range all {
-		if p.State == nil || registerKeyState(k, now) == *p.State {
-			kept = append(kept, k)
-		}
-	}
-	field, desc := parseSort(p.Sort, "-createdAt")
-	sortBy(kept, desc, func(x, y store.RegisterKey) int {
-		var c int
-		switch field {
-		case "name":
-			c = cmpFold(x.Name, y.Name)
-		case "target":
-			c = cmp.Compare(x.Target, y.Target)
-		case "state":
-			c = cmp.Compare(registerKeyState(x, now), registerKeyState(y, now))
-		case "expiresAt":
-			c = cmpTime(x.ExpiresAt, y.ExpiresAt)
-		case "usedCount":
-			c = cmp.Compare(x.UsedCount, y.UsedCount)
-		case "approval":
-			c = cmp.Compare(x.Approval, y.Approval)
-		}
-		return cmp.Or(c, x.CreatedAt.Compare(y.CreatedAt), cmp.Compare(x.ID, y.ID))
-	})
-	out := gen.ListRegisterKeys200JSONResponse{Items: []gen.RegisterKey{}, Total: len(kept)}
-	for _, k := range paginate(kept, pageOf(p.Limit, p.Offset)) {
+	out := gen.ListRegisterKeys200JSONResponse{Items: make([]gen.RegisterKey, 0, len(keys)), Total: total}
+	for _, k := range keys {
 		out.Items = append(out.Items, registerKeyDTO(k, now))
 	}
 	return out, nil

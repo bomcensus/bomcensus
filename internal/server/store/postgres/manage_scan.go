@@ -255,28 +255,43 @@ func (d *DB) GetScanTarget(ctx context.Context, id string) (store.ScanTarget, er
 	return t, nil
 }
 
-// mgScanTargetWhere filters with $1 q, $2 scope id and the scope of the
-// call.
+// mgScanTargetWhere filters with $1 q, $2 scope id, $3 scanner id, $4
+// credential id, $5 last result and the scope of the call.
 func mgScanTargetWhere(sc sqlScope) string {
 	return `
 	WHERE ($1 = '' OR strpos(lower(name), lower($1)) > 0 OR strpos(lower(address), lower($1)) > 0)
-	  AND ($2 = '' OR scope_id = $2) AND ` + sc.col("scope_id")
+	  AND ($2 = '' OR scope_id = $2)
+	  AND ($3 = '' OR scanner_id::text = $3)
+	  AND ($4 = '' OR credential_id::text = $4)
+	  AND ($5 = '' OR (last_run_at IS NOT NULL AND last_run_result = $5))
+	  AND ` + sc.col("scope_id")
+}
+
+var mgScanTargetSort = map[string]string{
+	"name":    "lower(name)",
+	"address": "address",
+	"lastRun": "last_run_at",
 }
 
 // ListScanTargets implements store.ScanTargets.
 func (d *DB) ListScanTargets(ctx context.Context, f store.ScanTargetFilter, p store.Page) ([]store.ScanTarget, int, error) {
+	const op = "list scan targets"
 	p = p.Normalize()
-	q, sc, err := scoped(ctx, "list scan targets", f.Q, f.ScopeID)
+	order, err := mgOrder(op, f.Sort, "name", mgScanTargetSort, true, "lower(name), id")
+	if err != nil {
+		return nil, 0, err
+	}
+	q, sc, err := scoped(ctx, op, f.Q, f.ScopeID, f.ScannerID, f.CredentialID, string(f.LastResult))
 	if err != nil {
 		return nil, 0, err
 	}
 	args := q.args
 	n := len(args)
 	rows, err := d.q.Query(ctx, `SELECT `+mgScanTargetColumns+`, count(*) OVER () FROM scan_targets`+
-		mgScanTargetWhere(sc)+fmt.Sprintf(` ORDER BY name, id LIMIT $%d OFFSET $%d`, n+1, n+2),
+		mgScanTargetWhere(sc)+order+fmt.Sprintf(` LIMIT $%d OFFSET $%d`, n+1, n+2),
 		append(args, p.Limit, p.Offset)...)
 	if err != nil {
-		return nil, 0, mgErr("list scan targets", err)
+		return nil, 0, mgErr(op, err)
 	}
 	defer rows.Close()
 	out := []store.ScanTarget{}
@@ -284,16 +299,16 @@ func (d *DB) ListScanTargets(ctx context.Context, f store.ScanTargetFilter, p st
 	for rows.Next() {
 		t, err := mgScanScanTarget(rows, &total)
 		if err != nil {
-			return nil, 0, mgErr("list scan targets", err)
+			return nil, 0, mgErr(op, err)
 		}
 		out = append(out, t)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, 0, mgErr("list scan targets", err)
+		return nil, 0, mgErr(op, err)
 	}
 	if len(out) == 0 && p.Offset > 0 {
 		if err := d.q.QueryRow(ctx, `SELECT count(*) FROM scan_targets`+mgScanTargetWhere(sc), args[:n]...).Scan(&total); err != nil {
-			return nil, 0, mgErr("list scan targets", err)
+			return nil, 0, mgErr(op, err)
 		}
 	}
 	return out, total, nil

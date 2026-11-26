@@ -305,6 +305,12 @@ func (d *DB) ListProcesses(ctx context.Context, f store.ProcessFilter, p store.P
 		}
 		q.where("p.asset_id = %s", f.AssetID)
 	}
+	if f.ID != "" {
+		if !ivValidID(f.ID) {
+			return nil, 0, nil
+		}
+		q.where("p.id = %s", f.ID)
+	}
 	if f.Container != nil {
 		q.where("p.container = %s", *f.Container)
 	}
@@ -322,7 +328,16 @@ func (d *DB) ListProcesses(ctx context.Context, f store.ProcessFilter, p store.P
 	if f.ExeState != "" {
 		q.where("p.exe_state = %s", f.ExeState)
 	}
-	if f.Q != "" {
+	switch {
+	case f.Q == "":
+	case f.AssetID == "" && d.useTrigram(ctx, f.Q):
+		// Each branch reads one table so the trigram indexes apply; the OR
+		// across the join below scans every process.
+		q.where(`p.id IN (SELECT x.id FROM processes x WHERE x.exe ILIKE %[1]s OR x.user_name ILIKE %[1]s
+				OR x.cmdline ILIKE %[1]s OR x.pid::text ILIKE %[1]s
+			UNION ALL SELECT x.id FROM processes x JOIN assets xa ON xa.id = x.asset_id WHERE xa.name ILIKE %[1]s)`,
+			ivLike(f.Q))
+	default:
 		q.where(`(p.exe ILIKE %[1]s OR p.user_name ILIKE %[1]s OR p.cmdline ILIKE %[1]s
 			OR p.pid::text ILIKE %[1]s OR a.name ILIKE %[1]s)`, ivLike(f.Q))
 	}

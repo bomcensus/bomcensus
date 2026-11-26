@@ -34,6 +34,16 @@ func TestIntegrityAPI(t *testing.T) {
 	if len(gs) != 1 || gs[0].Assets != 2 || *gs[0].ActualSha256 != sha || gs[0].Algo != "md5" {
 		t.Fatalf("files %+v", gs)
 	}
+	for _, srt := range []gen.ListIntegrityFilesParamsSort{"path", "-package", "lastSeen", "-firstSeen", "assets"} {
+		r, err := f.h.ListIntegrityFiles(ctx, gen.ListIntegrityFilesRequestObject{Params: gen.ListIntegrityFilesParams{Sort: &srt}})
+		must(t, err)
+		if l := r.(gen.ListIntegrityFiles200JSONResponse); l.Total != 1 {
+			t.Fatalf("sort %s: %+v", srt, l)
+		}
+	}
+	_, err := f.h.ListIntegrityFiles(ctx, gen.ListIntegrityFilesRequestObject{Params: gen.ListIntegrityFilesParams{
+		Sort: ptr(gen.ListIntegrityFilesParamsSort("status"))}})
+	wantStatus(t, "unknown integrity sort", err, http.StatusBadRequest)
 	nodes, err := f.h.ListIntegrityFileNodes(ctx, gen.ListIntegrityFileNodesRequestObject{Params: gen.ListIntegrityFileNodesParams{
 		Path: page, Status: "modified", Sha256: &sha}})
 	must(t, err)

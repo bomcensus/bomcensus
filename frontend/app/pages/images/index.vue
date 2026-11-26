@@ -7,6 +7,7 @@
 <script setup lang="ts">
 import type { ContainerImage } from '~/types'
 import type { TableColumn } from '~/types/table'
+import type { TriState } from '~/composables/useServerList'
 import { listImages, type QueryOf } from '~/api'
 
 useHead({ title: '이미지 · bomcensus' })
@@ -14,7 +15,7 @@ useHead({ title: '이미지 · bomcensus' })
 const { items, total, pending, error, refresh, q, filters, sort, page, size } = useServerList(
   'images',
   (p) => listImages(p as QueryOf<typeof listImages>),
-  { filters: { inUse: false, contentKnown: false }, sort: 'tag', url: true },
+  { filters: { inUse: false, contentKnown: '' as TriState }, sort: 'tag', url: true },
 )
 
 const columns: TableColumn<ContainerImage>[] = [
@@ -37,9 +38,7 @@ const columns: TableColumn<ContainerImage>[] = [
       <label class="inline-flex items-center gap-1.5 text-sm">
         <input v-model="filters.inUse" type="checkbox" class="accent-(--accent)" /> 사용 중인 것만
       </label>
-      <label class="inline-flex items-center gap-1.5 text-sm">
-        <input v-model="filters.contentKnown" type="checkbox" class="accent-(--accent)" /> 내용 확인된 것만
-      </label>
+      <SelectFilter v-model="filters.contentKnown" label="내용" :options="triStateOptions('확인됨', '확인 안 됨')" />
     </FilterBar>
 
     <Panel flush>

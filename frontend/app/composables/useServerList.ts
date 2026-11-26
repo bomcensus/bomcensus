@@ -9,13 +9,19 @@ import { type ApiError, toApiError } from '~/api'
 /** A filter value. '' and false do not filter. */
 export type FilterValue = string | boolean
 
+/**
+ * A yes/no filter with "All" (a select, see triStateOptions): '' does not filter, 'true' and 'false' are sent as
+ * that boolean. Declare it as `excluded: '' as TriState`.
+ */
+export type TriState = '' | 'true' | 'false'
+
 /** What the loader of a server list receives: a page, the sort, the search and the filters that are set. */
 export type ListParams<F extends Record<string, FilterValue>> = {
   limit: number
   offset: number
   sort?: string
   q?: string
-} & { [K in keyof F]?: F[K] extends boolean ? true : string }
+} & { [K in keyof F]?: F[K] extends boolean ? true : F[K] extends TriState ? boolean : string }
 
 export interface ServerListOptions<F extends Record<string, FilterValue>> {
   /** Filters with their initial ("All") values */
@@ -110,12 +116,19 @@ export function useServerList<T, F extends Record<string, FilterValue> = Record<
   })
   onScopeDispose(() => clearTimeout(timer))
 
-  const activeFilters = computed(() => {
+  // The filters that are set, as in the URL: true, or a string.
+  const setFilters = computed(() => {
     const out: Record<string, string | true> = {}
     for (const [name, v] of Object.entries(filters as Record<string, FilterValue>)) {
       if (v === true) out[name] = true
       else if (typeof v === 'string' && v !== '') out[name] = v
     }
+    return out
+  })
+  // The filters as sent: a TriState value becomes a boolean.
+  const activeFilters = computed(() => {
+    const out: Record<string, string | boolean> = {}
+    for (const [name, v] of Object.entries(setFilters.value)) out[name] = v === 'true' ? true : v === 'false' ? false : v
     return out
   })
 
@@ -161,7 +174,7 @@ export function useServerList<T, F extends Record<string, FilterValue> = Record<
   })
 
   if (options.url) {
-    watch([qSent, activeFilters, sort, page, size], () => {
+    watch([qSent, setFilters, sort, page, size], () => {
       const query: LocationQueryRaw = { ...router.currentRoute.value.query }
       const set = (name: string, v: string | undefined) => {
         if (v === undefined || v === '') delete query[prefix + name]
@@ -169,7 +182,7 @@ export function useServerList<T, F extends Record<string, FilterValue> = Record<
       }
       set('q', qSent.value)
       for (const name of Object.keys(initialFilters)) {
-        const v = activeFilters.value[name]
+        const v = setFilters.value[name]
         set(name, v === true ? '1' : v)
       }
       set('sort', sort.value === defaultSort ? undefined : sort.value)

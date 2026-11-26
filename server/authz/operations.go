@@ -50,6 +50,8 @@ const (
 	OpGetAsset = "GetAsset"
 	// OpGetAssetIntegrity is GET /assets/{id}/integrity.
 	OpGetAssetIntegrity = "GetAssetIntegrity"
+	// OpGetAssetProcess is GET /assets/{id}/processes/{processId}.
+	OpGetAssetProcess = "GetAssetProcess"
 	// OpGetComponent is GET /components/{id}.
 	OpGetComponent = "GetComponent"
 	// OpGetCurrentUser is GET /auth/me.
@@ -252,6 +254,7 @@ var operations = []string{
 	OpGetAgent,
 	OpGetAsset,
 	OpGetAssetIntegrity,
+	OpGetAssetProcess,
 	OpGetComponent,
 	OpGetCurrentUser,
 	OpGetDashboard,

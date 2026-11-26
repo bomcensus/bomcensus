@@ -46,7 +46,7 @@ func (h *Handlers) ListK8sClusters(ctx context.Context, req gen.ListK8sClustersR
 	f.ScopeID = deref(prm.ScopeId)
 	if f.Sort, err = sortKey(prm.Sort, map[string]string{
 		"name": "name", "version": "version", "connection": "connection", "execEnabled": "exec_enabled",
-		"workloadCount": "workloads", "lastSync": "last_sync",
+		"workloadCount": "workloads", "excludedCount": "excluded", "syncStatus": "sync_status", "lastSync": "last_sync",
 	}); err != nil {
 		return nil, err
 	}

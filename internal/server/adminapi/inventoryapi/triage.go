@@ -316,11 +316,13 @@ func processDTO(r store.VulnProcessRow) gen.VulnProcess {
 // ListVulnerableProcesses implements gen.StrictServerInterface.
 func (h *Handlers) ListVulnerableProcesses(ctx context.Context, req gen.ListVulnerableProcessesRequestObject) (gen.ListVulnerableProcessesResponseObject, error) {
 	prm := req.Params
-	rows, err := h.cfg.Store.VulnProcesses(ctx, h.viewOptions(prm.IncludeDeferred, prm.IncludeNegligible, nil))
+	rows, err := h.cfg.Store.VulnProcesses(ctx, h.viewOptions(prm.IncludeDeferred, prm.IncludeNegligible, prm.Severity))
 	if err != nil {
 		return nil, err
 	}
-	rows = slices.DeleteFunc(rows, func(r store.VulnProcessRow) bool { return !textMatches(prm.Q, r.Exe) })
+	rows = slices.DeleteFunc(rows, func(r store.VulnProcessRow) bool {
+		return !hasSeverity(r.Severity, prm.Severity) || !kevMatches(r.KEV, prm.Kev) || !textMatches(prm.Q, r.Exe)
+	})
 	slices.SortStableFunc(rows, func(a, b store.VulnProcessRow) int {
 		if c := negligibleLast(negligibleOnly(a.Severity, len(a.VulnIDs)), negligibleOnly(b.Severity, len(b.VulnIDs))); c != 0 {
 			return c
@@ -339,6 +341,15 @@ func (h *Handlers) ListVulnerableProcesses(ctx context.Context, req gen.ListVuln
 		}
 		return cmp.Compare(a.Exe, b.Exe)
 	})
+	if err := resort(rows, prm.Sort, map[string]sortField[store.VulnProcessRow]{
+		"exe":       textField(func(r store.VulnProcessRow) string { return r.Exe }),
+		"score":     numField(func(r store.VulnProcessRow) *float64 { return r.MaxScore }),
+		"cves":      intField(func(r store.VulnProcessRow) int { return len(r.VulnIDs) }),
+		"assets":    intField(func(r store.VulnProcessRow) int { return r.Assets }),
+		"listening": intField(func(r store.VulnProcessRow) int { return r.Listening }),
+	}); err != nil {
+		return nil, err
+	}
 	pg, err := pageSlice(rows, prm.Limit, prm.Offset)
 	if err != nil {
 		return nil, err
@@ -419,11 +430,14 @@ func imageDTO(r store.VulnImageRow) gen.VulnImage {
 // ListVulnerableImages implements gen.StrictServerInterface.
 func (h *Handlers) ListVulnerableImages(ctx context.Context, req gen.ListVulnerableImagesRequestObject) (gen.ListVulnerableImagesResponseObject, error) {
 	prm := req.Params
-	rows, err := h.cfg.Store.VulnImages(ctx, h.viewOptions(prm.IncludeDeferred, prm.IncludeNegligible, nil))
+	rows, err := h.cfg.Store.VulnImages(ctx, h.viewOptions(prm.IncludeDeferred, prm.IncludeNegligible, prm.Severity))
 	if err != nil {
 		return nil, err
 	}
-	rows = slices.DeleteFunc(rows, func(r store.VulnImageRow) bool { return !textMatches(prm.Q, append([]string{r.Digest}, r.Tags...)...) })
+	rows = slices.DeleteFunc(rows, func(r store.VulnImageRow) bool {
+		return !hasSeverity(r.Severity, prm.Severity) || !kevMatches(r.KEV, prm.Kev) ||
+			!textMatches(prm.Q, append([]string{r.Digest}, r.Tags...)...)
+	})
 	slices.SortStableFunc(rows, func(a, b store.VulnImageRow) int {
 		if c := negligibleLast(negligibleOnly(a.Severity, len(a.VulnIDs)), negligibleOnly(b.Severity, len(b.VulnIDs))); c != 0 {
 			return c
@@ -436,6 +450,21 @@ func (h *Handlers) ListVulnerableImages(ctx context.Context, req gen.ListVulnera
 		}
 		return cmpRank(0, 0, a.KEV > 0, b.KEV > 0, a.MaxEPSS, b.MaxEPSS, a.MaxScore, b.MaxScore, a.Digest, b.Digest)
 	})
+	if err := resort(rows, prm.Sort, map[string]sortField[store.VulnImageRow]{
+		"tag": textField(func(r store.VulnImageRow) string {
+			if len(r.Tags) > 0 {
+				return r.Tags[0]
+			}
+			return r.Digest
+		}),
+		"score":      numField(func(r store.VulnImageRow) *float64 { return r.MaxScore }),
+		"epss":       numField(func(r store.VulnImageRow) *float64 { return r.MaxEPSS }),
+		"cves":       intField(func(r store.VulnImageRow) int { return len(r.VulnIDs) }),
+		"components": intField(func(r store.VulnImageRow) int { return r.Components }),
+		"containers": intField(func(r store.VulnImageRow) int { return r.Containers }),
+	}); err != nil {
+		return nil, err
+	}
 	pg, err := pageSlice(rows, prm.Limit, prm.Offset)
 	if err != nil {
 		return nil, err

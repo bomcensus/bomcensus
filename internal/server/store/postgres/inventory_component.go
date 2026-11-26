@@ -556,14 +556,14 @@ func (d *DB) ListAssetComponents(ctx context.Context, assetID string, f store.As
 	const op = "list asset components"
 	order, err := ivOrder(op, f.Sort, "name", map[string]string{
 		"name":       "c.name",
-		"version":    "c.version",
+		"version":    "c.version_key",
 		"type":       "c.type",
 		"origin":     "c.origin",
 		"method":     "r.method",
 		"in_use":     "r.in_use",
 		"container":  "r.container",
 		"first_seen": "r.first_seen",
-	}, "c.name, c.version, r.container, r.layer, r.source, c.id, r.first_seen")
+	}, "c.name, c.version_key, r.container, r.layer, r.source, c.id, r.first_seen")
 	if err != nil {
 		return nil, 0, err
 	}
@@ -667,13 +667,13 @@ func (d *DB) ListComponents(ctx context.Context, f store.ComponentFilter, p stor
 	const op = "list components"
 	order, err := ivOrder(op, f.Sort, "name", map[string]string{
 		"name":    "c.name",
-		"version": "c.version",
+		"version": "c.version_key",
 		"type":    "c.type",
 		"origin":  "c.origin",
 		"purl":    "c.purl",
 		"assets":  "c.assets",
 		"running": "c.running",
-	}, "c.name, c.version, c.id")
+	}, "c.name, c.version_key, c.id")
 	if err != nil {
 		return nil, 0, err
 	}
@@ -801,10 +801,10 @@ func (d *DB) ListImageComponents(ctx context.Context, digest string, f store.Ima
 	const op = "list image components"
 	order, err := ivOrder(op, f.Sort, "name", map[string]string{
 		"name":    "c.name",
-		"version": "c.version",
+		"version": "c.version_key",
 		"type":    "c.type",
 		"source":  "r.source",
-	}, "c.name, c.version, r.source, c.id")
+	}, "c.name, c.version_key, r.source, c.id")
 	if err != nil {
 		return nil, 0, err
 	}

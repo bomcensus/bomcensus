@@ -59,6 +59,13 @@ func (h *Handlers) ListNotices(ctx context.Context, req gen.ListNoticesRequestOb
 		return nil, apierr.Invalid("source must be at most 32 bytes")
 	}
 	f := store.NoticeFilter{Q: q, Source: source, IncludeRead: prm.IncludeRead != nil && *prm.IncludeRead}
+	if prm.Sort != nil && *prm.Sort != gen.ListNoticesParamsSortRank {
+		if f.Sort, err = sortKey(prm.Sort, map[string]string{
+			"published": "published", "title": "title", "source": "source", "assets": "assets", "lastMatched": "last_matched",
+		}); err != nil {
+			return nil, err
+		}
+	}
 	rows, total, err := h.cfg.Store.ListNotices(ctx, f, p)
 	if err != nil {
 		return nil, err

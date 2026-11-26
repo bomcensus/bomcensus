@@ -323,18 +323,28 @@ func cmpDesc(a, b *float64) int {
 	return cmp.Compare(*b, *a)
 }
 
+// hasSeverity tells whether an aggregate has a vulnerability rated sev;
+// nil matches any.
+func hasSeverity(c store.SeverityCounts, sev *gen.Severity) bool {
+	if sev == nil {
+		return true
+	}
+	return map[gen.Severity]int{gen.SeverityCritical: c.Critical, gen.SeverityHigh: c.High, gen.SeverityMedium: c.Medium,
+		gen.SeverityLow: c.Low, gen.SeverityNegligible: c.Negligible, gen.SeverityNone: c.Unknown}[*sev] > 0
+}
+
+// kevMatches tells whether an aggregate with n known exploited
+// vulnerabilities passes the kev filter; nil matches any.
+func kevMatches(n int, kev *bool) bool { return kev == nil || (n > 0) == *kev }
+
 func unitMatches(r store.VulnComponentRow, q *string, sev *gen.Severity, exp *gen.Exposure, kev *bool) bool {
-	if sev != nil {
-		n := map[gen.Severity]int{gen.SeverityCritical: r.Severity.Critical, gen.SeverityHigh: r.Severity.High, gen.SeverityMedium: r.Severity.Medium,
-			gen.SeverityLow: r.Severity.Low, gen.SeverityNegligible: r.Severity.Negligible, gen.SeverityNone: r.Severity.Unknown}[*sev]
-		if n == 0 {
-			return false
-		}
+	if !hasSeverity(r.Severity, sev) {
+		return false
 	}
 	if exp != nil && !hasExposure(r.Exposure, *exp) {
 		return false
 	}
-	if kev != nil && (len(r.KEVVulnIDs) > 0) != *kev {
+	if !kevMatches(len(r.KEVVulnIDs), kev) {
 		return false
 	}
 	return textMatches(q, append([]string{r.Component.Name, r.Component.Version, r.Component.PURL}, r.VulnIDs...)...)

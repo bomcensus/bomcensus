@@ -8,11 +8,13 @@
 import { RefreshCw } from '@lucide/vue'
 import type { AssetComponentRow, AssetContainer, ComponentOrigin, ComponentType, K8sPod, ProcessInfo, SectionCoverage } from '~/types'
 import type { TableColumn } from '~/types/table'
+import type { TriState } from '~/composables/useServerList'
 import type { Tone } from '~/utils/labels'
 import {
   collectAsset,
   getAgent,
   getAsset,
+  getAssetProcess,
   getComponent,
   listAssetComponents,
   listAssetInstances,
@@ -135,7 +137,7 @@ const {
       ...(p as QueryOf<typeof listAssetComponents>),
       ...(container === HOST_SELF ? { hostOnly: true } : { container }),
     }),
-  { filters: { type: '', origin: '', container: '', inUse: false }, sort: 'name' },
+  { filters: { type: '', origin: '', container: '', inUse: '' as TriState }, sort: 'name' },
 )
 
 const compTypeOptions = (Object.keys(componentTypeLabel) as ComponentType[]).map((value) => ({ value, label: componentTypeLabel[value] }))
@@ -214,12 +216,16 @@ const procColumns: TableColumn<ProcessInfo>[] = [
 
 // The selected process is kept in the query (proc). It is picked by navigating from a table row and undone with the back button.
 const procLink = (p: ProcessInfo) => `/assets/${encodeURIComponent(id)}?tab=processes&proc=${encodeURIComponent(p.id)}`
-// Only one page of processes is loaded, so the processes seen on any page are kept for the detail panel.
-const seenProcs = shallowReactive(new Map<string, ProcessInfo>())
-watch(procRows, (rows) => rows.forEach((p) => seenProcs.set(p.id, p)), { immediate: true })
+// The selected process is loaded by id, so a link to a process on another page opens it too.
+const procKey = computed(() => (typeof route.query.proc === 'string' ? route.query.proc : ''))
+const { data: loadedProc } = useLoad(
+  () => `asset:${id}:process:${procKey.value}`,
+  () => (procKey.value ? optional(getAssetProcess(id, procKey.value)) : Promise.resolve(undefined)),
+)
 const selectedProc = computed(() => {
-  const key = route.query.proc
-  return typeof key === 'string' ? seenProcs.get(key) : undefined
+  if (!procKey.value) return undefined
+  if (loadedProc.value?.id === procKey.value) return loadedProc.value
+  return procRows.value.find((p) => p.id === procKey.value)
 })
 const selectedContainer = computed(() => assetContainers.value.find((c) => c.name === selectedProc.value?.container))
 const { data: selectedComponent } = useLoad(
@@ -436,9 +442,7 @@ const tabs = computed(() => [
           <SelectFilter v-model="compFilters.type" label="종류" :options="compTypeOptions" />
           <SelectFilter v-model="compFilters.origin" label="출처" :options="compOriginOptions" />
           <SelectFilter v-if="assetContainers.length > 0" v-model="compFilters.container" label="컨테이너" :options="containerOptions" />
-          <label class="inline-flex items-center gap-1.5 text-sm">
-            <input v-model="compFilters.inUse" type="checkbox" class="accent-(--accent)" /> 실행 중만
-          </label>
+          <SelectFilter v-model="compFilters.inUse" label="실행" :options="triStateOptions('실행 중', '실행 안 함')" />
         </FilterBar>
 
         <Panel flush>
