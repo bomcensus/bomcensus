@@ -10,6 +10,10 @@ import type { TableColumn } from '~/types/table'
 
 // A table with sorting and pagination.
 // Cell content is replaced through the #cell-<key>="{ row }" slot. Without a slot, row[key] is shown as is.
+//
+// Without `total`, rows are every row: the table sorts (column sortValue) and pages them itself.
+// With `total`, rows are one page the server sorted (useServerList): headers with a column `sort`
+// change v-model:sort, and the pager changes v-model:page and v-model:size.
 const props = withDefaults(
   defineProps<{
     columns: TableColumn<T>[]
@@ -22,25 +26,53 @@ const props = withDefaults(
     /** Rows per page. Default 25. 0 disables pagination */
     pageSize?: number
     initialSort?: { key: string; dir: 'asc' | 'desc' }
-    /** While true, rows, the empty state and the pager are replaced by a loading line */
+    /** While true and there are no rows, a loading line is shown; rows already shown are dimmed */
     loading?: boolean
+    /** Matches on the server. Set for a server-paged list */
+    total?: number
   }>(),
   { pageSize: 25, empty: '결과 없음' },
 )
 
 defineSlots<{ [name: string]: (props: { row: T }) => unknown }>()
 
-const sortKey = ref(props.initialSort?.key ?? '')
-const sortDir = ref<'asc' | 'desc'>(props.initialSort?.dir ?? 'asc')
-const page = ref(0)
-const sizeOptions = [25, 50, 100]
-const size = ref(props.pageSize)
+/** Server sort: a column `sort` value, prefixed with '-' for descending */
+const serverSort = defineModel<string>('sort')
+const serverPage = defineModel<number>('page')
+const serverSize = defineModel<number>('size')
+
+const server = computed(() => props.total !== undefined)
+
+const localSort = ref(props.initialSort ? { ...props.initialSort } : undefined)
+const localPage = ref(0)
+const localSize = ref(props.pageSize)
+
+const page = computed({
+  get: () => (server.value ? (serverPage.value ?? 0) : localPage.value),
+  set: (v: number) => (server.value ? (serverPage.value = v) : (localPage.value = v)),
+})
+const size = computed({
+  get: () => (server.value ? (serverSize.value ?? props.pageSize) : localSize.value),
+  set: (v: number) => (server.value ? (serverSize.value = v) : (localSize.value = v)),
+})
+
+/** The sorted column and direction */
+const active = computed<{ key: string; dir: 'asc' | 'desc' } | undefined>(() => {
+  if (!server.value) return localSort.value
+  const s = serverSort.value ?? ''
+  const field = s.replace(/^-/, '')
+  const column = props.columns.find((c) => c.sort === field)
+  return column ? { key: column.key, dir: s.startsWith('-') ? 'desc' : 'asc' } : undefined
+})
+
+const sortable = (c: TableColumn<T>) => (server.value ? !!c.sort : !!c.sortValue)
 
 const sorted = computed(() => {
-  const column = props.columns.find((c) => c.key === sortKey.value)
+  if (server.value) return props.rows
+  const column = props.columns.find((c) => c.key === active.value?.key)
   if (!column?.sortValue) return props.rows
   const value = column.sortValue
-  const dir = sortDir.value === 'asc' ? 1 : -1
+  const dir = active.value?.dir === 'desc' ? -1 : 1
   return [...props.rows].sort((a, b) => {
     const x = value(a)
     const y = value(b)
@@ -51,29 +83,35 @@ const sorted = computed(() => {
   })
 })
 
-const pageCount = computed(() => (size.value > 0 ? Math.max(1, Math.ceil(sorted.value.length / size.value)) : 1))
-const visible = computed(() =>
-  size.value > 0 ? sorted.value.slice(page.value * size.value, (page.value + 1) * size.value) : sorted.value,
+const count = computed(() => (server.value ? (props.total ?? 0) : sorted.value.length))
+const visible = computed(() => {
+  if (server.value || size.value <= 0) return sorted.value
+  return sorted.value.slice(page.value * size.value, (page.value + 1) * size.value)
+})
+const sizeOptions = [25, 50, 100]
+// The pager shows once there are more rows than the smallest page size
+const showPager = computed(
+  () => size.value > 0 && (page.value > 0 || count.value > Math.min(props.pageSize, sizeOptions[0]!)) && !(props.loading && props.rows.length === 0),
 )
-// Show the pagination row only when there are more rows than the smallest page size
-const showPager = computed(() => !props.loading && size.value > 0 && sorted.value.length > Math.min(props.pageSize, sizeOptions[0]!))
 
-watch(size, () => (page.value = 0))
-
+watch(localSize, () => (localPage.value = 0))
 watch(
   () => props.rows,
-  () => (page.value = 0),
+  () => {
+    if (!server.value) localPage.value = 0
+  },
 )
 
 function toggleSort(column: TableColumn<T>) {
-  if (!column.sortValue) return
-  if (sortKey.value === column.key) {
-    sortDir.value = sortDir.value === 'asc' ? 'desc' : 'asc'
+  if (!sortable(column)) return
+  const first: 'asc' | 'desc' = column.sortDesc ? 'desc' : 'asc'
+  const dir = active.value?.key === column.key ? (active.value.dir === 'asc' ? 'desc' : 'asc') : first
+  if (server.value) {
+    serverSort.value = dir === 'desc' ? `-${column.sort}` : column.sort
   } else {
-    sortKey.value = column.key
-    sortDir.value = 'asc'
+    localSort.value = { key: column.key, dir }
+    localPage.value = 0
   }
-  page.value = 0
 }
 
 function open(row: T, event: MouseEvent) {
@@ -104,20 +142,20 @@ const cellValue = (row: T, key: string) => (row as Record<string, unknown>)[key]
               class="whitespace-nowrap px-3 py-2 font-medium"
               :class="cellClass(c)"
               :style="c.width ? { width: c.width } : undefined"
-              :aria-sort="sortKey === c.key ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined"
+              :aria-sort="active?.key === c.key ? (active.dir === 'asc' ? 'ascending' : 'descending') : undefined"
             >
               <button
-                v-if="c.sortValue"
+                v-if="sortable(c)"
                 type="button"
                 class="inline-flex items-center gap-0.5 hover:text-ink"
-                :class="sortKey === c.key ? 'text-ink' : ''"
+                :class="active?.key === c.key ? 'text-ink' : ''"
                 @click="toggleSort(c)"
               >
                 {{ c.label }}
                 <component
-                  :is="sortKey === c.key && sortDir === 'desc' ? ChevronDown : ChevronUp"
+                  :is="active?.key === c.key && active.dir === 'desc' ? ChevronDown : ChevronUp"
                   :size="12"
-                  :class="sortKey === c.key ? '' : 'opacity-0'"
+                  :class="active?.key === c.key ? '' : 'opacity-0'"
                   aria-hidden="true"
                 />
               </button>
@@ -125,7 +163,7 @@ const cellValue = (row: T, key: string) => (row as Record<string, unknown>)[key]
             </th>
           </tr>
         </thead>
-        <tbody v-if="!loading">
+        <tbody v-if="rows.length" :class="loading ? 'opacity-60 transition-opacity' : ''" :aria-busy="loading || undefined">
           <tr
             v-for="row in visible"
             :key="rowKey(row)"
@@ -141,24 +179,9 @@ const cellValue = (row: T, key: string) => (row as Record<string, unknown>)[key]
       </table>
     </div>
 
-    <LoadingText v-if="loading" />
+    <LoadingText v-if="loading && rows.length === 0" />
     <EmptyState v-else-if="rows.length === 0" :title="empty" :description="emptyDescription" />
 
-    <div v-if="showPager" class="flex flex-wrap items-center justify-between gap-2 border-t border-line px-3 py-2 text-xs text-ink-2">
-      <span class="mono whitespace-nowrap">
-        {{ page * size + 1 }}–{{ Math.min((page + 1) * size, sorted.length) }} / {{ formatNumber(sorted.length) }}
-      </span>
-      <span class="flex items-center gap-2">
-        <label class="inline-flex items-center">
-          <span class="sr-only">한 쪽에 보일 행 수</span>
-          <select v-model.number="size" class="select h-7 px-1.5 text-xs">
-            <option v-for="n in sizeOptions" :key="n" :value="n">{{ n }}행</option>
-          </select>
-        </label>
-        <AppButton size="sm" :disabled="page === 0" @click="page--">이전</AppButton>
-        <span class="mono whitespace-nowrap">{{ page + 1 }} / {{ pageCount }}</span>
-        <AppButton size="sm" :disabled="page >= pageCount - 1" @click="page++">다음</AppButton>
-      </span>
-    </div>
+    <TablePager v-if="showPager" v-model:page="page" v-model:size="size" :total="count" :sizes="sizeOptions" />
   </div>
 </template>

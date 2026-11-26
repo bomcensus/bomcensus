@@ -6,14 +6,14 @@
 
 <script setup lang="ts">
 import type { IntegrityAllowRule } from '~/types'
-import { listIntegrityAllowRules, revokeIntegrityAllowRule, toApiError } from '~/api'
+import { listIntegrityAllowRules, revokeIntegrityAllowRule, toApiError, type QueryOf } from '~/api'
 
 // The file integrity allow rules, newest first, with the findings each hides now.
 const emit = defineEmits<{ changed: [] }>()
-const includeRevoked = ref(false)
-const { data: list, pending, error, refresh } = useLoad(
-  () => `integrity:rules:${includeRevoked.value}`,
-  () => listIntegrityAllowRules({ includeRevoked: includeRevoked.value || undefined, limit: 500 }),
+const { items, total, pending, error, refresh, filters, page, size } = useServerList(
+  'integrity:rules',
+  (p) => listIntegrityAllowRules(p as QueryOf<typeof listIntegrityAllowRules>),
+  { filters: { includeRevoked: false }, pageSize: 50 },
 )
 
 // Revoking asks inline: the row shows what comes back.
@@ -40,16 +40,16 @@ async function revoke(r: IntegrityAllowRule) {
 
 <template>
   <div>
-    <FilterBar :count="list?.total" unit="개">
+    <FilterBar :count="total" unit="개">
       <label class="inline-flex items-center gap-1.5 text-sm">
-        <input v-model="includeRevoked" type="checkbox" class="size-[15px] accent-(--accent)" /> 해제한 규칙도 보기
+        <input v-model="filters.includeRevoked" type="checkbox" class="size-[15px] accent-(--accent)" /> 해제한 규칙도 보기
       </label>
     </FilterBar>
     <p v-if="revokeError" class="note note-danger mb-3" role="alert">{{ revokeError }}</p>
     <Panel flush>
       <LoadError v-if="error" :error="error" @retry="refresh" />
-      <LoadingText v-else-if="pending && !list" class="p-3.5" />
-      <p v-else-if="!list?.items.length" class="px-3.5 py-3 text-sm text-ink-2">허용 규칙이 없습니다. 검사 결과에서 "허용…"으로 추가합니다.</p>
+      <LoadingText v-else-if="pending && !items.length" class="p-3.5" />
+      <p v-else-if="!items.length" class="px-3.5 py-3 text-sm text-ink-2">허용 규칙이 없습니다. 검사 결과에서 "허용…"으로 추가합니다.</p>
       <div v-else class="overflow-x-auto">
         <table class="w-full min-w-[820px] border-collapse text-sm">
           <thead>
@@ -63,7 +63,7 @@ async function revoke(r: IntegrityAllowRule) {
             </tr>
           </thead>
           <tbody>
-            <tr v-for="r in list.items" :key="r.id" class="border-b border-line align-top last:border-b-0" :class="r.revokedAt ? 'text-ink-3' : ''">
+            <tr v-for="r in items" :key="r.id" class="border-b border-line align-top last:border-b-0" :class="r.revokedAt ? 'text-ink-3' : ''">
               <td class="py-2.5 pl-3.5">
                 <StatusBadge tone="info" :label="r.scope === 'fleet' ? '같은 해시 전체' : '노드'" />
                 <NuxtLink v-if="r.assetId" :to="`/assets/${r.assetId}?tab=integrity`" class="mono mt-1 block text-xs hover:underline">
@@ -95,6 +95,7 @@ async function revoke(r: IntegrityAllowRule) {
           </tbody>
         </table>
       </div>
+      <TablePager v-if="total > size || page > 0" v-model:page="page" v-model:size="size" :total="total" compact />
     </Panel>
   </div>
 </template>

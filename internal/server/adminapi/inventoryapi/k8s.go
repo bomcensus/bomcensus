@@ -238,6 +238,24 @@ func (h *Handlers) ListK8sWorkloads(ctx context.Context, req gen.ListK8sWorkload
 	return out, nil
 }
 
+// ListK8sNamespaces implements gen.StrictServerInterface.
+func (h *Handlers) ListK8sNamespaces(ctx context.Context, req gen.ListK8sNamespacesRequestObject) (gen.ListK8sNamespacesResponseObject, error) {
+	rows, err := h.cfg.Store.ListWorkloadNamespaces(ctx, req.Id)
+	if err != nil {
+		return nil, err
+	}
+	if len(rows) == 0 {
+		if _, err := h.getCluster(ctx, req.Id); err != nil {
+			return nil, err
+		}
+	}
+	out := gen.ListK8sNamespaces200JSONResponse{Items: make([]gen.K8sNamespace, 0, len(rows)), Total: len(rows)}
+	for _, r := range rows {
+		out.Items = append(out.Items, gen.K8sNamespace{Name: r.Name, WorkloadCount: r.Workloads})
+	}
+	return out, nil
+}
+
 // ListK8sWorkloadPods implements gen.StrictServerInterface.
 func (h *Handlers) ListK8sWorkloadPods(ctx context.Context, req gen.ListK8sWorkloadPodsRequestObject) (gen.ListK8sWorkloadPodsResponseObject, error) {
 	prm := req.Params

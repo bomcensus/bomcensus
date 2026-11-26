@@ -353,6 +353,57 @@ func textMatches(q *string, fields ...string) bool {
 	return false
 }
 
+// sortField is a field a ranked list can be sorted by: a number (nil when
+// absent) or a text.
+type sortField[T any] struct {
+	num  func(T) *float64
+	text func(T) string
+}
+
+func numField[T any](f func(T) *float64) sortField[T] { return sortField[T]{num: f} }
+
+func intField[T any](f func(T) int) sortField[T] {
+	return sortField[T]{num: func(v T) *float64 { return ptr(float64(f(v))) }}
+}
+
+func textField[T any](f func(T) string) sortField[T] { return sortField[T]{text: f} }
+
+// resort orders ranked items by the field sort names, prefixed with "-" for
+// descending. Equal values keep their rank order and absent numbers come
+// last in both directions. Empty and "rank" keep the rank order.
+func resort[T any, S ~string](items []T, sort *S, fields map[string]sortField[T]) error {
+	if sort == nil || *sort == "" || *sort == "rank" {
+		return nil
+	}
+	name, desc := strings.CutPrefix(string(*sort), "-")
+	f, ok := fields[name]
+	if !ok {
+		return apierr.Invalid("unknown sort %q", string(*sort))
+	}
+	slices.SortStableFunc(items, func(a, b T) int {
+		var c int
+		if f.text != nil {
+			c = cmp.Compare(f.text(a), f.text(b))
+		} else {
+			x, y := f.num(a), f.num(b)
+			switch {
+			case x == nil && y == nil:
+				return 0
+			case x == nil:
+				return 1
+			case y == nil:
+				return -1
+			}
+			c = cmp.Compare(*x, *y)
+		}
+		if desc {
+			return -c
+		}
+		return c
+	})
+	return nil
+}
+
 func pageSlice[T any](items []T, limit, offset *int) ([]T, error) {
 	p, err := page(limit, offset)
 	if err != nil {
@@ -375,6 +426,15 @@ func (h *Handlers) ListVulnerableComponents(ctx context.Context, req gen.ListVul
 		return !unitMatches(r, prm.Q, prm.Severity, prm.Exposure, prm.Kev)
 	})
 	sortUnits(rows)
+	if err := resort(rows, prm.Sort, map[string]sortField[store.VulnComponentRow]{
+		"name":   textField(func(r store.VulnComponentRow) string { return r.Component.Name + " " + r.Component.Version }),
+		"score":  numField(func(r store.VulnComponentRow) *float64 { return r.MaxScore }),
+		"epss":   numField(func(r store.VulnComponentRow) *float64 { return r.MaxEPSS }),
+		"cves":   intField(func(r store.VulnComponentRow) int { return len(r.VulnIDs) }),
+		"assets": intField(func(r store.VulnComponentRow) int { return r.Assets }),
+	}); err != nil {
+		return nil, err
+	}
 	pg, err := pageSlice(rows, prm.Limit, prm.Offset)
 	if err != nil {
 		return nil, err
@@ -663,6 +723,15 @@ func (h *Handlers) ListVulnerabilities(ctx context.Context, req gen.ListVulnerab
 		items = append(items, v)
 	}
 	sortCves(items)
+	if err := resort(items, prm.Sort, map[string]sortField[gen.VulnCve]{
+		"vulnId":     textField(func(v gen.VulnCve) string { return v.VulnId }),
+		"score":      numField(func(v gen.VulnCve) *float64 { return v.Score }),
+		"epss":       numField(func(v gen.VulnCve) *float64 { return v.Epss }),
+		"components": intField(func(v gen.VulnCve) int { return v.Components }),
+		"assets":     intField(func(v gen.VulnCve) int { return v.Assets }),
+	}); err != nil {
+		return nil, err
+	}
 	pg, err := pageSlice(items, prm.Limit, prm.Offset)
 	if err != nil {
 		return nil, err

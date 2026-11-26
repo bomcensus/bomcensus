@@ -353,7 +353,7 @@ paths:
       tags: [assets]
       operationId: listAssetProcesses
       summary: Processes of an asset
-      description: "`q` matches executable path, user, command line and pid."
+      description: "`q` matches executable path, user, command line and pid. Sort `-risk` puts suspicious processes first, then those that need a restart."
       parameters:
         - $ref: "#/components/parameters/QueryQ"
         - name: view
@@ -370,7 +370,7 @@ paths:
           in: query
           schema:
             type: string
-            enum: [pid, "-pid", user, "-user", exe, "-exe", state, "-state", startedAt, "-startedAt"]
+            enum: [pid, "-pid", user, "-user", exe, "-exe", state, "-state", startedAt, "-startedAt", risk, "-risk"]
             default: pid
         - $ref: "#/components/parameters/QueryLimit"
         - $ref: "#/components/parameters/QueryOffset"
@@ -607,7 +607,8 @@ paths:
         `view=restart`: the executable or a mapped library was replaced on disk
         (an old version is still in memory). `view=suspicious`: the executable
         or a mapped library was deleted, or the process runs from a memfd.
-        `q` matches executable path, user and command line.
+        `q` matches executable path, user, command line, pid and asset name.
+        Sort `-risk` puts suspicious processes first, then those that need a restart.
       parameters:
         - $ref: "#/components/parameters/QueryQ"
         - name: view
@@ -628,7 +629,7 @@ paths:
           in: query
           schema:
             type: string
-            enum: [asset, "-asset", exe, "-exe", user, "-user", state, "-state", startedAt, "-startedAt"]
+            enum: [asset, "-asset", exe, "-exe", user, "-user", state, "-state", startedAt, "-startedAt", risk, "-risk"]
             default: asset
         - $ref: "#/components/parameters/QueryLimit"
         - $ref: "#/components/parameters/QueryOffset"
@@ -917,6 +918,28 @@ paths:
         default:
           $ref: "#/components/responses/UnexpectedError"
 
+  /k8s/clusters/{id}/namespaces:
+    parameters:
+      - $ref: "#/components/parameters/PathId"
+    get:
+      tags: [kubernetes]
+      operationId: listK8sNamespaces
+      summary: Namespaces of a cluster's current workloads
+      description: Every namespace with at least one current workload, by name.
+      responses:
+        "200":
+          description: Namespaces
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/K8sNamespaceList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/UnexpectedError"
+
   /k8s/workloads/{id}/pods:
     parameters:
       - $ref: "#/components/parameters/PathId"
@@ -1142,7 +1165,7 @@ paths:
           in: query
           schema:
             type: string
-            enum: [address, "-address", state, "-state", createdAt, "-createdAt", lastConnectedAt, "-lastConnectedAt"]
+            enum: [address, "-address", agent, "-agent", state, "-state", createdAt, "-createdAt", lastConnectedAt, "-lastConnectedAt"]
             default: address
         - $ref: "#/components/parameters/QueryLimit"
         - $ref: "#/components/parameters/QueryOffset"
@@ -2306,8 +2329,16 @@ paths:
       description: |
         Ordered by exposure, then known exploitation, EPSS and CVSS; items
         rated only negligible come last. `q` matches the component name, version and the CVE ids.
+        Another `sort` orders by that field and keeps this order among equal values;
+        items without the value come last.
       parameters:
         - $ref: "#/components/parameters/QueryQ"
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [rank, name, "-name", score, "-score", epss, "-epss", cves, "-cves", assets, "-assets"]
+            default: rank
         - $ref: "#/components/parameters/QuerySeverity"
         - $ref: "#/components/parameters/QueryExposure"
         - $ref: "#/components/parameters/QueryKev"
@@ -2358,8 +2389,16 @@ paths:
       description: |
         Ordered by exposure, then known exploitation, EPSS and CVSS; items
         rated only negligible come last. `q` matches the id, aliases, summary and component names.
+        Another `sort` orders by that field and keeps this order among equal values;
+        items without the value come last.
       parameters:
         - $ref: "#/components/parameters/QueryQ"
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [rank, vulnId, "-vulnId", score, "-score", epss, "-epss", components, "-components", assets, "-assets"]
+            default: rank
         - $ref: "#/components/parameters/QuerySeverity"
         - $ref: "#/components/parameters/QueryExposure"
         - $ref: "#/components/parameters/QueryKev"
@@ -4562,6 +4601,25 @@ components:
             $ref: "#/components/schemas/K8sWorkload"
         total:
           type: integer
+    K8sNamespace:
+      type: object
+      required: [name, workloadCount]
+      properties:
+        name:
+          type: string
+        workloadCount:
+          description: Current workloads in the namespace, excluded ones included.
+          type: integer
+    K8sNamespaceList:
+      type: object
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/K8sNamespace"
+        total:
+          type: integer
     K8sPodPhase:
       type: string
       enum: [Running, Pending, Succeeded, Failed, Unknown]
@@ -4762,6 +4820,9 @@ components:
           type: string
         agentId:
           description: Agent bound to the address after enrollment.
+          type: string
+        agentHostname:
+          description: Hostname of the bound agent, absent when the agent no longer exists.
           type: string
         state:
           $ref: "#/components/schemas/ListenTargetState"

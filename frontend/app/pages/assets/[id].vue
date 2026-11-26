@@ -11,9 +11,9 @@ import type { TableColumn } from '~/types/table'
 import type { Tone } from '~/utils/labels'
 import {
   collectAsset,
-  fetchAll,
   getAgent,
   getAsset,
+  getComponent,
   listAssetComponents,
   listAssetInstances,
   listAssetProcesses,
@@ -21,6 +21,7 @@ import {
   listAssetNotices,
   optional,
   toApiError,
+  type QueryOf,
 } from '~/api'
 
 const route = useRoute()
@@ -41,24 +42,23 @@ const {
   const agent = asset.agentId ? await optional(getAgent(asset.agentId)) : undefined
   return { asset, agent }
 })
+// Totals for the tab labels and the overview, independent of the filters of the tabs
 const {
-  data: componentRows,
-  pending: componentsPending,
-  error: componentsError,
-  refresh: refreshComponents,
-} = useLoad(`asset:${id}:components`, () => fetchAll((page) => listAssetComponents(id, page)), () => [])
-const {
-  data: procs,
-  pending: procsPending,
-  error: procsError,
-  refresh: refreshProcs,
-} = useLoad(`asset:${id}:processes`, () => fetchAll((page) => listAssetProcesses(id, page)), () => [])
-const {
-  data: pods,
-  pending: podsPending,
-  error: podsError,
-  refresh: refreshPods,
-} = useLoad(`asset:${id}:instances`, () => fetchAll((page) => listAssetInstances(id, page)), () => [])
+  data: counts,
+  pending: countsPending,
+  error: countsError,
+  refresh: refreshCounts,
+} = useLoad(`asset:${id}:counts`, async () => {
+  const procTotal = (view?: 'restart' | 'suspicious' | 'listen') => listAssetProcesses(id, { view, limit: 1 }).then((r) => r.total)
+  const [components, processes, restart, suspicious, listen] = await Promise.all([
+    listAssetComponents(id, { limit: 1 }).then((r) => r.total),
+    procTotal(),
+    procTotal('restart'),
+    procTotal('suspicious'),
+    procTotal('listen'),
+  ])
+  return { components, processes, restart, suspicious, listen }
+})
 
 const asset = computed(() => detail.value?.asset)
 const agent = computed(() => detail.value?.agent)
@@ -74,8 +74,6 @@ const containerOptions = computed(() => [
   ...(asset.value?.kind === 'host' ? [{ value: HOST_SELF, label: '호스트' }] : []),
   ...assetContainers.value.map((c) => ({ value: c.name, label: c.name })),
 ])
-const matchesContainer = (container: string | undefined, filter: string) =>
-  !filter || (filter === HOST_SELF ? !container : container === filter)
 
 // ── Header ─────────────────────────────────────────────
 
@@ -119,41 +117,38 @@ function goTab(key: string) {
 // The same component can exist on the host and in several containers, so entries are keyed by (container, component)
 const placeKey = (r: { container?: string; componentId: string }) => `${r.container ?? ''}|${r.componentId}`
 
-const compQuery = ref('')
-const compType = ref('')
-const compOrigin = ref('')
-const compContainer = ref('')
-const compInUseOnly = ref(false)
-
-const filteredComponents = computed(() => {
-  const needle = compQuery.value.trim().toLowerCase()
-  return componentRows.value.filter((r) => {
-    if (compType.value && r.component.type !== compType.value) return false
-    if (compOrigin.value && r.component.origin !== compOrigin.value) return false
-    if (!matchesContainer(r.container, compContainer.value)) return false
-    if (compInUseOnly.value && !r.inUse) return false
-    if (!needle) return true
-    return [r.component.name, r.component.version, r.component.purl, r.container ?? '', ...r.locations].some((v) =>
-      v.toLowerCase().includes(needle),
-    )
-  })
-})
-
-const compTypeOptions = computed(() =>
-  [...new Set(componentRows.value.map((r) => r.component.type))]
-    .sort()
-    .map((value: ComponentType) => ({ value, label: componentTypeLabel[value] })),
+const {
+  items: componentRows,
+  total: componentTotal,
+  pending: componentsPending,
+  error: componentsError,
+  refresh: refreshComponents,
+  q: compQuery,
+  filters: compFilters,
+  sort: compSort,
+  page: compPage,
+  size: compSize,
+} = useServerList(
+  `asset:${id}:components`,
+  ({ container, ...p }) =>
+    listAssetComponents(id, {
+      ...(p as QueryOf<typeof listAssetComponents>),
+      ...(container === HOST_SELF ? { hostOnly: true } : { container }),
+    }),
+  { filters: { type: '', origin: '', container: '', inUse: false }, sort: 'name' },
 )
+
+const compTypeOptions = (Object.keys(componentTypeLabel) as ComponentType[]).map((value) => ({ value, label: componentTypeLabel[value] }))
 const compOriginOptions = (Object.keys(originLabel) as ComponentOrigin[]).map((value) => ({ value, label: originLabel[value] }))
 
 const componentColumns: TableColumn<AssetComponentRow>[] = [
-  { key: 'name', label: '이름', sortValue: (r) => r.component.name },
-  { key: 'version', label: '버전', sortValue: (r) => r.component.version },
-  { key: 'type', label: '종류', sortValue: (r) => r.component.type, hideBelow: 'md' },
-  { key: 'origin', label: '출처', sortValue: (r) => r.component.origin, hideBelow: 'lg' },
-  { key: 'method', label: '탐지 방법', sortValue: (r) => r.method, hideBelow: 'lg' },
+  { key: 'name', label: '이름', sort: 'name' },
+  { key: 'version', label: '버전', sort: 'version' },
+  { key: 'type', label: '종류', sort: 'type', hideBelow: 'md' },
+  { key: 'origin', label: '출처', sort: 'origin', hideBelow: 'lg' },
+  { key: 'method', label: '탐지 방법', sort: 'method', hideBelow: 'lg' },
   { key: 'locations', label: '위치', hideBelow: 'md' },
-  { key: 'inUse', label: '실행 중', sortValue: (r) => (r.inUse ? 0 : 1), hideBelow: 'sm' },
+  { key: 'inUse', label: '실행 중', sort: 'inUse', sortDesc: true, hideBelow: 'sm' },
 ]
 
 const rawOpen = ref(false)
@@ -166,31 +161,34 @@ function openRaw(r: AssetComponentRow) {
 
 // ── Processes ─────────────────────────────────────────
 
-const restartCount = computed(() => procs.value.filter(needsRestart).length)
-const suspiciousCount = computed(() => procs.value.filter(isSuspicious).length)
-const listenCount = computed(() => new Set(procs.value.flatMap((p) => p.listen.map((l) => `${l.proto}|${l.address}|${l.port}`))).size)
+const restartCount = computed(() => counts.value?.restart ?? 0)
+const suspiciousCount = computed(() => counts.value?.suspicious ?? 0)
+const listenCount = computed(() => counts.value?.listen ?? 0)
 
-const procQuery = ref('')
-const procView = ref('')
+const {
+  items: procRows,
+  total: procTotal,
+  pending: procsPending,
+  error: procsError,
+  refresh: refreshProcs,
+  q: procQuery,
+  filters: procFilters,
+  sort: procSort,
+  page: procPage,
+  size: procSize,
+} = useServerList(`asset:${id}:processes`, (p) => listAssetProcesses(id, p as QueryOf<typeof listAssetProcesses>), {
+  filters: { view: '' },
+  // Suspicious first, then those needing a restart
+  sort: '-risk',
+})
 const procViewOptions = [
   { value: 'restart', label: '재시작 필요' },
   { value: 'suspicious', label: '의심 프로세스' },
   { value: 'listen', label: 'listen 포트 있음' },
 ]
 
-const procRows = computed(() => {
-  const needle = procQuery.value.trim().toLowerCase()
-  return procs.value.filter((p) => {
-    if (procView.value === 'restart' && !needsRestart(p)) return false
-    if (procView.value === 'suspicious' && !isSuspicious(p)) return false
-    if (procView.value === 'listen' && p.listen.length === 0) return false
-    if (!needle) return true
-    return [p.exePath, p.user, p.cmdline, String(p.pid)].some((v) => v.toLowerCase().includes(needle))
-  })
-})
-
 function goProcesses(view: string) {
-  procView.value = view
+  procFilters.view = view
   goTab('processes')
 }
 
@@ -204,30 +202,30 @@ function procFlags(p: ProcessInfo): { label: string; tone: Tone }[] {
   if (p.deletedLibs.some((l) => l.state === 'deleted')) flags.push({ label: '라이브러리 삭제됨', tone: 'danger' })
   return flags
 }
-const procRank = (p: ProcessInfo) => (isSuspicious(p) ? 0 : needsRestart(p) ? 1 : 2)
-
 const procColumns: TableColumn<ProcessInfo>[] = [
-  { key: 'pid', label: 'pid', sortValue: (p) => p.pid },
-  { key: 'user', label: '사용자', sortValue: (p) => p.user, hideBelow: 'sm' },
-  { key: 'exe', label: '실행 파일', sortValue: (p) => exeName(p) },
-  { key: 'state', label: '상태', sortValue: procRank },
-  { key: 'listen', label: 'listen 포트', sortValue: (p) => -p.listen.length, hideBelow: 'md' },
+  { key: 'pid', label: 'pid', sort: 'pid' },
+  { key: 'user', label: '사용자', sort: 'user', hideBelow: 'sm' },
+  { key: 'exe', label: '실행 파일', sort: 'exe' },
+  { key: 'state', label: '상태', sort: 'risk', sortDesc: true },
+  { key: 'listen', label: 'listen 포트', hideBelow: 'md' },
   { key: 'sha256', label: 'sha256', hideBelow: 'lg' },
-  { key: 'startedAt', label: '시작', align: 'right', sortValue: (p) => p.startedAt, hideBelow: 'sm' },
+  { key: 'startedAt', label: '시작', align: 'right', sort: 'startedAt', sortDesc: true, hideBelow: 'sm' },
 ]
 
 // The selected process is kept in the query (proc). It is picked by navigating from a table row and undone with the back button.
 const procLink = (p: ProcessInfo) => `/assets/${encodeURIComponent(id)}?tab=processes&proc=${encodeURIComponent(p.id)}`
+// Only one page of processes is loaded, so the processes seen on any page are kept for the detail panel.
+const seenProcs = shallowReactive(new Map<string, ProcessInfo>())
+watch(procRows, (rows) => rows.forEach((p) => seenProcs.set(p.id, p)), { immediate: true })
 const selectedProc = computed(() => {
   const key = route.query.proc
-  return typeof key === 'string' ? procs.value.find((p) => p.id === key) : undefined
+  return typeof key === 'string' ? seenProcs.get(key) : undefined
 })
 const selectedContainer = computed(() => assetContainers.value.find((c) => c.name === selectedProc.value?.container))
-// The owning component is looked up in the components already loaded for this asset
-const selectedComponent = computed(() => {
-  const componentId = selectedProc.value?.componentId
-  return componentId ? componentRows.value.find((r) => r.componentId === componentId)?.component : undefined
-})
+const { data: selectedComponent } = useLoad(
+  () => `component:${selectedProc.value?.componentId ?? ''}`,
+  () => (selectedProc.value?.componentId ? optional(getComponent(selectedProc.value.componentId)) : Promise.resolve(undefined)),
+)
 
 function closeProc() {
   const { proc: _proc, ...query } = route.query
@@ -244,10 +242,23 @@ const containerColumns: TableColumn<AssetContainer>[] = [
   { key: 'coverage', label: '수집 범위', sortValue: (c) => c.coverage, hideBelow: 'sm' },
 ]
 
+const {
+  items: pods,
+  total: podTotal,
+  pending: podsPending,
+  error: podsError,
+  refresh: refreshPods,
+  sort: podSort,
+  page: podPage,
+  size: podSize,
+} = useServerList(`asset:${id}:instances`, (p) => listAssetInstances(id, p as QueryOf<typeof listAssetInstances>), {
+  sort: 'name',
+})
+
 const podColumns: TableColumn<K8sPod>[] = [
-  { key: 'name', label: 'pod', sortValue: (p) => p.name },
-  { key: 'node', label: '노드', sortValue: (p) => p.node, hideBelow: 'md' },
-  { key: 'phase', label: '상태', sortValue: (p) => p.phase },
+  { key: 'name', label: 'pod', sort: 'name' },
+  { key: 'node', label: '노드', sort: 'node', hideBelow: 'md' },
+  { key: 'phase', label: '상태', sort: 'phase' },
   { key: 'containers', label: '컨테이너별 수집 범위' },
 ]
 
@@ -291,8 +302,8 @@ const tabs = computed(() => [
   { key: 'overview', label: '개요' },
   { key: 'vulnerabilities', label: '취약점', count: countOf(vulnsPending.value, vulns.value) },
   { key: 'notices', label: '보안 공지', count: countOf(noticesPending.value, notices.value) },
-  { key: 'components', label: '컴포넌트', count: countOf(componentsPending.value, componentRows.value) },
-  { key: 'processes', label: '프로세스', count: countOf(procsPending.value, procs.value) },
+  { key: 'components', label: '컴포넌트', count: counts.value?.components },
+  { key: 'processes', label: '프로세스', count: counts.value?.processes },
   ...(assetContainers.value.length > 0 ? [{ key: 'containers', label: '컨테이너', count: assetContainers.value.length }] : []),
   ...(asset.value?.kind === 'host' ? [{ key: 'integrity', label: '파일 무결성' }] : []),
   { key: 'collection', label: '수집' },
@@ -392,8 +403,8 @@ const tabs = computed(() => [
 
         <div class="flex min-w-0 flex-col gap-4">
           <Panel title="프로세스">
-            <LoadError v-if="procsError" :error="procsError" @retry="refreshProcs" />
-            <LoadingText v-else-if="procsPending" />
+            <LoadError v-if="countsError" :error="countsError" @retry="refreshCounts" />
+            <LoadingText v-else-if="countsPending && !counts" />
             <ul v-else class="space-y-0.5 text-sm">
               <li>
                 <button type="button" class="flex w-full items-center justify-between rounded-sm px-1 py-1 hover:bg-surface-2" @click="goProcesses('restart')">
@@ -409,7 +420,7 @@ const tabs = computed(() => [
               </li>
               <li>
                 <button type="button" class="flex w-full items-center justify-between rounded-sm px-1 py-1 hover:bg-surface-2" @click="goProcesses('listen')">
-                  <span>listen 포트</span>
+                  <span>listen 중인 프로세스</span>
                   <span class="mono" :class="listenCount > 0 ? '' : 'text-ink-3'">{{ listenCount }}</span>
                 </button>
               </li>
@@ -420,13 +431,13 @@ const tabs = computed(() => [
 
       <!-- Components -->
       <div v-else-if="tab === 'components'">
-        <FilterBar :count="filteredComponents.length" :total="componentRows.length" unit="개">
+        <FilterBar :count="componentTotal" :total="counts?.components" unit="개">
           <SearchInput v-model="compQuery" placeholder="이름, 버전, purl, 경로" />
-          <SelectFilter v-model="compType" label="종류" :options="compTypeOptions" />
-          <SelectFilter v-model="compOrigin" label="출처" :options="compOriginOptions" />
-          <SelectFilter v-if="assetContainers.length > 0" v-model="compContainer" label="컨테이너" :options="containerOptions" />
+          <SelectFilter v-model="compFilters.type" label="종류" :options="compTypeOptions" />
+          <SelectFilter v-model="compFilters.origin" label="출처" :options="compOriginOptions" />
+          <SelectFilter v-if="assetContainers.length > 0" v-model="compFilters.container" label="컨테이너" :options="containerOptions" />
           <label class="inline-flex items-center gap-1.5 text-sm">
-            <input v-model="compInUseOnly" type="checkbox" class="accent-(--accent)" /> 실행 중만
+            <input v-model="compFilters.inUse" type="checkbox" class="accent-(--accent)" /> 실행 중만
           </label>
         </FilterBar>
 
@@ -435,11 +446,13 @@ const tabs = computed(() => [
           <DataTable
             v-else
             :columns="componentColumns"
-            :rows="filteredComponents"
+            v-model:sort="compSort"
+            v-model:page="compPage"
+            v-model:size="compSize"
+            :rows="componentRows"
+            :total="componentTotal"
             :row-key="placeKey"
             :row-to="(r) => `/components/${r.componentId}`"
-            :page-size="25"
-            :initial-sort="{ key: 'name', dir: 'asc' }"
             :loading="componentsPending"
           >
             <template #cell-name="{ row }">
@@ -478,9 +491,9 @@ const tabs = computed(() => [
           non-root로 수집한 자산입니다. 다른 사용자의 프로세스는 실행 파일 경로를 cmdline에서 추정하고("추정" 표시), 해시와 삭제 여부를 확인하지 못합니다.
         </p>
 
-        <FilterBar :count="procRows.length" :total="procs.length" unit="개">
+        <FilterBar :count="procTotal" :total="counts?.processes" unit="개">
           <SearchInput v-model="procQuery" placeholder="실행 파일, 사용자, cmdline, pid" />
-          <SelectFilter v-model="procView" label="상태" :options="procViewOptions" />
+          <SelectFilter v-model="procFilters.view" label="상태" :options="procViewOptions" />
         </FilterBar>
 
         <Panel flush>
@@ -488,11 +501,13 @@ const tabs = computed(() => [
           <DataTable
             v-else
             :columns="procColumns"
+            v-model:sort="procSort"
+            v-model:page="procPage"
+            v-model:size="procSize"
             :rows="procRows"
+            :total="procTotal"
             :row-key="(p) => p.id"
             :row-to="procLink"
-            :page-size="25"
-            :initial-sort="{ key: 'state', dir: 'asc' }"
             :loading="procsPending"
           >
             <template #cell-pid="{ row }">
@@ -636,7 +651,17 @@ const tabs = computed(() => [
 
         <Panel v-if="asset.kind === 'workload'" title="인스턴스" class="mt-4" flush>
           <LoadError v-if="podsError" :error="podsError" @retry="refreshPods" />
-          <DataTable v-else :columns="podColumns" :rows="pods" :row-key="(p) => p.id" :loading="podsPending">
+          <DataTable
+            v-else
+            v-model:sort="podSort"
+            v-model:page="podPage"
+            v-model:size="podSize"
+            :columns="podColumns"
+            :rows="pods"
+            :total="podTotal"
+            :row-key="(p) => p.id"
+            :loading="podsPending"
+          >
             <template #cell-name="{ row }">
               <span class="mono break-all">{{ row.name }}</span>
             </template>

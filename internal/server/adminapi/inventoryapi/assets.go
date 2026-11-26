@@ -231,7 +231,7 @@ func (h *Handlers) ListAssetProcesses(ctx context.Context, req gen.ListAssetProc
 		f.Container = ptr(*prm.Container)
 	}
 	if f.Sort, err = sortKey(prm.Sort, map[string]string{
-		"pid": "pid", "user": "user", "exe": "exe", "state": "state", "startedAt": "started_at",
+		"pid": "pid", "user": "user", "exe": "exe", "state": "state", "startedAt": "started_at", "risk": "risk",
 	}); err != nil {
 		return nil, err
 	}

@@ -391,6 +391,25 @@ func TestListenTargets(t *testing.T) {
 		t.Fatalf("list %+v", l)
 	}
 
+	// The bound agent's hostname is returned, searched and sorted by.
+	ctx := scope.System(context.Background())
+	bound := decode[gen.ListenTarget](t, e.do("POST", "/listen-targets", gen.ListenTargetCreate{Address: "bound.example:7443"}))
+	a, err := e.db.CreateAgent(ctx, store.Agent{Kind: store.AgentKindAgent, Hostname: "zeta-host", IdentityKey: []byte("listen-key"), State: store.AgentApproved})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := e.db.BindListenTargetAgent(ctx, bound.Id, a.ID); err != nil {
+		t.Fatal(err)
+	}
+	l := decode[gen.ListenTargetList](t, e.do("GET", "/listen-targets?q=zeta&sort=-agent", nil))
+	if l.Total != 1 || deref(l.Items[0].AgentHostname) != "zeta-host" || deref(l.Items[0].AgentId) != a.ID {
+		t.Fatalf("bound list %+v", l)
+	}
+	if l := decode[gen.ListenTargetList](t, e.do("GET", "/listen-targets?sort=-agent", nil)); l.Total != 2 || l.Items[0].Id != bound.Id {
+		t.Fatalf("sorted by agent %+v", l)
+	}
+	e.want(e.do("DELETE", "/listen-targets/"+bound.Id, nil), 204, "")
+
 	// Update: address and register key; null removes the key.
 	agentKey := decode[gen.RegisterKeyCreated](t, e.do("POST", "/register-keys", gen.RegisterKeyCreate{Name: "a", Target: gen.AgentKindAgent, Approval: gen.RegisterKeyApprovalAuto}))
 	scanKey := decode[gen.RegisterKeyCreated](t, e.do("POST", "/register-keys", gen.RegisterKeyCreate{Name: "s", Target: gen.AgentKindScanner, Approval: gen.RegisterKeyApprovalAuto}))

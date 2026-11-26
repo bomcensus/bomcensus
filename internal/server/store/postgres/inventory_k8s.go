@@ -619,6 +619,34 @@ func (d *DB) ListWorkloads(ctx context.Context, clusterID string, f store.Worklo
 	return out, total, err
 }
 
+// ListWorkloadNamespaces implements store.InventoryQuery.
+func (d *DB) ListWorkloadNamespaces(ctx context.Context, clusterID string) ([]store.WorkloadNamespace, error) {
+	const op = "list workload namespaces"
+	q, sc, err := scoped(ctx, op, clusterID)
+	if err != nil {
+		return nil, err
+	}
+	if !ivValidID(clusterID) {
+		return nil, nil
+	}
+	rows, err := d.q.Query(ctx, `
+		SELECT namespace, count(*) FROM k8s_workloads
+		WHERE cluster_id = $1 AND gone_at IS NULL AND `+sc.cluster("cluster_id")+`
+		GROUP BY namespace ORDER BY namespace`, q.args...)
+	if err != nil {
+		return nil, ivErr(op, err)
+	}
+	out, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (store.WorkloadNamespace, error) {
+		var n store.WorkloadNamespace
+		err := r.Scan(&n.Name, &n.Workloads)
+		return n, err
+	})
+	if err != nil {
+		return nil, ivErr(op, err)
+	}
+	return out, nil
+}
+
 // GetWorkload implements store.InventoryQuery.
 func (d *DB) GetWorkload(ctx context.Context, id string) (store.K8sWorkload, error) {
 	const op = "get workload"

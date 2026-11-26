@@ -7,32 +7,24 @@
 <script setup lang="ts">
 import type { ContainerImage } from '~/types'
 import type { TableColumn } from '~/types/table'
-import { fetchAll, listImages } from '~/api'
+import { listImages, type QueryOf } from '~/api'
 
 useHead({ title: '이미지 · bomcensus' })
 
-const { data: images, pending, error, refresh } = useLoad('images', () => fetchAll((page) => listImages(page)), () => [])
-
-const q = ref('')
-const inUseOnly = ref(false)
-
-const rows = computed(() => {
-  const needle = q.value.trim().toLowerCase()
-  return images.value.filter((i) => {
-    if (inUseOnly.value && i.usage.containers === 0) return false
-    if (!needle) return true
-    return [i.digest, ...i.currentTags, ...i.previousTags.map((t) => t.tag)].some((v) => v.toLowerCase().includes(needle))
-  })
-})
+const { items, total, pending, error, refresh, q, filters, sort, page, size } = useServerList(
+  'images',
+  (p) => listImages(p as QueryOf<typeof listImages>),
+  { filters: { inUse: false, contentKnown: false }, sort: 'tag', url: true },
+)
 
 const columns: TableColumn<ContainerImage>[] = [
-  { key: 'tag', label: 'tag', sortValue: (i) => i.currentTags[0] ?? i.previousTags[0]?.tag ?? '' },
-  { key: 'digest', label: 'digest', sortValue: (i) => i.digest, hideBelow: 'sm' },
-  { key: 'os', label: 'OS', sortValue: (i) => i.os ?? '', hideBelow: 'lg' },
-  { key: 'arch', label: '아키텍처', sortValue: (i) => i.arch, hideBelow: 'lg' },
-  { key: 'size', label: '크기', align: 'right', sortValue: (i) => i.sizeBytes, hideBelow: 'md' },
-  { key: 'usage', label: '사용 대상', sortValue: (i) => i.usage.instances },
-  { key: 'firstSeen', label: '최초 발견', align: 'right', sortValue: (i) => i.firstSeen, hideBelow: 'md' },
+  { key: 'tag', label: 'tag', sort: 'tag' },
+  { key: 'digest', label: 'digest', sort: 'digest', hideBelow: 'sm' },
+  { key: 'os', label: 'OS', sort: 'os', hideBelow: 'lg' },
+  { key: 'arch', label: '아키텍처', sort: 'arch', hideBelow: 'lg' },
+  { key: 'size', label: '크기', align: 'right', sort: 'size', sortDesc: true, hideBelow: 'md' },
+  { key: 'usage', label: '사용 대상', sort: 'instances', sortDesc: true },
+  { key: 'firstSeen', label: '최초 발견', align: 'right', sort: 'firstSeen', sortDesc: true, hideBelow: 'md' },
 ]
 </script>
 
@@ -40,10 +32,13 @@ const columns: TableColumn<ContainerImage>[] = [
   <div>
     <PageHeader title="이미지" />
 
-    <FilterBar :count="rows.length" :total="images.length" unit="개">
+    <FilterBar :count="total" unit="개">
       <SearchInput v-model="q" placeholder="tag, digest" />
       <label class="inline-flex items-center gap-1.5 text-sm">
-        <input v-model="inUseOnly" type="checkbox" class="accent-(--accent)" /> 사용 중인 것만
+        <input v-model="filters.inUse" type="checkbox" class="accent-(--accent)" /> 사용 중인 것만
+      </label>
+      <label class="inline-flex items-center gap-1.5 text-sm">
+        <input v-model="filters.contentKnown" type="checkbox" class="accent-(--accent)" /> 내용 확인된 것만
       </label>
     </FilterBar>
 
@@ -52,10 +47,13 @@ const columns: TableColumn<ContainerImage>[] = [
       <DataTable
         v-else
         :columns="columns"
-        :rows="rows"
+        v-model:sort="sort"
+        v-model:page="page"
+        v-model:size="size"
+        :rows="items"
+        :total="total"
         :row-key="(i) => i.digest"
         :row-to="(i) => `/images/${encodeURIComponent(i.digest)}`"
-        :page-size="25"
         :loading="pending"
       >
         <template #cell-tag="{ row }">

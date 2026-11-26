@@ -167,6 +167,13 @@ type WorkloadFilter struct {
 	Sort        string
 }
 
+// WorkloadNamespace is a namespace with the number of current workloads in
+// it.
+type WorkloadNamespace struct {
+	Name      string
+	Workloads int
+}
+
 // K8sPod is a pod, the instance of a workload.
 type K8sPod struct {
 	ID         string

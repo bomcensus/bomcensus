@@ -8,16 +8,35 @@
 import { Upload } from '@lucide/vue'
 import type { Agent, Release } from '~/types'
 import type { TableColumn } from '~/types/table'
-import { fetchAll, getUpdateSettings, listAgents, listReleases, setUpdateSettings, toApiError, uploadRelease } from '~/api'
+import { fetchAll, getUpdateSettings, listAgents, listReleases, setUpdateSettings, toApiError, uploadRelease, type QueryOf } from '~/api'
 
 useHead({ title: '업데이트 · bomcensus' })
 
 const {
-  data: releases,
+  items: releases,
+  total: releasesTotal,
   pending: releasesPending,
   error: releasesError,
-  refresh: refreshReleases,
-} = useLoad('releases', () => fetchAll((page) => listReleases(page)), () => [])
+  refresh: refreshReleaseList,
+  q: releaseQ,
+  filters: releaseFilters,
+  sort: releaseSort,
+  page: releasePage,
+  size: releaseSize,
+} = useServerList('releases', (p) => listReleases(p as QueryOf<typeof listReleases>), {
+  filters: { source: '', verified: false },
+  sort: '-version',
+  url: true,
+})
+// Verified releases are the choices of the rollout version
+const { data: verifiedReleases, refresh: refreshVerified } = useLoad(
+  'releases:verified',
+  () => fetchAll((page) => listReleases({ ...page, verified: true })),
+  () => [],
+)
+async function refreshReleases() {
+  await Promise.all([refreshReleaseList(), refreshVerified()])
+}
 const { data: settings, error: settingsError, refresh: refreshSettings } = useLoad('update-settings', () => getUpdateSettings())
 const {
   data: agents,
@@ -31,12 +50,13 @@ const targetVersion = computed(() => settings.value?.targetVersion ?? null)
 const sourceLabel = { online: '온라인', upload: '업로드' } as const
 
 const releaseColumns: TableColumn<Release>[] = [
-  { key: 'version', label: '버전', sortValue: (r) => r.version },
-  { key: 'publishedAt', label: '게시일', sortValue: (r) => r.publishedAt },
-  { key: 'source', label: '출처', sortValue: (r) => r.source, hideBelow: 'sm' },
+  { key: 'version', label: '버전', sort: 'version', sortDesc: true },
+  { key: 'publishedAt', label: '게시일', sort: 'publishedAt', sortDesc: true },
+  { key: 'source', label: '출처', hideBelow: 'sm' },
   { key: 'platforms', label: '플랫폼', hideBelow: 'md' },
-  { key: 'verified', label: '서명 검증', sortValue: (r) => Number(r.verified) },
+  { key: 'verified', label: '서명 검증' },
 ]
+const sourceOptions = Object.entries(sourceLabel).map(([value, label]) => ({ value, label }))
 const outdatedColumns: TableColumn<Agent>[] = [
   { key: 'hostname', label: '호스트명', sortValue: (a) => a.hostname },
   { key: 'version', label: '버전', sortValue: (a) => a.version },
@@ -90,7 +110,6 @@ async function submitUpload() {
 const changeOpen = ref(false)
 const change = reactive({ version: '', interval: 60, error: '' })
 const changeBusy = ref(false)
-const verifiedReleases = computed(() => releases.value.filter((r) => r.verified))
 
 function openChange() {
   Object.assign(change, {
@@ -173,13 +192,25 @@ async function saveChange() {
         <template #actions>
           <AppButton size="sm" :icon="Upload" @click="openUpload">릴리스 업로드</AppButton>
         </template>
+        <div class="border-b border-line px-3 pt-3">
+          <FilterBar :count="releasesTotal" unit="개">
+            <SearchInput v-model="releaseQ" placeholder="버전, 릴리스 노트" />
+            <SelectFilter v-model="releaseFilters.source" label="출처" :options="sourceOptions" />
+            <label class="inline-flex items-center gap-1.5 text-sm">
+              <input v-model="releaseFilters.verified" type="checkbox" class="accent-(--accent)" /> 검증된 것만
+            </label>
+          </FilterBar>
+        </div>
         <LoadError v-if="releasesError" :error="releasesError" @retry="refreshReleases" />
         <DataTable
           v-else
+          v-model:sort="releaseSort"
+          v-model:page="releasePage"
+          v-model:size="releaseSize"
           :columns="releaseColumns"
           :rows="releases"
+          :total="releasesTotal"
           :row-key="(r) => r.version"
-          :initial-sort="{ key: 'publishedAt', dir: 'desc' }"
           :loading="releasesPending"
         >
           <template #cell-version="{ row }">

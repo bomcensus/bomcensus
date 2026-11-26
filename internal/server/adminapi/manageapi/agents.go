@@ -326,12 +326,13 @@ func listenState(s store.ListenTargetState) gen.ListenTargetState {
 	return gen.ListenTargetState(s)
 }
 
-func listenTargetDTO(t store.ListenTarget) gen.ListenTarget {
+func listenTargetDTO(t store.ListenTarget, agentHostname string) gen.ListenTarget {
 	return gen.ListenTarget{
 		Id:              t.ID,
 		Address:         t.Address,
 		RegisterKeyId:   optString(t.RegisterKeyID),
 		AgentId:         optString(t.AgentID),
+		AgentHostname:   optString(agentHostname),
 		State:           listenState(t.State),
 		LastError:       optString(t.LastError),
 		LastConnectedAt: t.LastConnectedAt,
@@ -348,14 +349,12 @@ func (h *Handlers) ListListenTargets(ctx context.Context, req gen.ListListenTarg
 		return nil, err
 	}
 	hostnames := map[string]string{}
-	if deref(p.Q) != "" {
-		for _, t := range all {
-			if t.AgentID == "" {
-				continue
-			}
-			if a, err := h.st.GetAgent(ctx, t.AgentID); err == nil {
-				hostnames[t.AgentID] = a.Hostname
-			}
+	for _, t := range all {
+		if t.AgentID == "" {
+			continue
+		}
+		if a, err := h.st.GetAgent(ctx, t.AgentID); err == nil {
+			hostnames[t.AgentID] = a.Hostname
 		}
 	}
 	kept := make([]store.ListenTarget, 0, len(all))
@@ -368,6 +367,8 @@ func (h *Handlers) ListListenTargets(ctx context.Context, req gen.ListListenTarg
 	sortBy(kept, desc, func(x, y store.ListenTarget) int {
 		var c int
 		switch field {
+		case "agent":
+			c = cmp.Compare(hostnames[x.AgentID], hostnames[y.AgentID])
 		case "state":
 			c = cmp.Compare(listenState(x.State), listenState(y.State))
 		case "createdAt":
@@ -379,7 +380,7 @@ func (h *Handlers) ListListenTargets(ctx context.Context, req gen.ListListenTarg
 	})
 	out := gen.ListListenTargets200JSONResponse{Items: []gen.ListenTarget{}, Total: len(kept)}
 	for _, t := range paginate(kept, pageOf(p.Limit, p.Offset)) {
-		out.Items = append(out.Items, listenTargetDTO(t))
+		out.Items = append(out.Items, listenTargetDTO(t, hostnames[t.AgentID]))
 	}
 	return out, nil
 }
@@ -432,7 +433,7 @@ func (h *Handlers) CreateListenTarget(ctx context.Context, req gen.CreateListenT
 		return nil, err
 	}
 	h.log.Info("listen target added", "address", created.Address, "by", h.who(ctx))
-	return gen.CreateListenTarget201JSONResponse(listenTargetDTO(created)), nil
+	return gen.CreateListenTarget201JSONResponse(listenTargetDTO(created, "")), nil
 }
 
 // checkListenKey checks that id is a register key for agents.
@@ -485,7 +486,13 @@ func (h *Handlers) UpdateListenTarget(ctx context.Context, req gen.UpdateListenT
 		return nil, err
 	}
 	h.log.Info("listen target updated", "listen_target_id", updated.ID, "address", updated.Address, "by", h.who(ctx))
-	return gen.UpdateListenTarget200JSONResponse(listenTargetDTO(updated)), nil
+	var hostname string
+	if updated.AgentID != "" {
+		if a, err := h.st.GetAgent(ctx, updated.AgentID); err == nil {
+			hostname = a.Hostname
+		}
+	}
+	return gen.UpdateListenTarget200JSONResponse(listenTargetDTO(updated, hostname)), nil
 }
 
 // DeleteListenTarget implements deleteListenTarget.

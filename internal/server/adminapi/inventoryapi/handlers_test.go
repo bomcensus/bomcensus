@@ -706,6 +706,16 @@ func TestKubernetes(t *testing.T) {
 	_, err = h.ListK8sWorkloads(ctx, gen.ListK8sWorkloadsRequestObject{Id: uuid.NewString()})
 	wantStatus(t, "workloads of missing cluster", err, http.StatusNotFound)
 
+	ns, err := h.ListK8sNamespaces(ctx, gen.ListK8sNamespacesRequestObject{Id: f.cluster})
+	must(t, err)
+	if nl := ns.(gen.ListK8sNamespaces200JSONResponse); nl.Total != 2 ||
+		nl.Items[0] != (gen.K8sNamespace{Name: "kube-system", WorkloadCount: 1}) ||
+		nl.Items[1] != (gen.K8sNamespace{Name: "shop", WorkloadCount: 1}) {
+		t.Fatalf("namespaces: %+v", nl)
+	}
+	_, err = h.ListK8sNamespaces(ctx, gen.ListK8sNamespacesRequestObject{Id: uuid.NewString()})
+	wantStatus(t, "namespaces of missing cluster", err, http.StatusNotFound)
+
 	phase := gen.K8sPodPhaseRunning
 	srt := gen.ListK8sWorkloadPodsParamsSort("-name")
 	p, err := h.ListK8sWorkloadPods(ctx, gen.ListK8sWorkloadPodsRequestObject{Id: f.workload,

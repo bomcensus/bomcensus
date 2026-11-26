@@ -1506,10 +1506,12 @@ const (
 	ListAssetProcessesParamsSortExe            ListAssetProcessesParamsSort = "exe"
 	ListAssetProcessesParamsSortMinusExe       ListAssetProcessesParamsSort = "-exe"
 	ListAssetProcessesParamsSortMinusPid       ListAssetProcessesParamsSort = "-pid"
+	ListAssetProcessesParamsSortMinusRisk      ListAssetProcessesParamsSort = "-risk"
 	ListAssetProcessesParamsSortMinusStartedAt ListAssetProcessesParamsSort = "-startedAt"
 	ListAssetProcessesParamsSortMinusState     ListAssetProcessesParamsSort = "-state"
 	ListAssetProcessesParamsSortMinusUser      ListAssetProcessesParamsSort = "-user"
 	ListAssetProcessesParamsSortPid            ListAssetProcessesParamsSort = "pid"
+	ListAssetProcessesParamsSortRisk           ListAssetProcessesParamsSort = "risk"
 	ListAssetProcessesParamsSortStartedAt      ListAssetProcessesParamsSort = "startedAt"
 	ListAssetProcessesParamsSortState          ListAssetProcessesParamsSort = "state"
 	ListAssetProcessesParamsSortUser           ListAssetProcessesParamsSort = "user"
@@ -1524,6 +1526,8 @@ func (e ListAssetProcessesParamsSort) Valid() bool {
 		return true
 	case ListAssetProcessesParamsSortMinusPid:
 		return true
+	case ListAssetProcessesParamsSortMinusRisk:
+		return true
 	case ListAssetProcessesParamsSortMinusStartedAt:
 		return true
 	case ListAssetProcessesParamsSortMinusState:
@@ -1531,6 +1535,8 @@ func (e ListAssetProcessesParamsSort) Valid() bool {
 	case ListAssetProcessesParamsSortMinusUser:
 		return true
 	case ListAssetProcessesParamsSortPid:
+		return true
+	case ListAssetProcessesParamsSortRisk:
 		return true
 	case ListAssetProcessesParamsSortStartedAt:
 		return true
@@ -1894,9 +1900,11 @@ func (e ListListenPortsParamsSort) Valid() bool {
 // Defines values for ListListenTargetsParamsSort.
 const (
 	ListListenTargetsParamsSortAddress              ListListenTargetsParamsSort = "address"
+	ListListenTargetsParamsSortAgent                ListListenTargetsParamsSort = "agent"
 	ListListenTargetsParamsSortCreatedAt            ListListenTargetsParamsSort = "createdAt"
 	ListListenTargetsParamsSortLastConnectedAt      ListListenTargetsParamsSort = "lastConnectedAt"
 	ListListenTargetsParamsSortMinusAddress         ListListenTargetsParamsSort = "-address"
+	ListListenTargetsParamsSortMinusAgent           ListListenTargetsParamsSort = "-agent"
 	ListListenTargetsParamsSortMinusCreatedAt       ListListenTargetsParamsSort = "-createdAt"
 	ListListenTargetsParamsSortMinusLastConnectedAt ListListenTargetsParamsSort = "-lastConnectedAt"
 	ListListenTargetsParamsSortMinusState           ListListenTargetsParamsSort = "-state"
@@ -1908,11 +1916,15 @@ func (e ListListenTargetsParamsSort) Valid() bool {
 	switch e {
 	case ListListenTargetsParamsSortAddress:
 		return true
+	case ListListenTargetsParamsSortAgent:
+		return true
 	case ListListenTargetsParamsSortCreatedAt:
 		return true
 	case ListListenTargetsParamsSortLastConnectedAt:
 		return true
 	case ListListenTargetsParamsSortMinusAddress:
+		return true
+	case ListListenTargetsParamsSortMinusAgent:
 		return true
 	case ListListenTargetsParamsSortMinusCreatedAt:
 		return true
@@ -1954,9 +1966,11 @@ const (
 	ListProcessesParamsSortExe            ListProcessesParamsSort = "exe"
 	ListProcessesParamsSortMinusAsset     ListProcessesParamsSort = "-asset"
 	ListProcessesParamsSortMinusExe       ListProcessesParamsSort = "-exe"
+	ListProcessesParamsSortMinusRisk      ListProcessesParamsSort = "-risk"
 	ListProcessesParamsSortMinusStartedAt ListProcessesParamsSort = "-startedAt"
 	ListProcessesParamsSortMinusState     ListProcessesParamsSort = "-state"
 	ListProcessesParamsSortMinusUser      ListProcessesParamsSort = "-user"
+	ListProcessesParamsSortRisk           ListProcessesParamsSort = "risk"
 	ListProcessesParamsSortStartedAt      ListProcessesParamsSort = "startedAt"
 	ListProcessesParamsSortState          ListProcessesParamsSort = "state"
 	ListProcessesParamsSortUser           ListProcessesParamsSort = "user"
@@ -1973,11 +1987,15 @@ func (e ListProcessesParamsSort) Valid() bool {
 		return true
 	case ListProcessesParamsSortMinusExe:
 		return true
+	case ListProcessesParamsSortMinusRisk:
+		return true
 	case ListProcessesParamsSortMinusStartedAt:
 		return true
 	case ListProcessesParamsSortMinusState:
 		return true
 	case ListProcessesParamsSortMinusUser:
+		return true
+	case ListProcessesParamsSortRisk:
 		return true
 	case ListProcessesParamsSortStartedAt:
 		return true
@@ -2098,6 +2116,96 @@ func (e ListScanTargetsParamsSort) Valid() bool {
 	case ListScanTargetsParamsSortMinusName:
 		return true
 	case ListScanTargetsParamsSortName:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListVulnerableComponentsParamsSort.
+const (
+	ListVulnerableComponentsParamsSortAssets      ListVulnerableComponentsParamsSort = "assets"
+	ListVulnerableComponentsParamsSortCves        ListVulnerableComponentsParamsSort = "cves"
+	ListVulnerableComponentsParamsSortEpss        ListVulnerableComponentsParamsSort = "epss"
+	ListVulnerableComponentsParamsSortMinusAssets ListVulnerableComponentsParamsSort = "-assets"
+	ListVulnerableComponentsParamsSortMinusCves   ListVulnerableComponentsParamsSort = "-cves"
+	ListVulnerableComponentsParamsSortMinusEpss   ListVulnerableComponentsParamsSort = "-epss"
+	ListVulnerableComponentsParamsSortMinusName   ListVulnerableComponentsParamsSort = "-name"
+	ListVulnerableComponentsParamsSortMinusScore  ListVulnerableComponentsParamsSort = "-score"
+	ListVulnerableComponentsParamsSortName        ListVulnerableComponentsParamsSort = "name"
+	ListVulnerableComponentsParamsSortRank        ListVulnerableComponentsParamsSort = "rank"
+	ListVulnerableComponentsParamsSortScore       ListVulnerableComponentsParamsSort = "score"
+)
+
+// Valid indicates whether the value is a known member of the ListVulnerableComponentsParamsSort enum.
+func (e ListVulnerableComponentsParamsSort) Valid() bool {
+	switch e {
+	case ListVulnerableComponentsParamsSortAssets:
+		return true
+	case ListVulnerableComponentsParamsSortCves:
+		return true
+	case ListVulnerableComponentsParamsSortEpss:
+		return true
+	case ListVulnerableComponentsParamsSortMinusAssets:
+		return true
+	case ListVulnerableComponentsParamsSortMinusCves:
+		return true
+	case ListVulnerableComponentsParamsSortMinusEpss:
+		return true
+	case ListVulnerableComponentsParamsSortMinusName:
+		return true
+	case ListVulnerableComponentsParamsSortMinusScore:
+		return true
+	case ListVulnerableComponentsParamsSortName:
+		return true
+	case ListVulnerableComponentsParamsSortRank:
+		return true
+	case ListVulnerableComponentsParamsSortScore:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListVulnerabilitiesParamsSort.
+const (
+	ListVulnerabilitiesParamsSortAssets          ListVulnerabilitiesParamsSort = "assets"
+	ListVulnerabilitiesParamsSortComponents      ListVulnerabilitiesParamsSort = "components"
+	ListVulnerabilitiesParamsSortEpss            ListVulnerabilitiesParamsSort = "epss"
+	ListVulnerabilitiesParamsSortMinusAssets     ListVulnerabilitiesParamsSort = "-assets"
+	ListVulnerabilitiesParamsSortMinusComponents ListVulnerabilitiesParamsSort = "-components"
+	ListVulnerabilitiesParamsSortMinusEpss       ListVulnerabilitiesParamsSort = "-epss"
+	ListVulnerabilitiesParamsSortMinusScore      ListVulnerabilitiesParamsSort = "-score"
+	ListVulnerabilitiesParamsSortMinusVulnId     ListVulnerabilitiesParamsSort = "-vulnId"
+	ListVulnerabilitiesParamsSortRank            ListVulnerabilitiesParamsSort = "rank"
+	ListVulnerabilitiesParamsSortScore           ListVulnerabilitiesParamsSort = "score"
+	ListVulnerabilitiesParamsSortVulnId          ListVulnerabilitiesParamsSort = "vulnId"
+)
+
+// Valid indicates whether the value is a known member of the ListVulnerabilitiesParamsSort enum.
+func (e ListVulnerabilitiesParamsSort) Valid() bool {
+	switch e {
+	case ListVulnerabilitiesParamsSortAssets:
+		return true
+	case ListVulnerabilitiesParamsSortComponents:
+		return true
+	case ListVulnerabilitiesParamsSortEpss:
+		return true
+	case ListVulnerabilitiesParamsSortMinusAssets:
+		return true
+	case ListVulnerabilitiesParamsSortMinusComponents:
+		return true
+	case ListVulnerabilitiesParamsSortMinusEpss:
+		return true
+	case ListVulnerabilitiesParamsSortMinusScore:
+		return true
+	case ListVulnerabilitiesParamsSortMinusVulnId:
+		return true
+	case ListVulnerabilitiesParamsSortRank:
+		return true
+	case ListVulnerabilitiesParamsSortScore:
+		return true
+	case ListVulnerabilitiesParamsSortVulnId:
 		return true
 	default:
 		return false
@@ -3460,6 +3568,20 @@ type K8sFilter struct {
 	NsInclude         []string `json:"nsInclude"`
 }
 
+// K8sNamespace defines model for K8sNamespace.
+type K8sNamespace struct {
+	Name string `json:"name"`
+
+	// WorkloadCount Current workloads in the namespace, excluded ones included.
+	WorkloadCount int `json:"workloadCount"`
+}
+
+// K8sNamespaceList defines model for K8sNamespaceList.
+type K8sNamespaceList struct {
+	Items []K8sNamespace `json:"items"`
+	Total int            `json:"total"`
+}
+
 // K8sPod defines model for K8sPod.
 type K8sPod struct {
 	Containers []K8sPodContainer `json:"containers"`
@@ -3573,6 +3695,9 @@ type ListenProto string
 type ListenTarget struct {
 	// Address `host:port` the server dials.
 	Address string `json:"address"`
+
+	// AgentHostname Hostname of the bound agent, absent when the agent no longer exists.
+	AgentHostname *string `json:"agentHostname,omitempty"`
 
 	// AgentId Agent bound to the address after enrollment.
 	AgentId         *string    `json:"agentId,omitempty"`
@@ -5191,7 +5316,8 @@ type ListTriageRulesParams struct {
 // ListVulnerableComponentsParams defines parameters for ListVulnerableComponents.
 type ListVulnerableComponentsParams struct {
 	// Q Free-text search, case-insensitive substring match.
-	Q *QueryQ `form:"q,omitempty" json:"q,omitempty"`
+	Q    *QueryQ                             `form:"q,omitempty" json:"q,omitempty"`
+	Sort *ListVulnerableComponentsParamsSort `form:"sort,omitempty" json:"sort,omitempty"`
 
 	// Severity Keep items with a vulnerability of this rating.
 	Severity *QuerySeverity `form:"severity,omitempty" json:"severity,omitempty"`
@@ -5210,11 +5336,15 @@ type ListVulnerableComponentsParams struct {
 	Limit             *QueryLimit             `form:"limit,omitempty" json:"limit,omitempty"`
 	Offset            *QueryOffset            `form:"offset,omitempty" json:"offset,omitempty"`
 }
+
+// ListVulnerableComponentsParamsSort defines parameters for ListVulnerableComponents.
+type ListVulnerableComponentsParamsSort string
 
 // ListVulnerabilitiesParams defines parameters for ListVulnerabilities.
 type ListVulnerabilitiesParams struct {
 	// Q Free-text search, case-insensitive substring match.
-	Q *QueryQ `form:"q,omitempty" json:"q,omitempty"`
+	Q    *QueryQ                        `form:"q,omitempty" json:"q,omitempty"`
+	Sort *ListVulnerabilitiesParamsSort `form:"sort,omitempty" json:"sort,omitempty"`
 
 	// Severity Keep items with a vulnerability of this rating.
 	Severity *QuerySeverity `form:"severity,omitempty" json:"severity,omitempty"`
@@ -5233,6 +5363,9 @@ type ListVulnerabilitiesParams struct {
 	Limit             *QueryLimit             `form:"limit,omitempty" json:"limit,omitempty"`
 	Offset            *QueryOffset            `form:"offset,omitempty" json:"offset,omitempty"`
 }
+
+// ListVulnerabilitiesParamsSort defines parameters for ListVulnerabilities.
+type ListVulnerabilitiesParamsSort string
 
 // ListVulnerableImagesParams defines parameters for ListVulnerableImages.
 type ListVulnerableImagesParams struct {
@@ -5520,7 +5653,7 @@ type ClientInterface interface {
 
 	// ListAssetProcesses Processes of an asset
 	//
-	// `q` matches executable path, user, command line and pid.
+	// `q` matches executable path, user, command line and pid. Sort `-risk` puts suspicious processes first, then those that need a restart.
 	//
 	// Corresponds with GET /assets/{id}/processes (the `ListAssetProcesses` operationId).
 	ListAssetProcesses(ctx context.Context, id PathId, params *ListAssetProcessesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -5977,6 +6110,13 @@ type ClientInterface interface {
 	// Corresponds with PATCH /k8s/clusters/{id} (the `UpdateK8sCluster` operationId).
 	UpdateK8sCluster(ctx context.Context, id PathId, body UpdateK8sClusterJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ListK8sNamespaces Namespaces of a cluster's current workloads
+	//
+	// Every namespace with at least one current workload, by name.
+	//
+	// Corresponds with GET /k8s/clusters/{id}/namespaces (the `ListK8sNamespaces` operationId).
+	ListK8sNamespaces(ctx context.Context, id PathId, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// SyncK8sCluster Request an inventory sync (and exec collection when enabled) now
 	//
 	// Corresponds with POST /k8s/clusters/{id}/sync (the `SyncK8sCluster` operationId).
@@ -6132,7 +6272,8 @@ type ClientInterface interface {
 	// `view=restart`: the executable or a mapped library was replaced on disk
 	// (an old version is still in memory). `view=suspicious`: the executable
 	// or a mapped library was deleted, or the process runs from a memfd.
-	// `q` matches executable path, user and command line.
+	// `q` matches executable path, user, command line, pid and asset name.
+	// Sort `-risk` puts suspicious processes first, then those that need a restart.
 	//
 	// Corresponds with GET /processes (the `ListProcesses` operationId).
 	ListProcesses(ctx context.Context, params *ListProcessesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -6426,6 +6567,8 @@ type ClientInterface interface {
 	//
 	// Ordered by exposure, then known exploitation, EPSS and CVSS; items
 	// rated only negligible come last. `q` matches the component name, version and the CVE ids.
+	// Another `sort` orders by that field and keeps this order among equal values;
+	// items without the value come last.
 	//
 	// Corresponds with GET /vulnerabilities/components (the `ListVulnerableComponents` operationId).
 	ListVulnerableComponents(ctx context.Context, params *ListVulnerableComponentsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -6439,6 +6582,8 @@ type ClientInterface interface {
 	//
 	// Ordered by exposure, then known exploitation, EPSS and CVSS; items
 	// rated only negligible come last. `q` matches the id, aliases, summary and component names.
+	// Another `sort` orders by that field and keeps this order among equal values;
+	// items without the value come last.
 	//
 	// Corresponds with GET /vulnerabilities/cves (the `ListVulnerabilities` operationId).
 	ListVulnerabilities(ctx context.Context, params *ListVulnerabilitiesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -6724,7 +6869,7 @@ func (c *Client) ListAssetNotices(ctx context.Context, id PathId, reqEditors ...
 
 // ListAssetProcesses Processes of an asset
 //
-// `q` matches executable path, user, command line and pid.
+// `q` matches executable path, user, command line and pid. Sort `-risk` puts suspicious processes first, then those that need a restart.
 //
 // Corresponds with GET /assets/{id}/processes (the `ListAssetProcesses` operationId).
 func (c *Client) ListAssetProcesses(ctx context.Context, id PathId, params *ListAssetProcessesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -7781,6 +7926,23 @@ func (c *Client) UpdateK8sCluster(ctx context.Context, id PathId, body UpdateK8s
 	return c.Client.Do(req)
 }
 
+// ListK8sNamespaces Namespaces of a cluster's current workloads
+//
+// Every namespace with at least one current workload, by name.
+//
+// Corresponds with GET /k8s/clusters/{id}/namespaces (the `ListK8sNamespaces` operationId).
+func (c *Client) ListK8sNamespaces(ctx context.Context, id PathId, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListK8sNamespacesRequest(c.Server, id)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // SyncK8sCluster Request an inventory sync (and exec collection when enabled) now
 //
 // Corresponds with POST /k8s/clusters/{id}/sync (the `SyncK8sCluster` operationId).
@@ -8116,7 +8278,8 @@ func (c *Client) GetNotice(ctx context.Context, noticeId PathNoticeId, reqEditor
 // `view=restart`: the executable or a mapped library was replaced on disk
 // (an old version is still in memory). `view=suspicious`: the executable
 // or a mapped library was deleted, or the process runs from a memfd.
-// `q` matches executable path, user and command line.
+// `q` matches executable path, user, command line, pid and asset name.
+// Sort `-risk` puts suspicious processes first, then those that need a restart.
 //
 // Corresponds with GET /processes (the `ListProcesses` operationId).
 func (c *Client) ListProcesses(ctx context.Context, params *ListProcessesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -8730,6 +8893,8 @@ func (c *Client) ExportVex(ctx context.Context, reqEditors ...RequestEditorFn) (
 //
 // Ordered by exposure, then known exploitation, EPSS and CVSS; items
 // rated only negligible come last. `q` matches the component name, version and the CVE ids.
+// Another `sort` orders by that field and keeps this order among equal values;
+// items without the value come last.
 //
 // Corresponds with GET /vulnerabilities/components (the `ListVulnerableComponents` operationId).
 func (c *Client) ListVulnerableComponents(ctx context.Context, params *ListVulnerableComponentsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -8763,6 +8928,8 @@ func (c *Client) GetVulnerableComponent(ctx context.Context, id PathId, reqEdito
 //
 // Ordered by exposure, then known exploitation, EPSS and CVSS; items
 // rated only negligible come last. `q` matches the id, aliases, summary and component names.
+// Another `sort` orders by that field and keeps this order among equal values;
+// items without the value come last.
 //
 // Corresponds with GET /vulnerabilities/cves (the `ListVulnerabilities` operationId).
 func (c *Client) ListVulnerabilities(ctx context.Context, params *ListVulnerabilitiesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -12260,6 +12427,40 @@ func NewUpdateK8sClusterRequestWithBody(server string, id PathId, contentType st
 	return req, nil
 }
 
+// NewListK8sNamespacesRequest constructs an http.Request for the ListK8sNamespaces method
+func NewListK8sNamespacesRequest(server string, id PathId) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/k8s/clusters/%s/namespaces", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewSyncK8sClusterRequest constructs an http.Request for the SyncK8sCluster method
 func NewSyncK8sClusterRequest(server string, id PathId) (*http.Request, error) {
 	var err error
@@ -14460,6 +14661,18 @@ func NewListVulnerableComponentsRequest(server string, params *ListVulnerableCom
 
 		}
 
+		if params.Sort != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "sort", *params.Sort, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
 		if params.Severity != nil {
 
 			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "severity", *params.Severity, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
@@ -14623,6 +14836,18 @@ func NewListVulnerabilitiesRequest(server string, params *ListVulnerabilitiesPar
 		if params.Q != nil {
 
 			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "q", *params.Q, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Sort != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "sort", *params.Sort, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
 				return nil, err
 			} else {
 				for _, qp := range strings.Split(queryFrag, "&") {
@@ -15245,7 +15470,7 @@ type ClientWithResponsesInterface interface {
 
 	// ListAssetProcessesWithResponse Processes of an asset
 	//
-	// `q` matches executable path, user, command line and pid.
+	// `q` matches executable path, user, command line and pid. Sort `-risk` puts suspicious processes first, then those that need a restart.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -15770,6 +15995,15 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with PATCH /k8s/clusters/{id} (the `UpdateK8sCluster` operationId).
 	UpdateK8sClusterWithResponse(ctx context.Context, id PathId, body UpdateK8sClusterJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateK8sClusterResponse, error)
 
+	// ListK8sNamespacesWithResponse Namespaces of a cluster's current workloads
+	//
+	// Every namespace with at least one current workload, by name.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /k8s/clusters/{id}/namespaces (the `ListK8sNamespaces` operationId).
+	ListK8sNamespacesWithResponse(ctx context.Context, id PathId, reqEditors ...RequestEditorFn) (*ListK8sNamespacesResponse, error)
+
 	// SyncK8sClusterWithResponse Request an inventory sync (and exec collection when enabled) now
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -15945,7 +16179,8 @@ type ClientWithResponsesInterface interface {
 	// `view=restart`: the executable or a mapped library was replaced on disk
 	// (an old version is still in memory). `view=suspicious`: the executable
 	// or a mapped library was deleted, or the process runs from a memfd.
-	// `q` matches executable path, user and command line.
+	// `q` matches executable path, user, command line, pid and asset name.
+	// Sort `-risk` puts suspicious processes first, then those that need a restart.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -16269,6 +16504,8 @@ type ClientWithResponsesInterface interface {
 	//
 	// Ordered by exposure, then known exploitation, EPSS and CVSS; items
 	// rated only negligible come last. `q` matches the component name, version and the CVE ids.
+	// Another `sort` orders by that field and keeps this order among equal values;
+	// items without the value come last.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -16286,6 +16523,8 @@ type ClientWithResponsesInterface interface {
 	//
 	// Ordered by exposure, then known exploitation, EPSS and CVSS; items
 	// rated only negligible come last. `q` matches the id, aliases, summary and component names.
+	// Another `sort` orders by that field and keeps this order among equal values;
+	// items without the value come last.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -20158,6 +20397,68 @@ func (r UpdateK8sClusterResponse) ContentType() string {
 	return ""
 }
 
+type ListK8sNamespacesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *K8sNamespaceList
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *UnexpectedError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListK8sNamespacesResponse) GetJSON200() *K8sNamespaceList {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ListK8sNamespacesResponse) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r ListK8sNamespacesResponse) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r ListK8sNamespacesResponse) GetJSONDefault() *UnexpectedError {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ListK8sNamespacesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListK8sNamespacesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListK8sNamespacesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListK8sNamespacesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type SyncK8sClusterResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -23355,7 +23656,7 @@ func (c *ClientWithResponses) ListAssetNoticesWithResponse(ctx context.Context, 
 
 // ListAssetProcessesWithResponse Processes of an asset
 //
-// `q` matches executable path, user, command line and pid.
+// `q` matches executable path, user, command line and pid. Sort `-risk` puts suspicious processes first, then those that need a restart.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -24240,6 +24541,21 @@ func (c *ClientWithResponses) UpdateK8sClusterWithResponse(ctx context.Context, 
 	return ParseUpdateK8sClusterResponse(rsp)
 }
 
+// ListK8sNamespacesWithResponse Namespaces of a cluster's current workloads
+//
+// Every namespace with at least one current workload, by name.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /k8s/clusters/{id}/namespaces (the `ListK8sNamespaces` operationId).
+func (c *ClientWithResponses) ListK8sNamespacesWithResponse(ctx context.Context, id PathId, reqEditors ...RequestEditorFn) (*ListK8sNamespacesResponse, error) {
+	rsp, err := c.ListK8sNamespaces(ctx, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListK8sNamespacesResponse(rsp)
+}
+
 // SyncK8sClusterWithResponse Request an inventory sync (and exec collection when enabled) now
 //
 // Returns a wrapper object for the known response body format(s).
@@ -24523,7 +24839,8 @@ func (c *ClientWithResponses) GetNoticeWithResponse(ctx context.Context, noticeI
 // `view=restart`: the executable or a mapped library was replaced on disk
 // (an old version is still in memory). `view=suspicious`: the executable
 // or a mapped library was deleted, or the process runs from a memfd.
-// `q` matches executable path, user and command line.
+// `q` matches executable path, user, command line, pid and asset name.
+// Sort `-risk` puts suspicious processes first, then those that need a restart.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -25039,6 +25356,8 @@ func (c *ClientWithResponses) ExportVexWithResponse(ctx context.Context, reqEdit
 //
 // Ordered by exposure, then known exploitation, EPSS and CVSS; items
 // rated only negligible come last. `q` matches the component name, version and the CVE ids.
+// Another `sort` orders by that field and keeps this order among equal values;
+// items without the value come last.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -25068,6 +25387,8 @@ func (c *ClientWithResponses) GetVulnerableComponentWithResponse(ctx context.Con
 //
 // Ordered by exposure, then known exploitation, EPSS and CVSS; items
 // rated only negligible come last. `q` matches the id, aliases, summary and component names.
+// Another `sort` orders by that field and keeps this order among equal values;
+// items without the value come last.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -28117,6 +28438,53 @@ func ParseUpdateK8sClusterResponse(rsp *http.Response) (*UpdateK8sClusterRespons
 	return response, nil
 }
 
+// ParseListK8sNamespacesResponse parses an HTTP response from a ListK8sNamespacesWithResponse call
+func ParseListK8sNamespacesResponse(rsp *http.Response) (*ListK8sNamespacesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListK8sNamespacesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest K8sNamespaceList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest UnexpectedError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseSyncK8sClusterResponse parses an HTTP response from a SyncK8sClusterWithResponse call
 func ParseSyncK8sClusterResponse(rsp *http.Response) (*SyncK8sClusterResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -30603,6 +30971,9 @@ type ServerInterface interface {
 	// UpdateK8sCluster Change a Kubernetes cluster
 	// (PATCH /k8s/clusters/{id})
 	UpdateK8sCluster(w http.ResponseWriter, r *http.Request, id PathId)
+	// ListK8sNamespaces Namespaces of a cluster's current workloads
+	// (GET /k8s/clusters/{id}/namespaces)
+	ListK8sNamespaces(w http.ResponseWriter, r *http.Request, id PathId)
 	// SyncK8sCluster Request an inventory sync (and exec collection when enabled) now
 	// (POST /k8s/clusters/{id}/sync)
 	SyncK8sCluster(w http.ResponseWriter, r *http.Request, id PathId)
@@ -31107,6 +31478,12 @@ func (_ Unimplemented) GetK8sCluster(w http.ResponseWriter, r *http.Request, id 
 // UpdateK8sCluster Change a Kubernetes cluster
 // (PATCH /k8s/clusters/{id})
 func (_ Unimplemented) UpdateK8sCluster(w http.ResponseWriter, r *http.Request, id PathId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListK8sNamespaces Namespaces of a cluster's current workloads
+// (GET /k8s/clusters/{id}/namespaces)
+func (_ Unimplemented) ListK8sNamespaces(w http.ResponseWriter, r *http.Request, id PathId) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -33924,6 +34301,32 @@ func (siw *ServerInterfaceWrapper) UpdateK8sCluster(w http.ResponseWriter, r *ht
 	handler.ServeHTTP(w, r)
 }
 
+// ListK8sNamespaces operation middleware
+func (siw *ServerInterfaceWrapper) ListK8sNamespaces(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id PathId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListK8sNamespaces(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // SyncK8sCluster operation middleware
 func (siw *ServerInterfaceWrapper) SyncK8sCluster(w http.ResponseWriter, r *http.Request) {
 
@@ -35474,6 +35877,19 @@ func (siw *ServerInterfaceWrapper) ListVulnerableComponents(w http.ResponseWrite
 		return
 	}
 
+	// ------------- Optional query parameter "sort" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "sort", r.URL.Query(), &params.Sort, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "sort"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sort", Err: err})
+		}
+		return
+	}
+
 	// ------------- Optional query parameter "severity" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "severity", r.URL.Query(), &params.Severity, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
@@ -35620,6 +36036,19 @@ func (siw *ServerInterfaceWrapper) ListVulnerabilities(w http.ResponseWriter, r 
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "q"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "q", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "sort" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "sort", r.URL.Query(), &params.Sort, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "sort"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sort", Err: err})
 		}
 		return
 	}
@@ -36185,6 +36614,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/k8s/clusters/{id}/workloads", wrapper.ListK8sWorkloads)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/k8s/clusters/{id}/namespaces", wrapper.ListK8sNamespaces)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/k8s/workloads/{id}/pods", wrapper.ListK8sWorkloadPods)
@@ -40692,6 +41124,73 @@ func (response UpdateK8sClusterdefaultJSONResponse) VisitUpdateK8sClusterRespons
 	return err
 }
 
+type ListK8sNamespacesRequestObject struct {
+	Id PathId `json:"id"`
+}
+
+type ListK8sNamespacesResponseObject interface {
+	VisitListK8sNamespacesResponse(w http.ResponseWriter) error
+}
+
+type ListK8sNamespaces200JSONResponse K8sNamespaceList
+
+func (response ListK8sNamespaces200JSONResponse) VisitListK8sNamespacesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListK8sNamespaces401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response ListK8sNamespaces401JSONResponse) VisitListK8sNamespacesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListK8sNamespaces404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ListK8sNamespaces404JSONResponse) VisitListK8sNamespacesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListK8sNamespacesdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ListK8sNamespacesdefaultJSONResponse) VisitListK8sNamespacesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type SyncK8sClusterRequestObject struct {
 	Id PathId `json:"id"`
 }
@@ -44203,6 +44702,9 @@ type StrictServerInterface interface {
 	// UpdateK8sCluster Change a Kubernetes cluster
 	// (PATCH /k8s/clusters/{id})
 	UpdateK8sCluster(ctx context.Context, request UpdateK8sClusterRequestObject) (UpdateK8sClusterResponseObject, error)
+	// ListK8sNamespaces Namespaces of a cluster's current workloads
+	// (GET /k8s/clusters/{id}/namespaces)
+	ListK8sNamespaces(ctx context.Context, request ListK8sNamespacesRequestObject) (ListK8sNamespacesResponseObject, error)
 	// SyncK8sCluster Request an inventory sync (and exec collection when enabled) now
 	// (POST /k8s/clusters/{id}/sync)
 	SyncK8sCluster(ctx context.Context, request SyncK8sClusterRequestObject) (SyncK8sClusterResponseObject, error)
@@ -46001,6 +46503,32 @@ func (sh *strictHandler) UpdateK8sCluster(w http.ResponseWriter, r *http.Request
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(UpdateK8sClusterResponseObject); ok {
 		if err := validResponse.VisitUpdateK8sClusterResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListK8sNamespaces operation middleware
+func (sh *strictHandler) ListK8sNamespaces(w http.ResponseWriter, r *http.Request, id PathId) {
+	var request ListK8sNamespacesRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListK8sNamespaces(ctx, request.(ListK8sNamespacesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListK8sNamespaces")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListK8sNamespacesResponseObject); ok {
+		if err := validResponse.VisitListK8sNamespacesResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

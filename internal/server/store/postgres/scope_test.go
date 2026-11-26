@@ -303,6 +303,9 @@ func scReads() []scRead {
 		{name: "ListWorkloads", wantOwn: true, call: ctxDB(func(ctx context.Context, db *DB, f F) (any, error) {
 			return two(db.ListWorkloads(ctx, f.ClusterID, store.WorkloadFilter{IncludeGone: true}, scPage()))
 		})},
+		{name: "ListWorkloadNamespaces", wantOwn: true, call: ctxDB(func(ctx context.Context, db *DB, f F) (any, error) {
+			return db.ListWorkloadNamespaces(ctx, f.ClusterID)
+		})},
 		{name: "ListWorkloadPods", wantOwn: true, call: ctxDB(func(ctx context.Context, db *DB, f F) (any, error) {
 			return two(db.ListWorkloadPods(ctx, f.WorkloadID, store.PodFilter{IncludeGone: true}, scPage()))
 		})},

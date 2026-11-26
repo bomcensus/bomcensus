@@ -136,6 +136,8 @@ const (
 	OpListIntegrityFiles = "ListIntegrityFiles"
 	// OpListK8sClusters is GET /k8s/clusters.
 	OpListK8sClusters = "ListK8sClusters"
+	// OpListK8sNamespaces is GET /k8s/clusters/{id}/namespaces.
+	OpListK8sNamespaces = "ListK8sNamespaces"
 	// OpListK8sWorkloadPods is GET /k8s/workloads/{id}/pods.
 	OpListK8sWorkloadPods = "ListK8sWorkloadPods"
 	// OpListK8sWorkloads is GET /k8s/clusters/{id}/workloads.
@@ -293,6 +295,7 @@ var operations = []string{
 	OpListIntegrityFileNodes,
 	OpListIntegrityFiles,
 	OpListK8sClusters,
+	OpListK8sNamespaces,
 	OpListK8sWorkloadPods,
 	OpListK8sWorkloads,
 	OpListListenPorts,

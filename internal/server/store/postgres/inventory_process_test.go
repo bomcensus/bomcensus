@@ -84,6 +84,11 @@ func TestReplaceProcessesAndEvents(t *testing.T) {
 	if total != 1 || sus[0].PID != 4000 || sus[0].Asset.Name != "web-01" {
 		t.Fatalf("suspicious: %+v", sus)
 	}
+	risky, _, err := db.ListProcesses(ctx, store.ProcessFilter{Sort: "-risk"}, store.Page{Limit: 2})
+	ivMust(t, err)
+	if len(risky) != 2 || risky[0].PID != 4000 || risky[1].PID != 3000 {
+		t.Fatalf("risk order: %+v", risky)
+	}
 	all, total, err := db.ListProcesses(ctx, store.ProcessFilter{Q: "sshd", Sort: "asset"}, store.Page{Limit: 1, Offset: 1})
 	ivMust(t, err)
 	if total != 2 || len(all) != 1 || all[0].Asset.Name != "web-02" {

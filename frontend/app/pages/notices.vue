@@ -35,12 +35,16 @@ watch(q, (v) => {
   qTimer = setTimeout(() => (qDebounced.value = v.trim()), 300)
 })
 
-const filters = computed(() => ({
+// Paging of the list. Any other change starts over from the first page.
+const page = ref(0)
+const size = ref(50)
+const conditions = computed(() => ({
   q: qDebounced.value || undefined,
   source: source.value || undefined,
   includeRead: showRead.value ? true : undefined,
-  limit: 500,
 }))
+watch([() => JSON.stringify(conditions.value), size], () => (page.value = 0))
+const filters = computed(() => ({ ...conditions.value, limit: size.value, offset: page.value * size.value }))
 const sourceOptions = Object.entries(noticeSourceLabel).map(([value, label]) => ({ value, label }))
 
 const { data: summary, refresh: refreshSummary } = useLoad('notices:summary', getNoticeSummary)
@@ -57,10 +61,13 @@ const { data: detail, error: detailError, refresh: refreshDetail } = useLoad(
 
 // ── Read state ────────────────────────────────────────
 
+// Selection is per page: ids that are not on the loaded page are dropped.
 const checked = ref<string[]>([])
 watch(list, (l) => {
   const ids = new Set(l?.items.map((n) => n.noticeId))
   checked.value = checked.value.filter((id) => ids.has(id))
+  // Marking read can empty the last page; go back to the page that is now last.
+  if (l && !l.items.length && page.value > 0) page.value = Math.max(0, Math.ceil(l.total / size.value) - 1)
 })
 const allChecked = computed(() => !!list.value?.items.length && checked.value.length === list.value.items.length)
 function toggleAll() {
@@ -155,9 +162,7 @@ const matchedAssets = computed(() => new Set(detail.value?.matches.map((m) => m.
             </li>
           </ul>
         </template>
-        <p v-if="list && list.total > list.items.length" class="px-3.5 py-2 text-xs text-ink-3">
-          {{ list.items.length }}개만 보입니다. 검색이나 필터로 좁히세요.
-        </p>
+        <TablePager v-if="list && (list.total > size || page > 0)" v-model:page="page" v-model:size="size" :total="list.total" compact />
       </Panel>
 
       <!-- Detail -->

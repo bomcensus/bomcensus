@@ -8,11 +8,15 @@
 import { Plus } from '@lucide/vue'
 import type { K8sCluster } from '~/types'
 import type { TableColumn } from '~/types/table'
-import { createK8sCluster, fetchAll, listAgents, listCredentials, listK8sClusters, toApiError } from '~/api'
+import { createK8sCluster, fetchAll, listAgents, listCredentials, listK8sClusters, toApiError, type QueryOf } from '~/api'
 
 useHead({ title: 'Kubernetes · bomcensus' })
 
-const { data: clusters, pending, error, refresh } = useLoad('k8s-clusters', () => fetchAll((page) => listK8sClusters(page)), () => [])
+const { items: clusters, total, pending, error, refresh, q, sort, page, size } = useServerList(
+  'k8s-clusters',
+  (p) => listK8sClusters(p as QueryOf<typeof listK8sClusters>),
+  { sort: 'name', url: true },
+)
 // Scanner hostnames; a failed agent lookup only leaves the column empty
 const { data: agents } = useLoad('k8s-clusters:agents', () => fetchAll((page) => listAgents(page)), () => [])
 
@@ -20,15 +24,15 @@ const scannerOf = (c: K8sCluster) => agents.value.find((a) => a.id === c.scanner
 const scannerName = (c: K8sCluster) => scannerOf(c)?.hostname
 
 const columns: TableColumn<K8sCluster>[] = [
-  { key: 'name', label: '이름', sortValue: (c) => c.name },
-  { key: 'version', label: '버전', sortValue: (c) => c.version ?? '', hideBelow: 'sm' },
-  { key: 'connection', label: '연결 방식', sortValue: (c) => c.connection, hideBelow: 'md' },
-  { key: 'exec', label: 'exec 수집', sortValue: (c) => Number(c.execEnabled) },
-  { key: 'scanner', label: 'Scanner', sortValue: (c) => scannerName(c) ?? '', hideBelow: 'lg' },
-  { key: 'workloads', label: '워크로드', align: 'right', sortValue: (c) => c.workloadCount },
-  { key: 'excluded', label: '제외', align: 'right', sortValue: (c) => c.excludedCount, hideBelow: 'sm' },
-  { key: 'syncStatus', label: '동기화', sortValue: (c) => c.syncStatus },
-  { key: 'lastSync', label: '최근 동기화', align: 'right', sortValue: (c) => c.lastSync ?? '', hideBelow: 'sm' },
+  { key: 'name', label: '이름', sort: 'name' },
+  { key: 'version', label: '버전', sort: 'version', hideBelow: 'sm' },
+  { key: 'connection', label: '연결 방식', sort: 'connection', hideBelow: 'md' },
+  { key: 'exec', label: 'exec 수집', sort: 'execEnabled' },
+  { key: 'scanner', label: 'Scanner', hideBelow: 'lg' },
+  { key: 'workloads', label: '워크로드', align: 'right', sort: 'workloadCount', sortDesc: true },
+  { key: 'excluded', label: '제외', align: 'right', hideBelow: 'sm' },
+  { key: 'syncStatus', label: '동기화' },
+  { key: 'lastSync', label: '최근 동기화', align: 'right', sort: 'lastSync', sortDesc: true, hideBelow: 'sm' },
 ]
 
 // ── Create ────────────────────────────────────────────
@@ -71,13 +75,21 @@ async function create() {
       </template>
     </PageHeader>
 
+    <FilterBar :count="total" unit="개">
+      <SearchInput v-model="q" placeholder="이름, 버전" />
+    </FilterBar>
+
     <Panel flush>
       <LoadError v-if="error" :error="error" @retry="refresh" />
       <DataTable
         v-else
+        v-model:sort="sort"
+        v-model:page="page"
+        v-model:size="size"
         :loading="pending"
         :columns="columns"
         :rows="clusters"
+        :total="total"
         :row-key="(c) => c.id"
         :row-to="(c) => `/kubernetes/${c.id}`"
       >

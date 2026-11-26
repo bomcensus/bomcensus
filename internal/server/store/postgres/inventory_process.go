@@ -287,6 +287,8 @@ func (d *DB) ListProcesses(ctx context.Context, f store.ProcessFilter, p store.P
 		"user":       "p.user_name",
 		"state":      "p.exe_state",
 		"started_at": "p.started_at",
+		// Suspicious, then needing a restart, then the rest (descending).
+		"risk": "(p.suspicious::int * 2 + p.needs_restart::int)",
 	}, "a.name, a.id, p.pod, p.container, p.pid, p.id")
 	if err != nil {
 		return nil, 0, err

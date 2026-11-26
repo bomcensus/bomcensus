@@ -31,17 +31,25 @@ watch(q, (v) => {
   qTimer = setTimeout(() => (qDebounced.value = v.trim()), 300)
 })
 const statusOptions = (['modified', 'missing'] as const).map((s) => ({ value: s, label: integrityStatusLabel[s] }))
-const filters = computed(() => ({
+// Paging of the list. Any other change starts over from the first page.
+const page = ref(0)
+const size = ref(50)
+const conditions = computed(() => ({
   q: qDebounced.value || undefined,
   status: (status.value || undefined) as IntegrityStatus | undefined,
-  limit: 500,
 }))
+watch([() => JSON.stringify(conditions.value), size], () => (page.value = 0))
+const filters = computed(() => ({ ...conditions.value, limit: size.value, offset: page.value * size.value }))
 
 const { data: summary, refresh: refreshSummary } = useLoad('integrity:summary', getIntegritySummary)
 const { data: list, pending, error, refresh: refreshList } = useLoad(
   () => `integrity:files:${JSON.stringify(filters.value)}`,
   () => (view.value === 'files' ? listIntegrityFiles(filters.value) : Promise.resolve(undefined)),
 )
+// Allowing files can empty the last page; go back to the page that is now last.
+watch(list, (l) => {
+  if (l && !l.items.length && page.value > 0) page.value = Math.max(0, Math.ceil(l.total / size.value) - 1)
+})
 
 // A group is selected by path, status and content.
 const keyOf = (g: IntegrityGroup) => `${g.status}|${g.actualSha256 ?? ''}|${g.path}`
@@ -124,9 +132,7 @@ const short = (h: string) => `${h.slice(0, 12)}…`
               </button>
             </li>
           </ul>
-          <p v-if="list && list.total > list.items.length" class="px-3.5 py-2 text-xs text-ink-3">
-            {{ list.items.length }}개만 보입니다. 검색이나 필터로 좁히세요.
-          </p>
+          <TablePager v-if="list && (list.total > size || page > 0)" v-model:page="page" v-model:size="size" :total="list.total" compact />
         </Panel>
 
         <div class="min-w-0">

@@ -916,6 +916,19 @@ export type K8sWorkloadList = {
     total: number;
 };
 
+export type K8sNamespace = {
+    name: string;
+    /**
+     * Current workloads in the namespace, excluded ones included.
+     */
+    workloadCount: number;
+};
+
+export type K8sNamespaceList = {
+    items: Array<K8sNamespace>;
+    total: number;
+};
+
 export type K8sPodPhase = 'Running' | 'Pending' | 'Succeeded' | 'Failed' | 'Unknown';
 
 export type K8sPodContainer = {
@@ -1063,6 +1076,10 @@ export type ListenTarget = {
      * Agent bound to the address after enrollment.
      */
     agentId?: string;
+    /**
+     * Hostname of the bound agent, absent when the agent no longer exists.
+     */
+    agentHostname?: string;
     state: ListenTargetState;
     lastError?: string;
     lastConnectedAt?: string;
@@ -3027,7 +3044,7 @@ export type ListAssetProcessesData = {
         q?: string;
         view?: 'all' | 'restart' | 'suspicious' | 'listen';
         container?: string;
-        sort?: 'pid' | '-pid' | 'user' | '-user' | 'exe' | '-exe' | 'state' | '-state' | 'startedAt' | '-startedAt';
+        sort?: 'pid' | '-pid' | 'user' | '-user' | 'exe' | '-exe' | 'state' | '-state' | 'startedAt' | '-startedAt' | 'risk' | '-risk';
         limit?: number;
         offset?: number;
     };
@@ -3333,7 +3350,7 @@ export type ListProcessesData = {
         view?: 'all' | 'restart' | 'suspicious';
         assetId?: string;
         state?: ExeState;
-        sort?: 'asset' | '-asset' | 'exe' | '-exe' | 'user' | '-user' | 'state' | '-state' | 'startedAt' | '-startedAt';
+        sort?: 'asset' | '-asset' | 'exe' | '-exe' | 'user' | '-user' | 'state' | '-state' | 'startedAt' | '-startedAt' | 'risk' | '-risk';
         limit?: number;
         offset?: number;
     };
@@ -3747,6 +3764,41 @@ export type ListK8sWorkloadsResponses = {
 
 export type ListK8sWorkloadsResponse = ListK8sWorkloadsResponses[keyof ListK8sWorkloadsResponses];
 
+export type ListK8sNamespacesData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/k8s/clusters/{id}/namespaces';
+};
+
+export type ListK8sNamespacesErrors = {
+    /**
+     * No valid session, or wrong credentials on login.
+     */
+    401: Error;
+    /**
+     * The resource does not exist.
+     */
+    404: Error;
+    /**
+     * Unexpected error.
+     */
+    default: Error;
+};
+
+export type ListK8sNamespacesError = ListK8sNamespacesErrors[keyof ListK8sNamespacesErrors];
+
+export type ListK8sNamespacesResponses = {
+    /**
+     * Namespaces
+     */
+    200: K8sNamespaceList;
+};
+
+export type ListK8sNamespacesResponse = ListK8sNamespacesResponses[keyof ListK8sNamespacesResponses];
+
 export type ListK8sWorkloadPodsData = {
     body?: never;
     path: {
@@ -4041,7 +4093,7 @@ export type ListListenTargetsData = {
          */
         q?: string;
         state?: ListenTargetState;
-        sort?: 'address' | '-address' | 'state' | '-state' | 'createdAt' | '-createdAt' | 'lastConnectedAt' | '-lastConnectedAt';
+        sort?: 'address' | '-address' | 'agent' | '-agent' | 'state' | '-state' | 'createdAt' | '-createdAt' | 'lastConnectedAt' | '-lastConnectedAt';
         limit?: number;
         offset?: number;
     };
@@ -5690,6 +5742,7 @@ export type ListVulnerableComponentsData = {
          * Free-text search, case-insensitive substring match.
          */
         q?: string;
+        sort?: 'rank' | 'name' | '-name' | 'score' | '-score' | 'epss' | '-epss' | 'cves' | '-cves' | 'assets' | '-assets';
         /**
          * Keep items with a vulnerability of this rating.
          */
@@ -5785,6 +5838,7 @@ export type ListVulnerabilitiesData = {
          * Free-text search, case-insensitive substring match.
          */
         q?: string;
+        sort?: 'rank' | 'vulnId' | '-vulnId' | 'score' | '-score' | 'epss' | '-epss' | 'components' | '-components' | 'assets' | '-assets';
         /**
          * Keep items with a vulnerability of this rating.
          */

@@ -3,7 +3,8 @@
 // Additional terms apply. See LICENSING.md.
 
 // Admin API calls for pages. Every function resolves to the response body or throws ApiError.
-// List functions return one page ({ items, total }); wrap them in fetchAll() to get every item.
+// List functions return one page ({ items, total }). Pages show lists through useServerList;
+// fetchAll() gets every item of a short reference list.
 
 import * as sdk from './gen/sdk.gen'
 import type * as gen from './gen/types.gen'
@@ -36,6 +37,9 @@ import type {
 import { call } from './client'
 
 export { ApiError, fetchAll, optional, toApiError, type Page } from './client'
+
+/** The query (last argument) of a list function, for useServerList loaders: `(p) => listAssets(p as QueryOf<typeof listAssets>)`. */
+export type QueryOf<F extends (...args: never[]) => unknown> = Required<Parameters<F>> extends [...unknown[], infer Q] ? NonNullable<Q> : never
 
 type Query<T extends { query?: unknown }> = NonNullable<T['query']>
 
@@ -92,6 +96,7 @@ export const deleteK8sCluster = async (id: string) => {
 }
 export const listK8sWorkloads = (clusterId: string, query?: Query<gen.ListK8sWorkloadsData>) =>
   call(sdk.listK8sWorkloads({ path: { id: clusterId }, query }))
+export const listK8sNamespaces = (clusterId: string) => call(sdk.listK8sNamespaces({ path: { id: clusterId } }))
 export const listK8sWorkloadPods = (workloadId: string, query?: Query<gen.ListK8sWorkloadPodsData>) =>
   call(sdk.listK8sWorkloadPods({ path: { id: workloadId }, query }))
 export const syncK8sCluster = async (id: string) => {
