@@ -759,6 +759,9 @@ func (h *Handlers) GetVulnerability(ctx context.Context, req gen.GetVulnerabilit
 			v := gen.VulnCveComponentRangeSource(m.RangeSource)
 			c.RangeSource = &v
 		}
+		if m.BuildUnknown {
+			c.BuildUnknown = &m.BuildUnknown
+		}
 		for _, adv := range m.Advisories {
 			c.Advisories = append(c.Advisories, gen.VulnAdvisory{Source: adv.Source, Id: adv.ID, Severity: optStr(adv.Severity)})
 		}

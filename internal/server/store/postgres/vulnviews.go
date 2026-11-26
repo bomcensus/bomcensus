@@ -244,7 +244,7 @@ func (d *DB) OpenFindings(ctx context.Context, f store.OpenFindingFilter) ([]sto
 			coalesce(loc.locs, '{}'), coalesce(loc.method, ''),
 			coalesce(cv.method, ''), coalesce(cv.ecosystem, ''), coalesce(cv.fix_state, 'unknown'),
 			coalesce(cv.fixed_version, ''), coalesce(cv.cpe_match, ''), coalesce(cv.range_source, ''),
-			coalesce(cv.platforms, '{}'), coalesce(cv.advisories::text, '[]'), coalesce(cv.symbols::text, '[]'),
+			coalesce(cv.build_unknown, false), coalesce(cv.platforms, '{}'), coalesce(cv.advisories::text, '[]'), coalesce(cv.symbols::text, '[]'),
 			coalesce(cv.severity, ''), t.rule_id IS NOT NULL, coalesce(t.expires_at IS NULL OR t.expires_at > `+atArg+`, false),
 			`+trCols+`
 		FROM findings f
@@ -287,7 +287,7 @@ func (d *DB) OpenFindings(ctx context.Context, f store.OpenFindingFilter) ([]sto
 			&o.VulnID, &o.Exposure, &o.Reachability, &procs, &o.FirstSeen,
 			&o.Locations, &o.Method,
 			&o.Match.Method, &o.Match.Ecosystem, &o.Match.FixState, &o.Match.FixedVersion, &o.Match.CPEMatch,
-			&o.Match.RangeSource, &o.Match.Platforms, &adv, &syms, &o.Match.Severity, &hasRule, &active,
+			&o.Match.RangeSource, &o.Match.BuildUnknown, &o.Match.Platforms, &adv, &syms, &o.Match.Severity, &hasRule, &active,
 			&rule.ID, &rule.VulnID, &rule.ScopeKind, &rule.ScopeValue, &rule.PURLLike, &rule.Status, &rule.Justification,
 			&rule.Note, &rule.ExpiresAt, &rule.ExpiredAt, &rule.CreatedBy, &rule.CreatedAt, &rule.RevokedAt,
 			&rule.RevokedBy, &rule.ScopeID); err != nil {
@@ -509,7 +509,7 @@ func (d *DB) ImageVulns(ctx context.Context, digest string, at time.Time) ([]sto
 	rows, err := d.q.Query(ctx, `
 		SELECT `+vuMetaCols+`, c.id::text, c.type, c.name, c.version, c.build, c.purl, ic.locations,
 			cv.method, cv.ecosystem, cv.fix_state, cv.fixed_version, cv.cpe_match, cv.range_source,
-			cv.platforms, cv.advisories::text, cv.severity,
+			cv.build_unknown, cv.platforms, cv.advisories::text, cv.severity,
 			coalesce(t.rule_id IS NOT NULL AND (t.expires_at IS NULL OR t.expires_at > $2), false)
 		FROM image_components ic
 		JOIN components c ON c.id = ic.component_id
@@ -531,7 +531,7 @@ func (d *DB) ImageVulns(ctx context.Context, digest string, at time.Time) ([]sto
 		var adv string
 		if err := vuScanMeta(rows, &v.Meta, &v.Component.ID, &v.Component.Type, &v.Component.Name, &v.Component.Version,
 			&v.Component.Build, &v.Component.PURL, &v.Locations, &v.Match.Method, &v.Match.Ecosystem, &v.Match.FixState, &v.Match.FixedVersion,
-			&v.Match.CPEMatch, &v.Match.RangeSource, &v.Match.Platforms, &adv, &v.Match.Severity, &v.Deferred); err != nil {
+			&v.Match.CPEMatch, &v.Match.RangeSource, &v.Match.BuildUnknown, &v.Match.Platforms, &adv, &v.Match.Severity, &v.Deferred); err != nil {
 			return nil, mgErr("image vulnerabilities", err)
 		}
 		if err := json.Unmarshal([]byte(adv), &v.Match.Advisories); err != nil {

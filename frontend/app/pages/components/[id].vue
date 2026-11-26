@@ -146,6 +146,7 @@ function showRaw(row: ComponentAssetRow) {
               <span class="text-xs text-ink-2">
                 {{ row.method === 'cpe' ? `CPE ${row.cpeMatch === 'exact' ? '일치' : '범위'}${row.rangeSource ? ` · ${row.rangeSource}` : ''}` : row.advisories.map((a) => a.id).join(', ') }}
               </span>
+              <div v-if="row.buildUnknown" class="mt-0.5" :title="buildUnknownHint"><StatusBadge tone="warn" label="빌드 미확인" /></div>
               <div v-if="row.platforms.length" class="text-xs text-ink-3">조건: {{ row.platforms.join(', ') }}</div>
             </template>
           </DataTable>

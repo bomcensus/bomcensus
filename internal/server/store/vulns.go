@@ -85,6 +85,9 @@ type ComponentVuln struct {
 	FixedVersion string
 	CPEMatch     string
 	RangeSource  string
+	// BuildUnknown: every matching range is bounded by a vendor build and
+	// the component has none, so the match is conservative.
+	BuildUnknown bool
 	Platforms    []string
 	Advisories   []VulnAdvisory
 	// Symbols are the vulnerable Go functions, empty when not known.

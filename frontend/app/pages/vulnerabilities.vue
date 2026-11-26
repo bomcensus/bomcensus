@@ -345,6 +345,7 @@ const tabModel = computed({ get: () => view.value as string, set: (v: string) =>
                     </td>
                     <td class="hidden px-3 py-2 text-xs text-ink-2 md:table-cell">
                       {{ c.method === 'cpe' ? `CPE ${c.cpeMatch === 'exact' ? '일치' : '범위'}${c.rangeSource ? ` · ${c.rangeSource}` : ''}` : c.advisories.map((a) => a.id).join(', ') }}
+                      <div v-if="c.buildUnknown" class="mt-0.5" :title="buildUnknownHint"><StatusBadge tone="warn" label="빌드 미확인" /></div>
                       <div v-if="c.platforms.length" class="text-ink-3">조건: {{ c.platforms.join(', ') }}</div>
                       <div v-if="c.severity === 'negligible'" class="text-ink-3">배포판 평가: Negligible</div>
                     </td>

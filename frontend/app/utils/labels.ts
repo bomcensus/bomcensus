@@ -257,6 +257,11 @@ export const reachabilityLabel: Record<Reachability, string> = {
   symbol_absent: '취약 함수 없음',
 }
 
+// Tooltip of a CPE match whose ranges are bounded by a vendor build that the
+// component did not report.
+export const buildUnknownHint =
+  '빌드 번호가 보고되지 않아 같은 릴리스의 모든 빌드를 영향받는 것으로 보았습니다(보수적 판정). 설치된 빌드가 수정 버전에 적힌 빌드 이상이면 영향이 없습니다.'
+
 export const findingLayerLabel: Record<FindingLayer, string> = {
   host: '호스트',
   runtime: '실행 중 추가',

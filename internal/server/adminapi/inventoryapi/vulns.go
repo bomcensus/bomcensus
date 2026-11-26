@@ -77,6 +77,9 @@ func componentVulnDTO(r store.ComponentVulnRow) gen.ComponentVulnerability {
 		s := gen.ComponentVulnerabilityRangeSource(r.RangeSource)
 		v.RangeSource = &s
 	}
+	if r.BuildUnknown {
+		v.BuildUnknown = &r.BuildUnknown
+	}
 	for _, a := range r.Advisories {
 		v.Advisories = append(v.Advisories, gen.VulnAdvisory{Source: a.Source, Id: a.ID, Severity: optStr(a.Severity)})
 	}

@@ -46,8 +46,8 @@ func TestMatches(t *testing.T) {
 			{ComponentID: ids["openssl"], OSKey: "ubuntu:24.04", Status: store.MatchChecked, Vulns: []store.ComponentVuln{
 				{VulnID: "CVE-2024-0001", Method: "package", Ecosystem: "ubuntu:24.04", FixState: "fixed", FixedVersion: "3.0.13-0ubuntu3.1",
 					Advisories: []store.VulnAdvisory{{Source: "osv", ID: "UBUNTU-CVE-2024-0001", Severity: "high"}}, Severity: "high"},
-				{VulnID: "CVE-2024-0002", Method: "cpe", Ecosystem: "nvd", FixState: "unknown", CPEMatch: "range", RangeSource: "nvd",
-					Platforms: []string{"cpe:2.3:o:microsoft:windows:-:*:*:*:*:*:*:*"}},
+				{VulnID: "CVE-2024-0002", Method: "cpe", Ecosystem: "nvd", FixState: "unknown", CPEMatch: "range", RangeSource: "cna_rule",
+					BuildUnknown: true, Platforms: []string{"cpe:2.3:o:microsoft:windows:-:*:*:*:*:*:*:*"}},
 			}},
 			{ComponentID: ids["curl"], OSKey: "ubuntu:24.04", Status: store.MatchChecked},
 		},
@@ -80,7 +80,10 @@ func TestMatches(t *testing.T) {
 		v.Severity != "high" || store.MatchSeverity(v.ComponentVuln, v.Meta) != "high" {
 		t.Fatalf("first vuln %+v", v)
 	}
-	if w := vulns[1]; w.CPEMatch != "range" || len(w.Platforms) != 1 || w.Meta.MaxScore != nil || w.Meta.KEV != nil {
+	if vulns[0].BuildUnknown {
+		t.Fatalf("first vuln build unknown")
+	}
+	if w := vulns[1]; w.CPEMatch != "range" || w.RangeSource != "cna_rule" || !w.BuildUnknown || len(w.Platforms) != 1 || w.Meta.MaxScore != nil || w.Meta.KEV != nil {
 		t.Fatalf("second vuln %+v", w)
 	}
 

@@ -259,6 +259,7 @@ func (e ComponentVulnerabilityMethod) Valid() bool {
 // Defines values for ComponentVulnerabilityRangeSource.
 const (
 	ComponentVulnerabilityRangeSourceCna       ComponentVulnerabilityRangeSource = "cna"
+	ComponentVulnerabilityRangeSourceCnaRule   ComponentVulnerabilityRangeSource = "cna_rule"
 	ComponentVulnerabilityRangeSourceNvd       ComponentVulnerabilityRangeSource = "nvd"
 	ComponentVulnerabilityRangeSourceVulncheck ComponentVulnerabilityRangeSource = "vulncheck"
 )
@@ -267,6 +268,8 @@ const (
 func (e ComponentVulnerabilityRangeSource) Valid() bool {
 	switch e {
 	case ComponentVulnerabilityRangeSourceCna:
+		return true
+	case ComponentVulnerabilityRangeSourceCnaRule:
 		return true
 	case ComponentVulnerabilityRangeSourceNvd:
 		return true
@@ -1174,6 +1177,7 @@ func (e VulnCveComponentMethod) Valid() bool {
 // Defines values for VulnCveComponentRangeSource.
 const (
 	VulnCveComponentRangeSourceCna       VulnCveComponentRangeSource = "cna"
+	VulnCveComponentRangeSourceCnaRule   VulnCveComponentRangeSource = "cna_rule"
 	VulnCveComponentRangeSourceNvd       VulnCveComponentRangeSource = "nvd"
 	VulnCveComponentRangeSourceVulncheck VulnCveComponentRangeSource = "vulncheck"
 )
@@ -1182,6 +1186,8 @@ const (
 func (e VulnCveComponentRangeSource) Valid() bool {
 	switch e {
 	case VulnCveComponentRangeSourceCna:
+		return true
+	case VulnCveComponentRangeSourceCnaRule:
 		return true
 	case VulnCveComponentRangeSourceNvd:
 		return true
@@ -2557,8 +2563,14 @@ type ComponentVulnerabilities struct {
 
 // ComponentVulnerability defines model for ComponentVulnerability.
 type ComponentVulnerability struct {
-	Advisories     []VulnAdvisory                  `json:"advisories"`
-	Aliases        []string                        `json:"aliases"`
+	Advisories []VulnAdvisory `json:"advisories"`
+	Aliases    []string       `json:"aliases"`
+
+	// BuildUnknown Every matching range is bounded by a vendor build on the
+	// component's release line, and the component has no build. The
+	// match is conservative: the component is not affected if its build
+	// is at or above the one in fixedVersion.
+	BuildUnknown   *bool                           `json:"buildUnknown,omitempty"`
 	CpeMatch       *ComponentVulnerabilityCpeMatch `json:"cpeMatch,omitempty"`
 	Ecosystem      *string                         `json:"ecosystem,omitempty"`
 	Epss           *float64                        `json:"epss,omitempty"`
@@ -2574,8 +2586,13 @@ type ComponentVulnerability struct {
 	Method ComponentVulnerabilityMethod `json:"method"`
 
 	// Platforms The match holds only together with one of these CPEs, which were not checked.
-	Platforms   []string                           `json:"platforms"`
-	Published   *time.Time                         `json:"published,omitempty"`
+	Platforms []string   `json:"platforms"`
+	Published *time.Time `json:"published,omitempty"`
+
+	// RangeSource Where the matching CPE configuration comes from. `nvd`: NVD's
+	// analysis. `vulncheck`: VulnCheck NVD++. `cna`: the affected data of
+	// the CVE record. `cna_rule`: the CVE record names the product
+	// without a CPE and the feed's rules map it to one.
 	RangeSource *ComponentVulnerabilityRangeSource `json:"rangeSource,omitempty"`
 
 	// Score Highest CVSS base score.
@@ -2600,7 +2617,10 @@ type ComponentVulnerabilityCpeMatch string
 // ComponentVulnerabilityMethod `package`: an advisory of the package's ecosystem. `cpe`: a CPE configuration (NVD, VulnCheck or the CNA).
 type ComponentVulnerabilityMethod string
 
-// ComponentVulnerabilityRangeSource defines model for ComponentVulnerability.RangeSource.
+// ComponentVulnerabilityRangeSource Where the matching CPE configuration comes from. `nvd`: NVD's
+// analysis. `vulncheck`: VulnCheck NVD++. `cna`: the affected data of
+// the CVE record. `cna_rule`: the CVE record names the product
+// without a CPE and the feed's rules map it to one.
 type ComponentVulnerabilityRangeSource string
 
 // ConnMode defines model for ConnMode.
@@ -4368,9 +4388,15 @@ type VulnCveComponent struct {
 	Assets     int            `json:"assets"`
 
 	// Build Vendor build or revision number reported by the detector.
-	Build       *string                   `json:"build,omitempty"`
-	ComponentId string                    `json:"componentId"`
-	CpeMatch    *VulnCveComponentCpeMatch `json:"cpeMatch,omitempty"`
+	Build *string `json:"build,omitempty"`
+
+	// BuildUnknown Every matching range is bounded by a vendor build on the
+	// component's release line, and the component has no build. The
+	// match is conservative: the component is not affected if its build
+	// is at or above the one in fixedVersion.
+	BuildUnknown *bool                     `json:"buildUnknown,omitempty"`
+	ComponentId  string                    `json:"componentId"`
+	CpeMatch     *VulnCveComponentCpeMatch `json:"cpeMatch,omitempty"`
 
 	// Deferred Findings an active rule defers.
 	Deferred  *int    `json:"deferred,omitempty"`
@@ -4380,15 +4406,20 @@ type VulnCveComponent struct {
 	// non-loopback address. `running`: a process loaded it.
 	// `installed`: no process did. `unknown`: the processes were not fully
 	// collected.
-	Exposure     Exposure                     `json:"exposure"`
-	Findings     *int                         `json:"findings,omitempty"`
-	FixState     FixState                     `json:"fixState"`
-	FixedVersion *string                      `json:"fixedVersion,omitempty"`
-	Method       VulnCveComponentMethod       `json:"method"`
-	Name         string                       `json:"name"`
-	Platforms    []string                     `json:"platforms"`
-	Purl         *string                      `json:"purl,omitempty"`
-	RangeSource  *VulnCveComponentRangeSource `json:"rangeSource,omitempty"`
+	Exposure     Exposure               `json:"exposure"`
+	Findings     *int                   `json:"findings,omitempty"`
+	FixState     FixState               `json:"fixState"`
+	FixedVersion *string                `json:"fixedVersion,omitempty"`
+	Method       VulnCveComponentMethod `json:"method"`
+	Name         string                 `json:"name"`
+	Platforms    []string               `json:"platforms"`
+	Purl         *string                `json:"purl,omitempty"`
+
+	// RangeSource Where the matching CPE configuration comes from. `nvd`: NVD's
+	// analysis. `vulncheck`: VulnCheck NVD++. `cna`: the affected data of
+	// the CVE record. `cna_rule`: the CVE record names the product
+	// without a CPE and the feed's rules map it to one.
+	RangeSource *VulnCveComponentRangeSource `json:"rangeSource,omitempty"`
 
 	// Rules The triage rules deciding its findings.
 	Rules *[]TriageRule `json:"rules,omitempty"`
@@ -4410,7 +4441,10 @@ type VulnCveComponentCpeMatch string
 // VulnCveComponentMethod defines model for VulnCveComponent.Method.
 type VulnCveComponentMethod string
 
-// VulnCveComponentRangeSource defines model for VulnCveComponent.RangeSource.
+// VulnCveComponentRangeSource Where the matching CPE configuration comes from. `nvd`: NVD's
+// analysis. `vulncheck`: VulnCheck NVD++. `cna`: the affected data of
+// the CVE record. `cna_rule`: the CVE record names the product
+// without a CPE and the feed's rules map it to one.
 type VulnCveComponentRangeSource string
 
 // VulnCveDetail defines model for VulnCveDetail.

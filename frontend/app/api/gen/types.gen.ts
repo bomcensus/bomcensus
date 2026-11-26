@@ -1785,7 +1785,22 @@ export type ComponentVulnerability = {
     fixState: FixState;
     fixedVersion?: string;
     cpeMatch?: 'exact' | 'range';
-    rangeSource?: 'nvd' | 'vulncheck' | 'cna';
+    /**
+     * Where the matching CPE configuration comes from. `nvd`: NVD's
+     * analysis. `vulncheck`: VulnCheck NVD++. `cna`: the affected data of
+     * the CVE record. `cna_rule`: the CVE record names the product
+     * without a CPE and the feed's rules map it to one.
+     *
+     */
+    rangeSource?: 'nvd' | 'vulncheck' | 'cna' | 'cna_rule';
+    /**
+     * Every matching range is bounded by a vendor build on the
+     * component's release line, and the component has no build. The
+     * match is conservative: the component is not affected if its build
+     * is at or above the one in fixedVersion.
+     *
+     */
+    buildUnknown?: boolean;
     /**
      * The match holds only together with one of these CPEs, which were not checked.
      */
@@ -2046,7 +2061,22 @@ export type VulnCveComponent = {
     fixState: FixState;
     fixedVersion?: string;
     cpeMatch?: 'exact' | 'range';
-    rangeSource?: 'nvd' | 'vulncheck' | 'cna';
+    /**
+     * Where the matching CPE configuration comes from. `nvd`: NVD's
+     * analysis. `vulncheck`: VulnCheck NVD++. `cna`: the affected data of
+     * the CVE record. `cna_rule`: the CVE record names the product
+     * without a CPE and the feed's rules map it to one.
+     *
+     */
+    rangeSource?: 'nvd' | 'vulncheck' | 'cna' | 'cna_rule';
+    /**
+     * Every matching range is bounded by a vendor build on the
+     * component's release line, and the component has no build. The
+     * match is conservative: the component is not affected if its build
+     * is at or above the one in fixedVersion.
+     *
+     */
+    buildUnknown?: boolean;
     platforms: Array<string>;
     advisories: Array<VulnAdvisory>;
     severity?: Severity;

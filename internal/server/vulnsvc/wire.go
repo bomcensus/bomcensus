@@ -83,6 +83,7 @@ type match struct {
 	FixedVersion string               `json:"fixed_version"`
 	CPEMatch     string               `json:"cpe_match"`
 	RangeSource  string               `json:"range_source"`
+	BuildUnknown bool                 `json:"build_unknown"` // ranges bounded by a build the component lacks
 	Platforms    []string             `json:"platforms"`
 	Advisories   []store.VulnAdvisory `json:"advisories"`
 	// Symbols are the vulnerable functions of Go matches.
@@ -218,7 +219,8 @@ func convert(res *matchResult, comps []store.Component, epoch store.MatchEpoch, 
 				used[mt.VulnID] = true
 				cv := store.ComponentVuln{VulnID: mt.VulnID, Method: mt.Method, Ecosystem: mt.Ecosystem,
 					FixState: mt.FixState, FixedVersion: mt.FixedVersion, CPEMatch: mt.CPEMatch, RangeSource: mt.RangeSource,
-					Platforms: mt.Platforms, Advisories: mt.Advisories, Symbols: goImports(mt.Symbols)}
+					BuildUnknown: mt.BuildUnknown,
+					Platforms:    mt.Platforms, Advisories: mt.Advisories, Symbols: goImports(mt.Symbols)}
 				if mt.Method == "package" {
 					cv.Severity = DistroRating(mt.Advisories)
 				}
