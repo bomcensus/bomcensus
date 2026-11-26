@@ -83,7 +83,12 @@ func LandlockCommand(abi int) string {
 // by a seccomp filter of a container runtime (usually EPERM). An error
 // after the ABI is known is returned.
 func RestrictCommand(root string) (int, error) {
-	abi := LandlockABI()
+	return restrictCommand(root, LandlockABI())
+}
+
+// restrictCommand handles what ABI abi knows, which must not be above the
+// kernel's ABI.
+func restrictCommand(root string, abi int) (int, error) {
 	if abi <= 0 {
 		return 0, nil
 	}
