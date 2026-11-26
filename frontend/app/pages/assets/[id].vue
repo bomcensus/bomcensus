@@ -634,6 +634,11 @@ const tabs = computed(() => [
           >
             <template #cell-name="{ row }">
               <span class="font-medium">{{ row.name }}</span>
+              <div v-if="row.workload" class="text-xs text-ink-3">
+                워크로드
+                <NuxtLink :to="`/assets/${row.workload.assetId}`" class="hover:underline">{{ row.workload.name }}</NuxtLink>
+                · 취약점은 워크로드에 집계
+              </div>
             </template>
             <template #cell-image="{ row }">
               <template v-if="row.imageDigest">

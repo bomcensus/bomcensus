@@ -2622,6 +2622,11 @@ type AssetContainer struct {
 	Name      string           `json:"name"`
 	Runtime   ContainerRuntime `json:"runtime"`
 	StartedAt *time.Time       `json:"startedAt,omitempty"`
+
+	// Workload The workload asset of a host container that the kubelet created for
+	// one of the workload's pods. Its findings are the workload's, not the
+	// host's.
+	Workload *ContainerWorkload `json:"workload,omitempty"`
 }
 
 // AssetGroup defines model for AssetGroup.
@@ -3017,6 +3022,15 @@ type ContainerImageList struct {
 
 // ContainerRuntime defines model for ContainerRuntime.
 type ContainerRuntime string
+
+// ContainerWorkload The workload asset of a host container that the kubelet created for
+// one of the workload's pods. Its findings are the workload's, not the
+// host's.
+type ContainerWorkload struct {
+	AssetId string `json:"assetId"`
+	Name    string `json:"name"`
+	Pod     string `json:"pod"`
+}
 
 // Coverage `full`: everything collected. `partial`: some items could not be read.
 // `process_only`: only the processes section (replicas of a workload).
@@ -3452,9 +3466,12 @@ type FindingLayer string
 
 // FindingProcess defines model for FindingProcess.
 type FindingProcess struct {
-	Exe string  `json:"exe"`
-	Pid int     `json:"pid"`
-	Pod *string `json:"pod,omitempty"`
+	Exe string `json:"exe"`
+
+	// Node Host asset name, for a process of a workload that the node agent of that host saw.
+	Node *string `json:"node,omitempty"`
+	Pid  int     `json:"pid"`
+	Pod  *string `json:"pod,omitempty"`
 
 	// Ports Non-loopback listening sockets, `tcp/443`.
 	Ports []string `json:"ports"`

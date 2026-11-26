@@ -238,7 +238,7 @@ func processesDTO(ps []store.FindingProcessRef) []gen.FindingProcess {
 		if ports == nil {
 			ports = []string{}
 		}
-		out = append(out, gen.FindingProcess{Pid: p.PID, Exe: p.Exe, Pod: optStr(p.Pod), Ports: ports})
+		out = append(out, gen.FindingProcess{Pid: p.PID, Exe: p.Exe, Pod: optStr(p.Pod), Node: optStr(p.Node), Ports: ports})
 	}
 	return out
 }

@@ -114,6 +114,10 @@ type ContainerIngest interface {
 	// list now stops being current, unless opts.KeepMissing is set. An empty
 	// images still replaces the tag set.
 	UpsertImages(ctx context.Context, src ImageSource, images []ImageObservation, opts ReplaceOptions) error
+	// TouchPodLinks marks the findings of the workload assets linked to the
+	// host's pod containers, now or before, out of date: what the host saw
+	// of them is part of theirs.
+	TouchPodLinks(ctx context.Context, hostID string) error
 }
 
 // ProcessIngest records running processes.

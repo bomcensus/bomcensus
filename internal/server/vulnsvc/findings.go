@@ -234,7 +234,7 @@ func exposureOf(in store.FindingInputs, s store.FindingSource) (string, []store.
 		if len(p.Ports) > 0 {
 			listening = true
 		}
-		refs = append(refs, store.FindingProcessRef{PID: p.PID, Exe: p.Exe, Pod: p.Pod, Ports: p.Ports})
+		refs = append(refs, store.FindingProcessRef{PID: p.PID, Exe: p.Exe, Pod: p.Pod, Node: p.Node, Ports: p.Ports})
 	}
 	// Listening processes first, then by pid.
 	slices.SortStableFunc(refs, func(a, b store.FindingProcessRef) int {

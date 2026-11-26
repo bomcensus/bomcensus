@@ -348,6 +348,19 @@ export type AssetContainer = {
     coverage: Coverage;
     coverageReason?: string;
     startedAt?: string;
+    workload?: ContainerWorkload;
+};
+
+/**
+ * The workload asset of a host container that the kubelet created for
+ * one of the workload's pods. Its findings are the workload's, not the
+ * host's.
+ *
+ */
+export type ContainerWorkload = {
+    assetId: string;
+    name: string;
+    pod: string;
 };
 
 export type AssetSummary = {
@@ -1900,6 +1913,10 @@ export type FindingProcess = {
     pid: number;
     exe: string;
     pod?: string;
+    /**
+     * Host asset name, for a process of a workload that the node agent of that host saw.
+     */
+    node?: string;
     /**
      * Non-loopback listening sockets, `tcp/443`.
      */

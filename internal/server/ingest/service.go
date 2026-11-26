@@ -201,6 +201,10 @@ func (s *Service) apply(ctx context.Context, sender Sender, reportID string, r *
 			if err := s.applyIntegrity(ctx, tx, assetID, r); err != nil {
 				return err
 			}
+			containers := r.Containers != nil && !r.Containers.Unchanged
+			if err := s.applyPodLinks(ctx, tx, assetID, containers); err != nil {
+				return err
+			}
 		}
 		if assetID != "" {
 			if err := tx.SetReportAsset(ctx, reportID, assetID); err != nil {

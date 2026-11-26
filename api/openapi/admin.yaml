@@ -3835,6 +3835,22 @@ components:
         startedAt:
           type: string
           format: date-time
+        workload:
+          $ref: "#/components/schemas/ContainerWorkload"
+    ContainerWorkload:
+      description: |
+        The workload asset of a host container that the kubelet created for
+        one of the workload's pods. Its findings are the workload's, not the
+        host's.
+      type: object
+      required: [assetId, name, pod]
+      properties:
+        assetId:
+          type: string
+        name:
+          type: string
+        pod:
+          type: string
     AssetSummary:
       type: object
       required: [id, scopeId, name, kind, group, tags, method, coverage, containerCount, firstSeen, lastSeen]
@@ -6087,6 +6103,9 @@ components:
         exe:
           type: string
         pod:
+          type: string
+        node:
+          description: Host asset name, for a process of a workload that the node agent of that host saw.
           type: string
         ports:
           description: Non-loopback listening sockets, `tcp/443`.

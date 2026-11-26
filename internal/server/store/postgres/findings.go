@@ -83,23 +83,41 @@ func (d *DB) findingInputs(ctx context.Context, assetID string) (store.FindingIn
 		return in, nil
 	}
 
+	// Pod containers belong to their workload asset: a host leaves them
+	// out, a workload takes in what node agents saw of its pods.
+	pods, err := d.fiPodLinks(ctx, assetID, &in)
+	if err != nil {
+		return in, mgErr("finding inputs", err)
+	}
+
 	// Vulnerable components: installed on the asset or in a container's
 	// layers, and the content of the images of current containers.
 	rows, err := d.q.Query(ctx, `
+		WITH n AS (SELECT * FROM `+fiNodes+`)
 		SELECT x.container, x.layer, x.digest, x.locations, x.in_use,
 			c.id, c.type, c.name, c.version, c.arch, c.distro, c.purl, c.source_name, c.origin
 		FROM (
 			SELECT ac.container, CASE WHEN ac.container = '' THEN '' ELSE ac.layer END AS layer, '' AS digest,
 				ac.locations, ac.in_use, ac.component_id
 			FROM asset_components ac
-			WHERE ac.asset_id = $1 AND ac.removed_at IS NULL
+			WHERE ac.asset_id = $1 AND ac.removed_at IS NULL AND ac.container <> ALL($2::text[])
 			UNION ALL
 			SELECT ct.name, 'image', ct.image_digest, ic.locations, false, ic.component_id
 			FROM asset_containers ct JOIN image_components ic ON ic.digest = ct.image_digest
-			WHERE ct.asset_id = $1 AND ct.gone_at IS NULL AND ct.image_digest <> ''
+			WHERE ct.asset_id = $1 AND ct.gone_at IS NULL AND ct.image_digest <> '' AND ct.name <> ALL($2::text[])
+			UNION ALL
+			SELECT n.container, ac.layer, '', ac.locations, ac.in_use, ac.component_id
+			FROM n JOIN asset_components ac ON ac.asset_id = n.host_id AND ac.container = n.host_container
+			WHERE ac.removed_at IS NULL
+			UNION ALL
+			SELECT n.container, 'image', ct.image_digest, ic.locations, false, ic.component_id
+			FROM n JOIN asset_containers ct ON ct.asset_id = n.host_id AND ct.name = n.host_container
+			JOIN image_components ic ON ic.digest = ct.image_digest
+			WHERE ct.image_digest <> ''
 		) x
 		JOIN components c ON c.id = x.component_id
-		WHERE EXISTS (SELECT 1 FROM component_vulns v WHERE v.component_id = x.component_id)`, assetID)
+		WHERE EXISTS (SELECT 1 FROM component_vulns v WHERE v.component_id = x.component_id)`,
+		assetID, pods.excluded, pods.nodes)
 	if err != nil {
 		return in, mgErr("finding inputs", err)
 	}
@@ -167,15 +185,17 @@ func (d *DB) findingInputs(ctx context.Context, assetID string) (store.FindingIn
 		return in, mgErr("finding inputs", err)
 	}
 
-	if err := d.gsFindingInputs(ctx, assetID, &in, compIDs); err != nil {
+	if err := d.gsFindingInputs(ctx, assetID, &in, compIDs, pods); err != nil {
 		return in, err
 	}
 
-	// Processes with their non-loopback listening sockets.
+	// Processes with their non-loopback listening sockets. A pod container
+	// that a node agent saw recently takes the processes it saw, not those
+	// of exec collections.
 	ports := map[string][]string{}
 	rows, err = d.q.Query(ctx, `
 		SELECT process_id::text, proto, address, port FROM listen_ports
-		WHERE asset_id = $1 AND process_id IS NOT NULL`, assetID)
+		WHERE asset_id = ANY($1::uuid[]) AND process_id IS NOT NULL`, append([]string{assetID}, pods.freshHosts...))
 	if err != nil {
 		return in, mgErr("finding inputs", err)
 	}
@@ -196,8 +216,17 @@ func (d *DB) findingInputs(ctx context.Context, assetID string) (store.FindingIn
 		return in, mgErr("finding inputs", err)
 	}
 	rows, err = d.q.Query(ctx, `
-		SELECT id::text, pod, container, pid, exe, sha256, coalesce(component_id::text, ''), packages, libs::text
-		FROM processes WHERE asset_id = $1 ORDER BY container, pod, pid`, assetID)
+		WITH n AS (SELECT * FROM `+fiNodes+` WHERE n.fresh)
+		SELECT id::text, pod, container, '' AS node, pid, exe, sha256, coalesce(component_id::text, ''), packages,
+			libs::text
+		FROM processes p
+		WHERE p.asset_id = $1 AND p.container <> ALL($2::text[])
+			AND NOT EXISTS (SELECT 1 FROM n WHERE n.container = p.container AND n.pod = p.pod)
+		UNION ALL
+		SELECT p.id::text, n.pod, n.container, n.host_name, p.pid, p.exe, p.sha256,
+			coalesce(p.component_id::text, ''), p.packages, p.libs::text
+		FROM n JOIN processes p ON p.asset_id = n.host_id AND p.container = n.host_container
+		ORDER BY 3, 2, 4, 5`, assetID, pods.excluded, pods.nodes)
 	if err != nil {
 		return in, mgErr("finding inputs", err)
 	}
@@ -205,7 +234,7 @@ func (d *DB) findingInputs(ctx context.Context, assetID string) (store.FindingIn
 	for rows.Next() {
 		var id, libs string
 		var p store.FindingProcess
-		if err := rows.Scan(&id, &p.Pod, &p.Container, &p.PID, &p.Exe, &p.SHA256, &p.ComponentID, &p.Packages, &libs); err != nil {
+		if err := rows.Scan(&id, &p.Pod, &p.Container, &p.Node, &p.PID, &p.Exe, &p.SHA256, &p.ComponentID, &p.Packages, &libs); err != nil {
 			rows.Close()
 			return in, mgErr("finding inputs", err)
 		}
@@ -246,6 +275,9 @@ func (d *DB) findingInputs(ctx context.Context, assetID string) (store.FindingIn
 	}
 	rows.Close()
 	if err := rows.Err(); err != nil {
+		return in, mgErr("finding inputs", err)
+	}
+	if err := d.fiNodeProcessCoverage(ctx, &in, pods); err != nil {
 		return in, mgErr("finding inputs", err)
 	}
 

@@ -482,6 +482,9 @@ func k8sInventory(inv dto.K8sInventory, at time.Time) (store.K8sInventory, []sto
 			continue
 		}
 		po := store.K8sPodObservation{Name: p.Name, Node: p.Node, Phase: string(p.Phase)}
+		if p.Uid != nil {
+			po.UID = *p.Uid
+		}
 		if p.StartedAt != nil {
 			po.StartedAt = p.StartedAt.UTC()
 		}

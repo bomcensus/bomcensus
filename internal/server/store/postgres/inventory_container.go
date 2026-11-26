@@ -26,6 +26,8 @@ type ivContainerRow struct {
 	Coverage       string     `json:"coverage"`
 	CoverageReason string     `json:"coverage_reason"`
 	StartedAt      *time.Time `json:"started_at"`
+	PodUID         string     `json:"pod_uid"`
+	PodContainer   string     `json:"pod_container"`
 }
 
 // ReplaceContainers implements store.ContainerIngest.
@@ -40,6 +42,7 @@ func (d *DB) ReplaceContainers(ctx context.Context, assetID string, cs []store.C
 			AssetID: assetID, Name: c.Name, RuntimeID: c.RuntimeID, ImageRef: c.ImageRef,
 			ImageDigest: c.ImageDigest, Runtime: c.Runtime, Instances: c.Instances,
 			Coverage: string(c.Coverage), CoverageReason: c.CoverageReason, StartedAt: ivTimeOrNil(c.StartedAt),
+			PodUID: c.PodUID, PodContainer: c.PodContainer,
 		}
 	}
 	rows := make([]ivContainerRow, 0, len(byName))
@@ -64,7 +67,7 @@ func (d *DB) ivReplaceContainers(ctx context.Context, assetIDs []string, rows []
 	}
 	const obs = `jsonb_to_recordset($1::jsonb) AS o(asset_id uuid, name text, runtime_id text, image_ref text,
 		image_digest text, runtime text, instances integer, coverage text, coverage_reason text,
-		started_at timestamptz)`
+		started_at timestamptz, pod_uid text, pod_container text)`
 	if _, err := d.q.Exec(ctx, `
 		UPDATE asset_containers t SET
 			runtime_id = o.runtime_id,
@@ -79,6 +82,8 @@ func (d *DB) ivReplaceContainers(ctx context.Context, assetIDs []string, rows []
 			coverage_reason = CASE WHEN o.coverage <> '' THEN o.coverage_reason
 				WHEN t.image_digest <> o.image_digest THEN '' ELSE t.coverage_reason END,
 			started_at = COALESCE(o.started_at, t.started_at),
+			pod_uid = COALESCE(o.pod_uid, ''),
+			pod_container = COALESCE(o.pod_container, ''),
 			last_seen = GREATEST(t.last_seen, $2),
 			gone_at = NULL
 		FROM `+obs+`
@@ -87,10 +92,11 @@ func (d *DB) ivReplaceContainers(ctx context.Context, assetIDs []string, rows []
 	}
 	if _, err := d.q.Exec(ctx, `
 		INSERT INTO asset_containers (asset_id, name, runtime_id, image_ref, image_digest, digest_since,
-			runtime, instances, coverage, coverage_reason, started_at, first_seen, last_seen)
+			runtime, instances, coverage, coverage_reason, started_at, pod_uid, pod_container, first_seen, last_seen)
 		SELECT o.asset_id, o.name, o.runtime_id, o.image_ref, o.image_digest, $2, o.runtime, o.instances,
 			COALESCE(NULLIF(o.coverage, ''), 'inventory_only'),
-			CASE WHEN o.coverage <> '' THEN o.coverage_reason ELSE '' END, o.started_at, $2, $2
+			CASE WHEN o.coverage <> '' THEN o.coverage_reason ELSE '' END, o.started_at,
+			COALESCE(o.pod_uid, ''), COALESCE(o.pod_container, ''), $2, $2
 		FROM `+obs+`
 		WHERE NOT EXISTS (SELECT 1 FROM asset_containers t WHERE t.asset_id = o.asset_id AND t.name = o.name)`,
 		js, at); err != nil {
@@ -246,12 +252,12 @@ func (d *DB) UpsertImages(ctx context.Context, src store.ImageSource, images []s
 
 const ivContainerCols = `ct.name, ct.runtime_id, ct.image_ref, ct.image_digest, ct.runtime, ct.instances,
 	ct.coverage, ct.coverage_reason, ct.started_at, ct.previous_digest, ct.digest_since,
-	ct.first_seen, ct.last_seen, ct.gone_at`
+	ct.first_seen, ct.last_seen, ct.gone_at, ct.pod_uid, ct.pod_container`
 
 func ivContainerDest(c *store.Container) []any {
 	return []any{&c.Name, &c.RuntimeID, &c.ImageRef, &c.ImageDigest, &c.Runtime, &c.Instances,
 		&c.Coverage, &c.CoverageReason, &c.StartedAt, &c.PreviousDigest, &c.DigestSince,
-		&c.FirstSeen, &c.LastSeen, &c.GoneAt}
+		&c.FirstSeen, &c.LastSeen, &c.GoneAt, &c.PodUID, &c.PodContainer}
 }
 
 func ivFixContainer(c *store.Container) {

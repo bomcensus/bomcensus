@@ -99,6 +99,8 @@ type K8sWorkloadObservation struct {
 
 // K8sPodObservation is one pod of a workload.
 type K8sPodObservation struct {
+	// UID links the pod to the host containers of a node agent.
+	UID        string
 	Name       string
 	Node       string
 	Phase      string // Running, Pending, Succeeded, Failed
@@ -177,6 +179,7 @@ type WorkloadNamespace struct {
 // K8sPod is a pod, the instance of a workload.
 type K8sPod struct {
 	ID         string
+	UID        string
 	WorkloadID string
 	Namespace  string
 	Name       string

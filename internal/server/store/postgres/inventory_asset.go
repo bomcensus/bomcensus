@@ -553,6 +553,12 @@ func (d *DB) GetAsset(ctx context.Context, id string) (store.AssetDetail, error)
 	}
 
 	out.Containers, err = d.ivContainers(ctx, `ct.asset_id = $1`, id)
+	if err != nil {
+		return out, ivErr(op, err)
+	}
+	if out.Kind == store.AssetHost {
+		err = d.pdContainerWorkloads(ctx, op, id, out.Containers)
+	}
 	return out, ivErr(op, err)
 }
 
