@@ -7,6 +7,7 @@ package postgres
 import (
 	"errors"
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -47,7 +48,8 @@ func TestMatches(t *testing.T) {
 				{VulnID: "CVE-2024-0001", Method: "package", Ecosystem: "ubuntu:24.04", FixState: "fixed", FixedVersion: "3.0.13-0ubuntu3.1",
 					Advisories: []store.VulnAdvisory{{Source: "osv", ID: "UBUNTU-CVE-2024-0001", Severity: "high"}}, Severity: "high"},
 				{VulnID: "CVE-2024-0002", Method: "cpe", Ecosystem: "nvd", FixState: "unknown", CPEMatch: "range", RangeSource: "cna_rule",
-					BuildUnknown: true, Platforms: []string{"cpe:2.3:o:microsoft:windows:-:*:*:*:*:*:*:*"}},
+					BuildUnknown: true, Platforms: []string{"cpe:2.3:o:microsoft:windows:-:*:*:*:*:*:*:*"},
+					LastAffected: "3.0.20", AffectedRanges: []store.VersionRange{{StartIncl: "3.0.0", EndIncl: "3.0.20"}, {Version: "3.0.13"}}},
 			}},
 			{ComponentID: ids["curl"], OSKey: "ubuntu:24.04", Status: store.MatchChecked},
 		},
@@ -80,8 +82,12 @@ func TestMatches(t *testing.T) {
 		v.Severity != "high" || store.MatchSeverity(v.ComponentVuln, v.Meta) != "high" {
 		t.Fatalf("first vuln %+v", v)
 	}
-	if vulns[0].BuildUnknown {
-		t.Fatalf("first vuln build unknown")
+	if vulns[0].BuildUnknown || vulns[0].LastAffected != "" || vulns[0].AffectedRanges != nil {
+		t.Fatalf("first vuln %+v", vulns[0])
+	}
+	if w := vulns[1]; w.LastAffected != "3.0.20" ||
+		!reflect.DeepEqual(w.AffectedRanges, []store.VersionRange{{StartIncl: "3.0.0", EndIncl: "3.0.20"}, {Version: "3.0.13"}}) {
+		t.Fatalf("second vuln ranges %+v", w)
 	}
 	if w := vulns[1]; w.CPEMatch != "range" || w.RangeSource != "cna_rule" || !w.BuildUnknown || len(w.Platforms) != 1 || w.Meta.MaxScore != nil || w.Meta.KEV != nil {
 		t.Fatalf("second vuln %+v", w)

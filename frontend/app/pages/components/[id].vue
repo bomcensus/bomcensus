@@ -139,7 +139,7 @@ function showRaw(row: ComponentAssetRow) {
               <span v-else class="text-ink-3">—</span>
             </template>
             <template #cell-fix="{ row }">
-              <span v-if="row.fixState === 'fixed' && row.fixedVersion" class="mono whitespace-nowrap">→ {{ row.fixedVersion }}</span>
+              <span v-if="fixTarget(row)" class="mono whitespace-nowrap" :title="lastAffectedHint(row)">→ {{ fixTarget(row) }}</span>
               <span v-else class="whitespace-nowrap text-ink-2">{{ fixStateLabel[row.fixState] }}</span>
             </template>
             <template #cell-source="{ row }">
@@ -148,6 +148,7 @@ function showRaw(row: ComponentAssetRow) {
               </span>
               <div v-if="row.buildUnknown" class="mt-0.5" :title="buildUnknownHint"><StatusBadge tone="warn" label="빌드 미확인" /></div>
               <div v-if="row.platforms.length" class="text-xs text-ink-3">조건: {{ row.platforms.join(', ') }}</div>
+              <div v-if="row.affectedRanges?.length" class="text-xs text-ink-3">취약 범위: <span class="mono">{{ row.affectedRanges.map(rangeText).join(', ') }}</span></div>
             </template>
           </DataTable>
         </Panel>

@@ -85,7 +85,7 @@ const columns: TableColumn<AssetVuln>[] = [
         </div>
       </template>
       <template #cell-fix="{ row }">
-        <span v-if="row.fixedVersion" class="mono whitespace-nowrap text-xs">→ {{ row.fixedVersion }}</span>
+        <span v-if="fixTarget(row)" class="mono whitespace-nowrap text-xs" :title="lastAffectedHint(row)">→ {{ fixTarget(row) }}</span>
         <span v-else class="whitespace-nowrap text-xs text-ink-3">{{ fixStateLabel[row.fixState] }}</span>
       </template>
       <template #cell-firstSeen="{ row }"><span class="whitespace-nowrap text-xs">{{ formatDate(row.firstSeen) }}</span></template>

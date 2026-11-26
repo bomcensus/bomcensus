@@ -472,8 +472,9 @@ func (h *Handlers) GetVulnerableImage(ctx context.Context, req gen.GetVulnerable
 		img.Tags = []string{}
 	}
 	type comp struct {
-		dto   gen.VulnImageComponent
-		fixes []string
+		dto          gen.VulnImageComponent
+		fixes        []string
+		lastAffected []string
 	}
 	byComp := map[string]*comp{}
 	var order []string
@@ -493,9 +494,13 @@ func (h *Handlers) GetVulnerableImage(ctx context.Context, req gen.GetVulnerable
 		if v.Match.FixedVersion != "" && !slices.Contains(c.fixes, v.Match.FixedVersion) {
 			c.fixes = append(c.fixes, v.Match.FixedVersion)
 		}
+		if v.Match.LastAffected != "" && !slices.Contains(c.lastAffected, v.Match.LastAffected) {
+			c.lastAffected = append(c.lastAffected, v.Match.LastAffected)
+		}
 		c.dto.Cves = append(c.dto.Cves, gen.VulnImageCve{VulnId: v.Meta.ID, Summary: optStr(v.Meta.Summary),
 			Severity: severityPtr(store.MatchSeverity(v.Match, v.Meta)), Score: v.Meta.MaxScore, Kev: v.Meta.KEV != nil, Epss: v.Meta.EPSS,
-			FixState: gen.FixState(v.Match.FixState), FixedVersion: optStr(v.Match.FixedVersion), Deferred: v.Deferred})
+			FixState: gen.FixState(v.Match.FixState), FixedVersion: optStr(v.Match.FixedVersion),
+			LastAffected: optStr(v.Match.LastAffected), Deferred: v.Deferred})
 	}
 	out := gen.GetVulnerableImage200JSONResponse{Image: img}
 	for _, id := range order {
@@ -508,6 +513,7 @@ func (h *Handlers) GetVulnerableImage(ctx context.Context, req gen.GetVulnerable
 		if v := vulnsvc.MaxVersion(string(c.dto.Type), c.fixes); v != "" {
 			c.dto.FixedVersion = &v
 		}
+		c.dto.LastAffected = optStr(vulnsvc.LastAffectedBound(string(c.dto.Type), c.fixes, c.lastAffected))
 		slices.SortStableFunc(c.dto.Cves, func(a, b gen.VulnImageCve) int {
 			if c := negligibleLast(isNegligible(a.Severity), isNegligible(b.Severity)); c != 0 {
 				return c

@@ -331,3 +331,68 @@ func TestComponentCveReachability(t *testing.T) {
 		t.Errorf("present after KEV: %s first", got["0"].VulnId)
 	}
 }
+
+// TestLastAffectedViews: nginx gains CVE-D, whose CPE range ends "up to
+// and including" 1.27.5 above CVE-C's fix. The update is a version above
+// it, and the views carry the range.
+func TestLastAffectedViews(t *testing.T) {
+	f, ids := seedVulns(t)
+	ctx := f.ctx
+	srv, err := f.db.GetActiveFeedServer(ctx)
+	must(t, err)
+	ranges := []store.VersionRange{{StartIncl: "1.9.5", EndIncl: "1.27.5"}}
+	must(t, f.db.SaveMatches(ctx, store.MatchBatch{Epoch: store.MatchEpoch{ServerID: srv.ID, Revision: 7},
+		Components: []store.ComponentMatch{{ComponentID: ids["nginx"], Status: store.MatchChecked, Vulns: []store.ComponentVuln{
+			{VulnID: "CVE-C", Method: "package", FixState: "fixed", FixedVersion: "1.27.1"},
+			{VulnID: "CVE-D", Method: "cpe", Ecosystem: "nvd", FixState: "unknown", CPEMatch: "range", RangeSource: "nvd",
+				LastAffected: "1.27.5", AffectedRanges: ranges},
+		}}},
+		Vulns: []store.VulnMeta{{ID: "CVE-D", MaxScore: ptrF(7.5), Severity: "high"}}}))
+	r, err := vulnsvc.NewRefresher(f.db, nil, nil)
+	must(t, err)
+	must(t, r.Run(ctx))
+
+	list, err := f.h.ListVulnerableComponents(ctx, gen.ListVulnerableComponentsRequestObject{})
+	must(t, err)
+	var ng gen.VulnComponent
+	for _, u := range list.(gen.ListVulnerableComponents200JSONResponse).Items {
+		if u.Name == "nginx" {
+			ng = u
+		}
+	}
+	if ng.Cves != 2 || *ng.FixedVersion != "1.27.1" || ng.LastAffected == nil || *ng.LastAffected != "1.27.5" || ng.Unfixed != nil {
+		t.Fatalf("nginx unit %+v", ng)
+	}
+
+	det, err := f.h.GetVulnerableComponent(ctx, gen.GetVulnerableComponentRequestObject{Id: ids["nginx"]})
+	must(t, err)
+	d := det.(gen.GetVulnerableComponent200JSONResponse)
+	if *d.Component.LastAffected != "1.27.5" {
+		t.Fatalf("nginx detail %+v", d.Component)
+	}
+	for _, c := range d.Cves {
+		if (c.VulnId == "CVE-D") != (c.LastAffected != nil && *c.LastAffected == "1.27.5") {
+			t.Fatalf("nginx detail cve %+v", c)
+		}
+	}
+
+	cd, err := f.h.GetVulnerability(ctx, gen.GetVulnerabilityRequestObject{VulnId: "CVE-D"})
+	must(t, err)
+	cc := cd.(gen.GetVulnerability200JSONResponse).Components
+	if len(cc) != 1 || cc[0].LastAffected == nil || *cc[0].LastAffected != "1.27.5" || cc[0].FixedVersion != nil ||
+		cc[0].AffectedRanges == nil || len(*cc[0].AffectedRanges) != 1 ||
+		*(*cc[0].AffectedRanges)[0].StartIncluding != "1.9.5" || *(*cc[0].AffectedRanges)[0].EndIncluding != "1.27.5" {
+		t.Fatalf("CVE-D components %+v", cc)
+	}
+
+	cv, err := f.h.ListComponentVulnerabilities(ctx, gen.ListComponentVulnerabilitiesRequestObject{Id: ids["nginx"]})
+	must(t, err)
+	for _, v := range cv.(gen.ListComponentVulnerabilities200JSONResponse).Items {
+		if v.VulnId == "CVE-D" && (v.LastAffected == nil || v.AffectedRanges == nil || len(*v.AffectedRanges) != 1) {
+			t.Fatalf("component vulnerability %+v", v)
+		}
+		if v.VulnId == "CVE-C" && (v.LastAffected != nil || v.AffectedRanges != nil) {
+			t.Fatalf("component vulnerability %+v", v)
+		}
+	}
+}

@@ -72,6 +72,17 @@ type VulnAdvisory struct {
 	Severity string `json:"severity,omitempty"`
 }
 
+// VersionRange is a range of affected versions. Version names one
+// version; otherwise the bounds apply, an empty bound leaving that side
+// open. No field set means every version.
+type VersionRange struct {
+	Version   string `json:"version,omitempty"`
+	StartIncl string `json:"start_including,omitempty"`
+	StartExcl string `json:"start_excluding,omitempty"`
+	EndIncl   string `json:"end_including,omitempty"`
+	EndExcl   string `json:"end_excluding,omitempty"`
+}
+
 // SeverityNegligible is the rating of a match the distribution considers
 // negligible (Debian "unimportant"). Only matches carry it, never CVSS.
 const SeverityNegligible = "negligible"
@@ -83,8 +94,14 @@ type ComponentVuln struct {
 	Ecosystem    string
 	FixState     string
 	FixedVersion string
-	CPEMatch     string
-	RangeSource  string
+	// LastAffected is the highest version a matching range names as
+	// affected "up to and including", when no fixed version above it is
+	// known: versions above it are outside the range.
+	LastAffected string
+	// AffectedRanges are the matching CPE ranges the version is in.
+	AffectedRanges []VersionRange
+	CPEMatch       string
+	RangeSource    string
 	// BuildUnknown: every matching range is bounded by a vendor build and
 	// the component has none, so the match is conservative.
 	BuildUnknown bool

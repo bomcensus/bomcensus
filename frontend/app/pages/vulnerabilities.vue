@@ -244,8 +244,8 @@ const tabModel = computed({ get: () => view.value as string, set: (v: string) =>
                   <StatusBadge v-if="c.deferred" label="유예" />
                   <span class="mono ml-auto text-xs text-ink-2">{{ c.score !== undefined ? c.score.toFixed(1) : '—' }}</span>
                 </span>
-                <span class="mono mt-0.5 block truncate text-xs text-ink-2" :title="c.fixedVersion ? `${versionText(c.version, c.build)} → ${c.fixedVersion}` : versionText(c.version, c.build)">
-                  {{ versionText(c.version, c.build) }}<template v-if="c.fixedVersion"> → {{ c.fixedVersion }}</template>
+                <span class="mono mt-0.5 block truncate text-xs text-ink-2" :title="fixTarget(c) ? `${versionText(c.version, c.build)} → ${fixTarget(c)}` : versionText(c.version, c.build)">
+                  {{ versionText(c.version, c.build) }}<template v-if="fixTarget(c)"> → {{ fixTarget(c) }}</template>
                 </span>
                 <span class="mt-1 flex items-center gap-2 text-xs text-ink-3">
                   <ExposureMeter :exposure="c.exposure" />
@@ -340,13 +340,14 @@ const tabModel = computed({ get: () => view.value as string, set: (v: string) =>
                       <span class="mono ml-1 text-xs text-ink-2">{{ versionText(c.version, c.build) }}</span>
                     </td>
                     <td class="px-3 py-2">
-                      <span v-if="c.fixedVersion" class="mono whitespace-nowrap text-xs">→ {{ c.fixedVersion }}</span>
+                      <span v-if="fixTarget(c)" class="mono whitespace-nowrap text-xs" :title="lastAffectedHint(c)">→ {{ fixTarget(c) }}</span>
                       <span v-else class="text-xs text-ink-3">{{ fixStateLabel[c.fixState] }}</span>
                     </td>
                     <td class="hidden px-3 py-2 text-xs text-ink-2 md:table-cell">
                       {{ c.method === 'cpe' ? `CPE ${c.cpeMatch === 'exact' ? '일치' : '범위'}${c.rangeSource ? ` · ${c.rangeSource}` : ''}` : c.advisories.map((a) => a.id).join(', ') }}
                       <div v-if="c.buildUnknown" class="mt-0.5" :title="buildUnknownHint"><StatusBadge tone="warn" label="빌드 미확인" /></div>
                       <div v-if="c.platforms.length" class="text-ink-3">조건: {{ c.platforms.join(', ') }}</div>
+                      <div v-if="c.affectedRanges?.length" class="text-ink-3">취약 범위: <span class="mono">{{ c.affectedRanges.map(rangeText).join(', ') }}</span></div>
                       <div v-if="c.severity === 'negligible'" class="text-ink-3">배포판 평가: Negligible</div>
                     </td>
                     <td class="px-3 py-2"><ExposureMeter :exposure="c.exposure" /></td>
@@ -397,7 +398,12 @@ const tabModel = computed({ get: () => view.value as string, set: (v: string) =>
                 <span class="mono ml-2 text-base font-normal text-ink-2">{{ versionText(compDetail.component.version, compDetail.component.build) }}</span>
               </h2>
               <p class="mt-1 text-sm">
-                <template v-if="compDetail.component.fixedVersion">
+                <template v-if="compDetail.component.lastAffected">
+                  <span class="mono font-medium" :title="lastAffectedHint(compDetail.component)">{{ compDetail.component.lastAffected }}</span>
+                  <span class="text-ink-2">보다 높은 버전으로 올리면 CVE {{ compDetail.component.cves - (compDetail.component.unfixed ?? 0) }}개가 해결됩니다.</span>
+                  <span v-if="compDetail.component.unfixed" class="text-ink-2"> 수정 버전이 없는 CVE {{ compDetail.component.unfixed }}개가 남습니다.</span>
+                </template>
+                <template v-else-if="compDetail.component.fixedVersion">
                   <span class="mono font-medium">→ {{ compDetail.component.fixedVersion }}</span>
                   <span class="text-ink-2"> 로 올리면 CVE {{ compDetail.component.cves - (compDetail.component.unfixed ?? 0) }}개가 해결됩니다.</span>
                   <span v-if="compDetail.component.unfixed" class="text-ink-2"> 수정 버전이 없는 CVE {{ compDetail.component.unfixed }}개가 남습니다.</span>
@@ -462,7 +468,7 @@ const tabModel = computed({ get: () => view.value as string, set: (v: string) =>
                       </div>
                     </td>
                     <td class="px-3 py-2">
-                      <span v-if="v.fixedVersion" class="mono whitespace-nowrap text-xs">→ {{ v.fixedVersion }}</span>
+                      <span v-if="fixTarget(v)" class="mono whitespace-nowrap text-xs" :title="lastAffectedHint(v)">→ {{ fixTarget(v) }}</span>
                       <span v-else-if="v.fixState" class="text-xs text-ink-3">{{ fixStateLabel[v.fixState] }}</span>
                     </td>
                     <td class="px-3 py-2">

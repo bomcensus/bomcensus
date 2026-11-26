@@ -76,16 +76,19 @@ type componentResult struct {
 }
 
 type match struct {
-	VulnID       string               `json:"vuln_id"`
-	Method       string               `json:"method"`
-	Ecosystem    string               `json:"ecosystem"`
-	FixState     string               `json:"fix_state"`
-	FixedVersion string               `json:"fixed_version"`
-	CPEMatch     string               `json:"cpe_match"`
-	RangeSource  string               `json:"range_source"`
-	BuildUnknown bool                 `json:"build_unknown"` // ranges bounded by a build the component lacks
-	Platforms    []string             `json:"platforms"`
-	Advisories   []store.VulnAdvisory `json:"advisories"`
+	VulnID       string `json:"vuln_id"`
+	Method       string `json:"method"`
+	Ecosystem    string `json:"ecosystem"`
+	FixState     string `json:"fix_state"`
+	FixedVersion string `json:"fixed_version"`
+	LastAffected string `json:"last_affected"`
+	// AffectedRanges are the matching CPE ranges the version is in.
+	AffectedRanges []store.VersionRange `json:"affected_ranges"`
+	CPEMatch       string               `json:"cpe_match"`
+	RangeSource    string               `json:"range_source"`
+	BuildUnknown   bool                 `json:"build_unknown"` // ranges bounded by a build the component lacks
+	Platforms      []string             `json:"platforms"`
+	Advisories     []store.VulnAdvisory `json:"advisories"`
 	// Symbols are the vulnerable functions of Go matches.
 	Symbols []store.GoImport `json:"symbols"`
 }
@@ -218,7 +221,8 @@ func convert(res *matchResult, comps []store.Component, epoch store.MatchEpoch, 
 				}
 				used[mt.VulnID] = true
 				cv := store.ComponentVuln{VulnID: mt.VulnID, Method: mt.Method, Ecosystem: mt.Ecosystem,
-					FixState: mt.FixState, FixedVersion: mt.FixedVersion, CPEMatch: mt.CPEMatch, RangeSource: mt.RangeSource,
+					FixState: mt.FixState, FixedVersion: mt.FixedVersion, LastAffected: mt.LastAffected,
+					AffectedRanges: mt.AffectedRanges, CPEMatch: mt.CPEMatch, RangeSource: mt.RangeSource,
 					BuildUnknown: mt.BuildUnknown,
 					Platforms:    mt.Platforms, Advisories: mt.Advisories, Symbols: goImports(mt.Symbols)}
 				if mt.Method == "package" {

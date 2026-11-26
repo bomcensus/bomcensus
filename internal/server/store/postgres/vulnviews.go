@@ -99,7 +99,9 @@ func (d *DB) VulnComponents(ctx context.Context, o store.VulnViewOptions) ([]sto
 		), fix AS (
 			SELECT x.component_id,
 				coalesce(array_agg(DISTINCT cv.fixed_version) FILTER (WHERE cv.fixed_version <> ''), '{}') AS fixes,
-				count(DISTINCT x.vuln_id) - count(DISTINCT x.vuln_id) FILTER (WHERE cv.fixed_version <> '') AS unfixed
+				coalesce(array_agg(DISTINCT cv.last_affected) FILTER (WHERE cv.last_affected <> ''), '{}') AS last_affected,
+				count(DISTINCT x.vuln_id) -
+					count(DISTINCT x.vuln_id) FILTER (WHERE cv.fixed_version <> '' OR cv.last_affected <> '') AS unfixed
 			FROM (SELECT DISTINCT component_id, vuln_id FROM open) x
 			JOIN component_vulns cv ON cv.component_id = x.component_id AND cv.vuln_id = x.vuln_id
 			GROUP BY x.component_id
@@ -107,7 +109,7 @@ func (d *DB) VulnComponents(ctx context.Context, o store.VulnViewOptions) ([]sto
 		SELECT c.id::text, c.type, c.name, c.version, c.build, c.purl, per.vulns, per.hot, per.kev,
 			per.critical, per.high, per.medium, per.low, per.negligible, per.unknown, per.score, per.epss, per.assets, per.deferred,
 			ex.listening, ex.running, ex.installed, ex.unknown_exposure,
-			coalesce(fix.fixes, '{}'), coalesce(fix.unfixed, 0)
+			coalesce(fix.fixes, '{}'), coalesce(fix.last_affected, '{}'), coalesce(fix.unfixed, 0)
 		FROM per
 		JOIN components c ON c.id = per.component_id
 		JOIN ex ON ex.component_id = per.component_id
@@ -125,7 +127,7 @@ func (d *DB) VulnComponents(ctx context.Context, o store.VulnViewOptions) ([]sto
 			&r.Severity.Critical, &r.Severity.High, &r.Severity.Medium, &r.Severity.Low, &r.Severity.Negligible, &r.Severity.Unknown,
 			&score, &epss, &r.Assets, &r.Deferred,
 			&r.Exposure.Listening, &r.Exposure.Running, &r.Exposure.Installed, &r.Exposure.Unknown,
-			&r.FixedVersions, &r.Unfixed); err != nil {
+			&r.FixedVersions, &r.LastAffected, &r.Unfixed); err != nil {
 			rows.Close()
 			return nil, mgErr("vulnerable components", err)
 		}
@@ -243,7 +245,8 @@ func (d *DB) OpenFindings(ctx context.Context, f store.OpenFindingFilter) ([]sto
 			f.vuln_id, f.exposure, coalesce(f.reachability, ''), f.processes::text, f.first_seen,
 			coalesce(loc.locs, '{}'), coalesce(loc.method, ''),
 			coalesce(cv.method, ''), coalesce(cv.ecosystem, ''), coalesce(cv.fix_state, 'unknown'),
-			coalesce(cv.fixed_version, ''), coalesce(cv.cpe_match, ''), coalesce(cv.range_source, ''),
+			coalesce(cv.fixed_version, ''), coalesce(cv.last_affected, ''), coalesce(cv.affected_ranges::text, '[]'),
+			coalesce(cv.cpe_match, ''), coalesce(cv.range_source, ''),
 			coalesce(cv.build_unknown, false), coalesce(cv.platforms, '{}'), coalesce(cv.advisories::text, '[]'), coalesce(cv.symbols::text, '[]'),
 			coalesce(cv.severity, ''), t.rule_id IS NOT NULL, coalesce(t.expires_at IS NULL OR t.expires_at > `+atArg+`, false),
 			`+trCols+`
@@ -279,14 +282,15 @@ func (d *DB) OpenFindings(ctx context.Context, f store.OpenFindingFilter) ([]sto
 	var out []store.OpenFinding
 	for rows.Next() {
 		var o store.OpenFinding
-		var procs, adv, syms string
+		var procs, adv, syms, ranges string
 		var hasRule, active bool
 		var rule trNullRule
 		if err := vuScanMeta(rows, &o.Meta, &o.ID, &o.AssetID, &o.AssetName, &o.AssetKind, &o.Container, &o.Layer, &o.ImageDigest,
 			&o.Component.ID, &o.Component.Type, &o.Component.Name, &o.Component.Version, &o.Component.Build, &o.Component.PURL,
 			&o.VulnID, &o.Exposure, &o.Reachability, &procs, &o.FirstSeen,
 			&o.Locations, &o.Method,
-			&o.Match.Method, &o.Match.Ecosystem, &o.Match.FixState, &o.Match.FixedVersion, &o.Match.CPEMatch,
+			&o.Match.Method, &o.Match.Ecosystem, &o.Match.FixState, &o.Match.FixedVersion, &o.Match.LastAffected, &ranges,
+			&o.Match.CPEMatch,
 			&o.Match.RangeSource, &o.Match.BuildUnknown, &o.Match.Platforms, &adv, &syms, &o.Match.Severity, &hasRule, &active,
 			&rule.ID, &rule.VulnID, &rule.ScopeKind, &rule.ScopeValue, &rule.PURLLike, &rule.Status, &rule.Justification,
 			&rule.Note, &rule.ExpiresAt, &rule.ExpiredAt, &rule.CreatedBy, &rule.CreatedAt, &rule.RevokedAt,
@@ -304,6 +308,9 @@ func (d *DB) OpenFindings(ctx context.Context, f store.OpenFindingFilter) ([]sto
 		}
 		if err := json.Unmarshal([]byte(syms), &o.Match.Symbols); err != nil {
 			return nil, fmt.Errorf("postgres: open findings: symbols: %w", err)
+		}
+		if err := vuUnmarshalRanges([]byte(ranges), &o.Match.AffectedRanges); err != nil {
+			return nil, fmt.Errorf("postgres: open findings: %w", err)
 		}
 		o.Match.VulnID = o.VulnID
 		o.FirstSeen = o.FirstSeen.UTC()
@@ -508,7 +515,7 @@ func (d *DB) ImageVulns(ctx context.Context, digest string, at time.Time) ([]sto
 	}
 	rows, err := d.q.Query(ctx, `
 		SELECT `+vuMetaCols+`, c.id::text, c.type, c.name, c.version, c.build, c.purl, ic.locations,
-			cv.method, cv.ecosystem, cv.fix_state, cv.fixed_version, cv.cpe_match, cv.range_source,
+			cv.method, cv.ecosystem, cv.fix_state, cv.fixed_version, cv.last_affected, cv.cpe_match, cv.range_source,
 			cv.build_unknown, cv.platforms, cv.advisories::text, cv.severity,
 			coalesce(t.rule_id IS NOT NULL AND (t.expires_at IS NULL OR t.expires_at > $2), false)
 		FROM image_components ic
@@ -531,7 +538,7 @@ func (d *DB) ImageVulns(ctx context.Context, digest string, at time.Time) ([]sto
 		var adv string
 		if err := vuScanMeta(rows, &v.Meta, &v.Component.ID, &v.Component.Type, &v.Component.Name, &v.Component.Version,
 			&v.Component.Build, &v.Component.PURL, &v.Locations, &v.Match.Method, &v.Match.Ecosystem, &v.Match.FixState, &v.Match.FixedVersion,
-			&v.Match.CPEMatch, &v.Match.RangeSource, &v.Match.BuildUnknown, &v.Match.Platforms, &adv, &v.Match.Severity, &v.Deferred); err != nil {
+			&v.Match.LastAffected, &v.Match.CPEMatch, &v.Match.RangeSource, &v.Match.BuildUnknown, &v.Match.Platforms, &adv, &v.Match.Severity, &v.Deferred); err != nil {
 			return nil, mgErr("image vulnerabilities", err)
 		}
 		if err := json.Unmarshal([]byte(adv), &v.Match.Advisories); err != nil {

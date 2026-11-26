@@ -97,7 +97,7 @@ const sevCounts = (c: VulnComponent) =>
             <td class="min-w-0 px-3 py-2.5">
               <NuxtLink :to="`/vulnerabilities?view=component&id=${c.componentId}`" class="font-medium hover:underline" @click.stop>{{ c.name }}</NuxtLink>
               <span class="mono ml-1.5 text-xs whitespace-nowrap text-ink-2">{{ versionText(c.version, c.build) }}</span>
-              <span v-if="c.fixedVersion" class="mono ml-1.5 whitespace-nowrap text-xs">→ {{ c.fixedVersion }}</span>
+              <span v-if="fixTarget(c)" class="mono ml-1.5 whitespace-nowrap text-xs" :title="lastAffectedHint(c)">→ {{ fixTarget(c) }}</span>
               <span v-else class="ml-1.5 text-xs text-ink-3">수정 버전 없음</span>
             </td>
             <td class="px-3 py-2.5">
@@ -143,7 +143,7 @@ const sevCounts = (c: VulnComponent) =>
                   <span v-if="v.summary" class="ml-1.5 text-ink-2">{{ v.summary }}</span>
                 </td>
                 <td class="mono px-3 py-2">
-                  <template v-if="v.fixedVersion">→ {{ v.fixedVersion }}</template>
+                  <span v-if="fixTarget(v)" :title="lastAffectedHint(v)">→ {{ fixTarget(v) }}</span>
                   <span v-else-if="v.fixState" class="text-ink-3">{{ fixStateLabel[v.fixState] }}</span>
                 </td>
                 <td class="px-3 py-2"><ExposureMeter :exposure="v.exposure" /></td>

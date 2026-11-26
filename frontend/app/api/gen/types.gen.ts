@@ -1784,6 +1784,17 @@ export type ComponentVulnerability = {
     ecosystem?: string;
     fixState: FixState;
     fixedVersion?: string;
+    /**
+     * The highest version a matching range names as affected "up to and
+     * including", when no fixed version above it is known. Versions
+     * above it are outside that range; no release is named as the fix.
+     *
+     */
+    lastAffected?: string;
+    /**
+     * CPE matches only. The ranges of the matching configurations the version is in.
+     */
+    affectedRanges?: Array<VersionRange>;
     cpeMatch?: 'exact' | 'range';
     /**
      * Where the matching CPE configuration comes from. `nvd`: NVD's
@@ -1806,6 +1817,20 @@ export type ComponentVulnerability = {
      */
     platforms: Array<string>;
     advisories: Array<VulnAdvisory>;
+};
+
+/**
+ * A range of affected versions. `version` names one version; otherwise
+ * the bounds apply, a missing bound leaving that side open. An empty
+ * object means every version.
+ *
+ */
+export type VersionRange = {
+    version?: string;
+    startIncluding?: string;
+    startExcluding?: string;
+    endIncluding?: string;
+    endExcluding?: string;
 };
 
 export type ComponentVulnerabilities = {
@@ -1879,11 +1904,18 @@ export type VulnComponent = {
     purl?: string;
     fixedVersion?: string;
     /**
+     * Set when it bounds the update: the highest last affected version
+     * of its vulnerabilities, at or above fixedVersion. The update is a
+     * version above it; no release is named as the fix.
+     *
+     */
+    lastAffected?: string;
+    /**
      * Distinct fixed versions of its vulnerabilities.
      */
     fixedVersions: Array<string>;
     /**
-     * Vulnerabilities without a fixed version.
+     * Vulnerabilities with neither a fixed nor a last affected version.
      */
     unfixed?: number;
     cves: number;
@@ -1931,6 +1963,13 @@ export type VulnCve = {
      * In the context of one component.
      */
     fixedVersion?: string;
+    /**
+     * The highest version a matching range names as affected "up to and
+     * including", when no fixed version above it is known. Versions
+     * above it are outside that range; no release is named as the fix.
+     *
+     */
+    lastAffected?: string;
     /**
      * In the context of one component; the loading processes of the most exposed location.
      */
@@ -2060,6 +2099,17 @@ export type VulnCveComponent = {
     ecosystem?: string;
     fixState: FixState;
     fixedVersion?: string;
+    /**
+     * The highest version a matching range names as affected "up to and
+     * including", when no fixed version above it is known. Versions
+     * above it are outside that range; no release is named as the fix.
+     *
+     */
+    lastAffected?: string;
+    /**
+     * CPE matches only. The ranges of the matching configurations the version is in.
+     */
+    affectedRanges?: Array<VersionRange>;
     cpeMatch?: 'exact' | 'range';
     /**
      * Where the matching CPE configuration comes from. `nvd`: NVD's
@@ -2125,6 +2175,13 @@ export type AssetVuln = {
     symbols?: Array<string>;
     fixState: FixState;
     fixedVersion?: string;
+    /**
+     * The highest version a matching range names as affected "up to and
+     * including", when no fixed version above it is known. Versions
+     * above it are outside that range; no release is named as the fix.
+     *
+     */
+    lastAffected?: string;
     processes: Array<FindingProcess>;
     firstSeen: string;
     triage?: TriageRule;
@@ -2462,6 +2519,13 @@ export type VulnImageCve = {
     fixState: FixState;
     fixedVersion?: string;
     /**
+     * The highest version a matching range names as affected "up to and
+     * including", when no fixed version above it is known. Versions
+     * above it are outside that range; no release is named as the fix.
+     *
+     */
+    lastAffected?: string;
+    /**
      * A rule with a component scope defers it.
      */
     deferred: boolean;
@@ -2479,6 +2543,13 @@ export type VulnImageComponent = {
     purl?: string;
     locations: Array<string>;
     fixedVersion?: string;
+    /**
+     * Set when it bounds the update: the highest last affected version
+     * of its vulnerabilities, at or above fixedVersion. The update is a
+     * version above it; no release is named as the fix.
+     *
+     */
+    lastAffected?: string;
     fixedVersions: Array<string>;
     cves: Array<VulnImageCve>;
 };

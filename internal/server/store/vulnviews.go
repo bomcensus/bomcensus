@@ -38,8 +38,10 @@ type VulnComponentRow struct {
 	Exposure   ExposureCounts
 	Assets     int
 	// FixedVersions are the distinct fixed versions of its
-	// vulnerabilities; Unfixed counts those without one.
+	// vulnerabilities and LastAffected the distinct last affected ones;
+	// Unfixed counts those with neither.
 	FixedVersions []string
+	LastAffected  []string
 	Unfixed       int
 	Processes     []ProcessCount
 	// Deferred counts the deferred findings among them (only when they

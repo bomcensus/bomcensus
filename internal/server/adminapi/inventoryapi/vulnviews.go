@@ -261,6 +261,7 @@ func componentUnitDTO(r store.VulnComponentRow) gen.VulnComponent {
 	if v := vulnsvc.MaxVersion(r.Component.Type, r.FixedVersions); v != "" {
 		out.FixedVersion = &v
 	}
+	out.LastAffected = optStr(vulnsvc.LastAffectedBound(r.Component.Type, r.FixedVersions, r.LastAffected))
 	if r.Unfixed > 0 {
 		n := r.Unfixed
 		out.Unfixed = &n
@@ -394,6 +395,7 @@ func unitOf(c store.Component, fs []store.OpenFinding) store.VulnComponentRow {
 	places := map[place]string{}
 	assets := map[string]bool{}
 	fixes := map[string]bool{}
+	lastAffected := map[string]bool{}
 	procs := map[string]map[string]bool{}
 	for _, f := range fs {
 		vulns[f.VulnID] = f
@@ -421,7 +423,11 @@ func unitOf(c store.Component, fs []store.OpenFinding) store.VulnComponentRow {
 		r.MaxEPSS = maxPtr(r.MaxEPSS, m.EPSS)
 		if f.Match.FixedVersion != "" {
 			fixes[f.Match.FixedVersion] = true
-		} else {
+		}
+		if f.Match.LastAffected != "" {
+			lastAffected[f.Match.LastAffected] = true
+		}
+		if f.Match.FixedVersion == "" && f.Match.LastAffected == "" {
 			r.Unfixed++
 		}
 	}
@@ -431,6 +437,9 @@ func unitOf(c store.Component, fs []store.OpenFinding) store.VulnComponentRow {
 	r.Assets = len(assets)
 	for v := range fixes {
 		r.FixedVersions = append(r.FixedVersions, v)
+	}
+	for v := range lastAffected {
+		r.LastAffected = append(r.LastAffected, v)
 	}
 	for exe, set := range procs {
 		r.Processes = append(r.Processes, store.ProcessCount{Exe: exe, Count: len(set)})
@@ -582,7 +591,7 @@ func (h *Handlers) GetVulnerableComponent(ctx context.Context, req gen.GetVulner
 		}
 		v := cveDTO(a.f.Meta, store.MatchSeverity(a.f.Match, a.f.Meta), 1, len(a.assets), ec)
 		fs := gen.FixState(a.f.Match.FixState)
-		v.FixState, v.FixedVersion = &fs, optStr(a.f.Match.FixedVersion)
+		v.FixState, v.FixedVersion, v.LastAffected = &fs, optStr(a.f.Match.FixedVersion), optStr(a.f.Match.LastAffected)
 		p := processesDTO(a.f.Processes)
 		v.Processes = &p
 		var reach reachTally
@@ -742,7 +751,8 @@ func (h *Handlers) GetVulnerability(ctx context.Context, req gen.GetVulnerabilit
 			ComponentId: id, Name: a.f.Component.Name, Version: a.f.Component.Version, Build: optStr(a.f.Component.Build),
 			Type: gen.ComponentType(a.f.Component.Type),
 			Purl: optStr(a.f.Component.PURL), Method: gen.VulnCveComponentMethod(m.Method), Ecosystem: optStr(m.Ecosystem),
-			FixState: gen.FixState(m.FixState), FixedVersion: optStr(m.FixedVersion), Platforms: m.Platforms,
+			FixState: gen.FixState(m.FixState), FixedVersion: optStr(m.FixedVersion), LastAffected: optStr(m.LastAffected),
+			AffectedRanges: rangesDTO(m.AffectedRanges), Platforms: m.Platforms,
 			Advisories: make([]gen.VulnAdvisory, 0, len(m.Advisories)), Assets: len(a.assets), Exposure: gen.Exposure(a.f.Exposure),
 			Severity: severityPtr(store.MatchSeverity(m, a.f.Meta)),
 		}
@@ -797,7 +807,8 @@ func (h *Handlers) ListAssetVulnerabilities(ctx context.Context, req gen.ListAss
 			Container: optStr(f.Container), Layer: gen.FindingLayer(layerOf(f.Layer)), ImageDigest: optStr(f.ImageDigest),
 			VulnId: f.VulnID, Summary: optStr(f.Meta.Summary), Severity: severityPtr(store.MatchSeverity(f.Match, f.Meta)), Score: f.Meta.MaxScore,
 			Kev: f.Meta.KEV != nil, Epss: f.Meta.EPSS, Exposure: gen.Exposure(f.Exposure), FixState: gen.FixState(f.Match.FixState),
-			FixedVersion: optStr(f.Match.FixedVersion), Processes: processesDTO(f.Processes), FirstSeen: f.FirstSeen,
+			FixedVersion: optStr(f.Match.FixedVersion), LastAffected: optStr(f.Match.LastAffected),
+			Processes: processesDTO(f.Processes), FirstSeen: f.FirstSeen,
 			Triage:       findingTriageDTO(f, h.cfg.Now()),
 			Reachability: reachabilityDTO(f.Reachability), Symbols: symbolNames(f.Match.Symbols),
 		})

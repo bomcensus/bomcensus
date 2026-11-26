@@ -45,3 +45,22 @@ func TestConvertKeepsBuildUnknown(t *testing.T) {
 		t.Fatalf("vulns %+v", vs)
 	}
 }
+
+func TestConvertKeepsLastAffected(t *testing.T) {
+	var res matchResult
+	if err := json.Unmarshal([]byte(`{"targets":[{"id":"t0","components":[{"ref":"n","status":"checked","matches":[
+		{"vuln_id":"CVE-2023-44487","method":"cpe","fix_state":"unknown","cpe_match":"range","range_source":"nvd",
+			"last_affected":"1.25.2","affected_ranges":[{"start_including":"1.9.5","end_including":"1.25.2"}]}]}]}],
+		"vulnerabilities":{"CVE-2023-44487":{"id":"CVE-2023-44487"}}}`), &res); err != nil {
+		t.Fatal(err)
+	}
+	b, err := convert(&res, []store.Component{{ID: "n"}}, store.MatchEpoch{}, time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	vs := b.Components[0].Vulns
+	if len(vs) != 1 || vs[0].LastAffected != "1.25.2" || len(vs[0].AffectedRanges) != 1 ||
+		vs[0].AffectedRanges[0] != (store.VersionRange{StartIncl: "1.9.5", EndIncl: "1.25.2"}) {
+		t.Fatalf("vulns %+v", vs)
+	}
+}

@@ -50,12 +50,26 @@ func optStr(s string) *string {
 	return &s
 }
 
+// rangesDTO converts affected ranges, nil when there are none.
+func rangesDTO(rs []store.VersionRange) *[]gen.VersionRange {
+	if len(rs) == 0 {
+		return nil
+	}
+	out := make([]gen.VersionRange, 0, len(rs))
+	for _, r := range rs {
+		out = append(out, gen.VersionRange{Version: optStr(r.Version), StartIncluding: optStr(r.StartIncl),
+			StartExcluding: optStr(r.StartExcl), EndIncluding: optStr(r.EndIncl), EndExcluding: optStr(r.EndExcl)})
+	}
+	return &out
+}
+
 func componentVulnDTO(r store.ComponentVulnRow) gen.ComponentVulnerability {
 	v := gen.ComponentVulnerability{
 		VulnId: r.VulnID, Aliases: r.Meta.Aliases, Summary: optStr(r.Meta.Summary), Score: r.Meta.MaxScore,
 		Kev: r.Meta.KEV != nil, Epss: r.Meta.EPSS, EpssPercentile: r.Meta.EPSSPercentile, Published: r.Meta.Published,
 		Method: gen.ComponentVulnerabilityMethod(r.Method), Ecosystem: optStr(r.Ecosystem), FixState: gen.FixState(r.FixState),
-		FixedVersion: optStr(r.FixedVersion), Platforms: r.Platforms, Advisories: make([]gen.VulnAdvisory, 0, len(r.Advisories)),
+		FixedVersion: optStr(r.FixedVersion), LastAffected: optStr(r.LastAffected), AffectedRanges: rangesDTO(r.AffectedRanges),
+		Platforms: r.Platforms, Advisories: make([]gen.VulnAdvisory, 0, len(r.Advisories)),
 	}
 	if v.Aliases == nil {
 		v.Aliases = []string{}

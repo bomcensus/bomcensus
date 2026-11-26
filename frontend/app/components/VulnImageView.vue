@@ -105,7 +105,7 @@ const title = (tags: string[], digest: string) => tags[0] ?? shortHash(digest)
                         <template v-if="i === 0">
                           <NuxtLink :to="`/components/${c.componentId}`" class="font-medium hover:underline">{{ c.name }}</NuxtLink>
                           <span class="mono ml-1 text-xs text-ink-2">{{ versionText(c.version, c.build) }}</span>
-                          <span v-if="c.fixedVersion" class="mono ml-1 text-xs">→ {{ c.fixedVersion }}</span>
+                          <span v-if="fixTarget(c)" class="mono ml-1 text-xs" :title="lastAffectedHint(c)">→ {{ fixTarget(c) }}</span>
                         </template>
                       </td>
                       <td class="px-3 py-2">
@@ -118,7 +118,7 @@ const title = (tags: string[], digest: string) => tags[0] ?? shortHash(digest)
                         </span>
                       </td>
                       <td class="py-2 pl-3 pr-3.5">
-                        <span v-if="v.fixedVersion" class="mono text-xs whitespace-nowrap">→ {{ v.fixedVersion }}</span>
+                        <span v-if="fixTarget(v)" class="mono text-xs whitespace-nowrap" :title="lastAffectedHint(v)">→ {{ fixTarget(v) }}</span>
                         <span v-else class="text-xs text-ink-3">{{ fixStateLabel[v.fixState] }}</span>
                       </td>
                     </tr>

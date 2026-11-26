@@ -28,3 +28,21 @@ func TestMaxVersion(t *testing.T) {
 		}
 	}
 }
+
+func TestLastAffectedBound(t *testing.T) {
+	for _, tc := range []struct {
+		fixed, last []string
+		want        string
+	}{
+		{nil, nil, ""},
+		{[]string{"1.20.0"}, nil, ""},
+		{nil, []string{"1.25.2", "1.9.0"}, "1.25.2"},
+		{[]string{"1.20.0"}, []string{"1.25.2"}, "1.25.2"},
+		{[]string{"1.25.2"}, []string{"1.25.2"}, "1.25.2"},
+		{[]string{"1.26.0"}, []string{"1.25.2"}, ""},
+	} {
+		if got := LastAffectedBound("application", tc.fixed, tc.last); got != tc.want {
+			t.Errorf("%v %v: %q, want %q", tc.fixed, tc.last, got, tc.want)
+		}
+	}
+}

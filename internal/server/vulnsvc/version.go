@@ -12,10 +12,7 @@ import "strings"
 // ecosystem versions as semantic versions, where a pre-release is lower
 // than its release. Empty without versions.
 func MaxVersion(componentType string, versions []string) string {
-	cmp := compareDebian
-	if !osPackageTypes[componentType] {
-		cmp = compareSemverish
-	}
+	cmp := comparator(componentType)
 	best := ""
 	for _, v := range versions {
 		if v == "" {
@@ -26,6 +23,26 @@ func MaxVersion(componentType string, versions []string) string {
 		}
 	}
 	return best
+}
+
+// LastAffectedBound returns the highest last affected version of a
+// component's vulnerabilities when it bounds the update: when it is at or
+// above the highest fixed version, so that following the fixed version
+// would leave the component in a range. Empty otherwise.
+func LastAffectedBound(componentType string, fixed, lastAffected []string) string {
+	la := MaxVersion(componentType, lastAffected)
+	f := MaxVersion(componentType, fixed)
+	if la == "" || f == "" || comparator(componentType)(la, f) >= 0 {
+		return la
+	}
+	return ""
+}
+
+func comparator(componentType string) func(a, b string) int {
+	if osPackageTypes[componentType] {
+		return compareDebian
+	}
+	return compareSemverish
 }
 
 // compareDebian compares [epoch:]upstream[-revision] versions.

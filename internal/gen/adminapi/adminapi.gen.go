@@ -2433,6 +2433,14 @@ type AssetVuln struct {
 	ImageDigest  *string   `json:"imageDigest,omitempty"`
 	Kev          bool      `json:"kev"`
 
+	// LastAffected The highest version a matching range names as affected "up to and
+	// including", when no fixed version above it is known. Versions
+	// above it are outside that range; no release is named as the fix.
+	//
+	//
+	// Example: 1.25.2
+	LastAffected *string `json:"lastAffected,omitempty"`
+
 	// Layer `host` for the asset itself, `runtime` for files added in the running container, `image` for the image content.
 	Layer     FindingLayer     `json:"layer"`
 	Processes []FindingProcess `json:"processes"`
@@ -2564,7 +2572,10 @@ type ComponentVulnerabilities struct {
 // ComponentVulnerability defines model for ComponentVulnerability.
 type ComponentVulnerability struct {
 	Advisories []VulnAdvisory `json:"advisories"`
-	Aliases    []string       `json:"aliases"`
+
+	// AffectedRanges CPE matches only. The ranges of the matching configurations the version is in.
+	AffectedRanges *[]VersionRange `json:"affectedRanges,omitempty"`
+	Aliases        []string        `json:"aliases"`
 
 	// BuildUnknown Every matching range is bounded by a vendor build on the
 	// component's release line, and the component has no build. The
@@ -2581,6 +2592,14 @@ type ComponentVulnerability struct {
 	// Kev Listed in the CISA Known Exploited Vulnerabilities catalog.
 	Kev      bool                `json:"kev"`
 	KevAdded *openapi_types.Date `json:"kevAdded,omitempty"`
+
+	// LastAffected The highest version a matching range names as affected "up to and
+	// including", when no fixed version above it is known. Versions
+	// above it are outside that range; no release is named as the fix.
+	//
+	//
+	// Example: 1.25.2
+	LastAffected *string `json:"lastAffected,omitempty"`
 
 	// Method `package`: an advisory of the package's ecosystem. `cpe`: a CPE configuration (NVD, VulnCheck or the CNA).
 	Method ComponentVulnerabilityMethod `json:"method"`
@@ -4252,6 +4271,21 @@ type UpdateSettings struct {
 // UpdateState defines model for UpdateState.
 type UpdateState string
 
+// VersionRange A range of affected versions. `version` names one version; otherwise
+// the bounds apply, a missing bound leaving that side open. An empty
+// object means every version.
+type VersionRange struct {
+	EndExcluding *string `json:"endExcluding,omitempty"`
+
+	// EndIncluding Example: 1.25.2
+	EndIncluding   *string `json:"endIncluding,omitempty"`
+	StartExcluding *string `json:"startExcluding,omitempty"`
+
+	// StartIncluding Example: 1.9.5
+	StartIncluding *string `json:"startIncluding,omitempty"`
+	Version        *string `json:"version,omitempty"`
+}
+
 // VulnAdvisory defines model for VulnAdvisory.
 type VulnAdvisory struct {
 	// Id Example: DEBIAN-CVE-2024-6387
@@ -4290,7 +4324,15 @@ type VulnComponent struct {
 	// FixedVersions Distinct fixed versions of its vulnerabilities.
 	FixedVersions []string `json:"fixedVersions"`
 	Kev           int      `json:"kev"`
-	Name          string   `json:"name"`
+
+	// LastAffected Set when it bounds the update: the highest last affected version
+	// of its vulnerabilities, at or above fixedVersion. The update is a
+	// version above it; no release is named as the fix.
+	//
+	//
+	// Example: 1.25.2
+	LastAffected *string `json:"lastAffected,omitempty"`
+	Name         string  `json:"name"`
 
 	// Processes Executables of the loading processes, most frequent first (at most 5).
 	Processes []ProcessCount `json:"processes"`
@@ -4309,7 +4351,7 @@ type VulnComponent struct {
 	SeverityCounts SeverityCounts `json:"severityCounts"`
 	Type           ComponentType  `json:"type"`
 
-	// Unfixed Vulnerabilities without a fixed version.
+	// Unfixed Vulnerabilities with neither a fixed nor a last affected version.
 	Unfixed *int   `json:"unfixed,omitempty"`
 	Version string `json:"version"`
 }
@@ -4355,6 +4397,14 @@ type VulnCve struct {
 	Kev          bool                `json:"kev"`
 	KevAdded     *openapi_types.Date `json:"kevAdded,omitempty"`
 
+	// LastAffected The highest version a matching range names as affected "up to and
+	// including", when no fixed version above it is known. Versions
+	// above it are outside that range; no release is named as the fix.
+	//
+	//
+	// Example: 1.25.2
+	LastAffected *string `json:"lastAffected,omitempty"`
+
 	// Processes In the context of one component; the loading processes of the most exposed location.
 	Processes *[]FindingProcess `json:"processes,omitempty"`
 
@@ -4385,7 +4435,10 @@ type VulnCve struct {
 // VulnCveComponent defines model for VulnCveComponent.
 type VulnCveComponent struct {
 	Advisories []VulnAdvisory `json:"advisories"`
-	Assets     int            `json:"assets"`
+
+	// AffectedRanges CPE matches only. The ranges of the matching configurations the version is in.
+	AffectedRanges *[]VersionRange `json:"affectedRanges,omitempty"`
+	Assets         int             `json:"assets"`
 
 	// Build Vendor build or revision number reported by the detector.
 	Build *string `json:"build,omitempty"`
@@ -4406,10 +4459,18 @@ type VulnCveComponent struct {
 	// non-loopback address. `running`: a process loaded it.
 	// `installed`: no process did. `unknown`: the processes were not fully
 	// collected.
-	Exposure     Exposure               `json:"exposure"`
-	Findings     *int                   `json:"findings,omitempty"`
-	FixState     FixState               `json:"fixState"`
-	FixedVersion *string                `json:"fixedVersion,omitempty"`
+	Exposure     Exposure `json:"exposure"`
+	Findings     *int     `json:"findings,omitempty"`
+	FixState     FixState `json:"fixState"`
+	FixedVersion *string  `json:"fixedVersion,omitempty"`
+
+	// LastAffected The highest version a matching range names as affected "up to and
+	// including", when no fixed version above it is known. Versions
+	// above it are outside that range; no release is named as the fix.
+	//
+	//
+	// Example: 1.25.2
+	LastAffected *string                `json:"lastAffected,omitempty"`
 	Method       VulnCveComponentMethod `json:"method"`
 	Name         string                 `json:"name"`
 	Platforms    []string               `json:"platforms"`
@@ -4519,11 +4580,19 @@ type VulnImageComponent struct {
 	Cves          []VulnImageCve `json:"cves"`
 	FixedVersion  *string        `json:"fixedVersion,omitempty"`
 	FixedVersions []string       `json:"fixedVersions"`
-	Locations     []string       `json:"locations"`
-	Name          string         `json:"name"`
-	Purl          *string        `json:"purl,omitempty"`
-	Type          ComponentType  `json:"type"`
-	Version       string         `json:"version"`
+
+	// LastAffected Set when it bounds the update: the highest last affected version
+	// of its vulnerabilities, at or above fixedVersion. The update is a
+	// version above it; no release is named as the fix.
+	//
+	//
+	// Example: 1.25.2
+	LastAffected *string       `json:"lastAffected,omitempty"`
+	Locations    []string      `json:"locations"`
+	Name         string        `json:"name"`
+	Purl         *string       `json:"purl,omitempty"`
+	Type         ComponentType `json:"type"`
+	Version      string        `json:"version"`
 }
 
 // VulnImageCve defines model for VulnImageCve.
@@ -4534,6 +4603,14 @@ type VulnImageCve struct {
 	FixState     FixState `json:"fixState"`
 	FixedVersion *string  `json:"fixedVersion,omitempty"`
 	Kev          bool     `json:"kev"`
+
+	// LastAffected The highest version a matching range names as affected "up to and
+	// including", when no fixed version above it is known. Versions
+	// above it are outside that range; no release is named as the fix.
+	//
+	//
+	// Example: 1.25.2
+	LastAffected *string  `json:"lastAffected,omitempty"`
 	Score        *float64 `json:"score,omitempty"`
 
 	// Severity Rating of a match: the distribution's rating of a package match when

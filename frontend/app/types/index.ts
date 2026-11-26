@@ -126,6 +126,7 @@ export type {
   VulnAdvisory,
   ComponentMatchState,
   ComponentVulnerability,
+  VersionRange,
   Exposure,
   ExposureCounts,
   SeverityCounts,

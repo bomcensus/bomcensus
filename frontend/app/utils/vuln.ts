@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-bomcensus-Commercial
 // Additional terms apply. See LICENSING.md.
 
-import type { Severity, VulnLocation } from '~/types'
+import type { Severity, VersionRange, VulnLocation } from '~/types'
 
 /** Text color of a severity mark. */
 export const severityText: Record<Severity, string> = {
@@ -48,3 +48,28 @@ export function locationProcessTitle(l: VulnLocation, exe?: string): string {
 }
 
 export const percent = (n?: number) => (n === undefined ? '—' : `${(n * 100).toFixed(1)}%`)
+
+/**
+ * The version to update to: the fixed version, or "> X" when a range ends
+ * "up to and including" X and no release is named as the fix. Empty when
+ * neither is known. The API sets lastAffected only when it bounds the update.
+ */
+export function fixTarget(m: { fixedVersion?: string; lastAffected?: string }): string {
+  if (m.lastAffected) return `> ${m.lastAffected}`
+  return m.fixedVersion ?? ''
+}
+
+/** Tooltip of a "> X" update target. */
+export function lastAffectedHint(m: { lastAffected?: string }): string | undefined {
+  if (!m.lastAffected) return undefined
+  return `${m.lastAffected} 이하가 취약 범위로 알려져 있습니다. 수정이 들어간 버전은 데이터에 없어 ${m.lastAffected}보다 높은 버전을 제안합니다.`
+}
+
+/** An affected range as "1.9.5 ≤ v ≤ 1.25.2", "= 1.13.3" or "모든 버전". */
+export function rangeText(r: VersionRange): string {
+  if (r.version) return `= ${r.version}`
+  const lo = r.startIncluding ? `${r.startIncluding} ≤ ` : r.startExcluding ? `${r.startExcluding} < ` : ''
+  const hi = r.endIncluding ? ` ≤ ${r.endIncluding}` : r.endExcluding ? ` < ${r.endExcluding}` : ''
+  if (!lo && !hi) return '모든 버전'
+  return `${lo}v${hi}`
+}

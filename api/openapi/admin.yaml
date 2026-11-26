@@ -5828,6 +5828,18 @@ components:
           $ref: "#/components/schemas/FixState"
         fixedVersion:
           type: string
+        lastAffected:
+          description: |
+            The highest version a matching range names as affected "up to and
+            including", when no fixed version above it is known. Versions
+            above it are outside that range; no release is named as the fix.
+          type: string
+          example: 1.25.2
+        affectedRanges:
+          description: CPE matches only. The ranges of the matching configurations the version is in.
+          type: array
+          items:
+            $ref: "#/components/schemas/VersionRange"
         cpeMatch:
           type: string
           enum: [exact, range]
@@ -5855,6 +5867,25 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/VulnAdvisory"
+    VersionRange:
+      description: |
+        A range of affected versions. `version` names one version; otherwise
+        the bounds apply, a missing bound leaving that side open. An empty
+        object means every version.
+      type: object
+      properties:
+        version:
+          type: string
+        startIncluding:
+          type: string
+          example: 1.9.5
+        startExcluding:
+          type: string
+        endIncluding:
+          type: string
+          example: 1.25.2
+        endExcluding:
+          type: string
     ComponentVulnerabilities:
       type: object
       required: [items]
@@ -5950,13 +5981,20 @@ components:
           type: string
         fixedVersion:
           type: string
+        lastAffected:
+          description: |
+            Set when it bounds the update: the highest last affected version
+            of its vulnerabilities, at or above fixedVersion. The update is a
+            version above it; no release is named as the fix.
+          type: string
+          example: 1.25.2
         fixedVersions:
           description: Distinct fixed versions of its vulnerabilities.
           type: array
           items:
             type: string
         unfixed:
-          description: Vulnerabilities without a fixed version.
+          description: Vulnerabilities with neither a fixed nor a last affected version.
           type: integer
         cves:
           type: integer
@@ -6035,6 +6073,13 @@ components:
         fixedVersion:
           description: In the context of one component.
           type: string
+        lastAffected:
+          description: |
+            The highest version a matching range names as affected "up to and
+            including", when no fixed version above it is known. Versions
+            above it are outside that range; no release is named as the fix.
+          type: string
+          example: 1.25.2
         processes:
           description: In the context of one component; the loading processes of the most exposed location.
           type: array
@@ -6244,6 +6289,18 @@ components:
           $ref: "#/components/schemas/FixState"
         fixedVersion:
           type: string
+        lastAffected:
+          description: |
+            The highest version a matching range names as affected "up to and
+            including", when no fixed version above it is known. Versions
+            above it are outside that range; no release is named as the fix.
+          type: string
+          example: 1.25.2
+        affectedRanges:
+          description: CPE matches only. The ranges of the matching configurations the version is in.
+          type: array
+          items:
+            $ref: "#/components/schemas/VersionRange"
         cpeMatch:
           type: string
           enum: [exact, range]
@@ -6348,6 +6405,13 @@ components:
           $ref: "#/components/schemas/FixState"
         fixedVersion:
           type: string
+        lastAffected:
+          description: |
+            The highest version a matching range names as affected "up to and
+            including", when no fixed version above it is known. Versions
+            above it are outside that range; no release is named as the fix.
+          type: string
+          example: 1.25.2
         processes:
           type: array
           items:
@@ -6840,6 +6904,13 @@ components:
           $ref: "#/components/schemas/FixState"
         fixedVersion:
           type: string
+        lastAffected:
+          description: |
+            The highest version a matching range names as affected "up to and
+            including", when no fixed version above it is known. Versions
+            above it are outside that range; no release is named as the fix.
+          type: string
+          example: 1.25.2
         deferred:
           description: A rule with a component scope defers it.
           type: boolean
@@ -6866,6 +6937,13 @@ components:
             type: string
         fixedVersion:
           type: string
+        lastAffected:
+          description: |
+            Set when it bounds the update: the highest last affected version
+            of its vulnerabilities, at or above fixedVersion. The update is a
+            version above it; no release is named as the fix.
+          type: string
+          example: 1.25.2
         fixedVersions:
           type: array
           items:
