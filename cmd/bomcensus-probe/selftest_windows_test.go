@@ -14,7 +14,8 @@ import (
 const sandboxLogMarker = "step=sandbox status=skipped"
 
 func TestSelfTest(t *testing.T) {
-	// The one check, the missing sandbox, fails.
+	// The missing sandbox of the probe fails; the version command check
+	// follows.
 	out, stderr, code := runProbe(t, "", "self-test", "--json")
 	if code != 1 {
 		t.Fatalf("exit %d\n%s", code, stderr)
@@ -36,7 +37,7 @@ func TestSelfTest(t *testing.T) {
 	if len(res.Steps) != 1 || res.Steps[0].Status != "skipped" || res.User == "" {
 		t.Errorf("self-test = %s", out)
 	}
-	if len(res.Checks) != 1 || res.Checks[0].OK {
+	if len(res.Checks) < 2 || res.Checks[0].OK || res.Checks[1].Name != "version command" {
 		t.Errorf("checks = %+v", res.Checks)
 	}
 }

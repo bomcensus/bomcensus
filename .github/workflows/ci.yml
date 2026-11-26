@@ -123,6 +123,35 @@ jobs:
       - run: go vet ./...
       - run: go test ./...
 
+  # The version command sandbox of Windows under the runner's administrator,
+  # LocalSystem and a standard user (scripts/windows-sandbox-matrix.ps1),
+  # with the runtimes of the runner image logged.
+  windows-sandbox:
+    name: windows sandbox matrix (${{ matrix.runner }})
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [windows-2025, windows-11-arm]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - run: git config --global core.autocrlf false
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - name: Matrix
+        shell: pwsh
+        run: ./scripts/windows-sandbox-matrix.ps1
+      - name: Logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-sandbox-logs-${{ matrix.runner }}
+          path: C:\ProgramData\bomcensus-sandbox-test\logs
+          if-no-files-found: ignore
+          retention-days: 7
+
   console:
     name: console (typecheck, build)
     runs-on: ubuntu-24.04

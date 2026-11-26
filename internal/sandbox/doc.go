@@ -5,5 +5,7 @@
 // Package sandbox holds the Linux restriction primitives shared by the
 // probe (internal/probe) and the exec helper of version commands
 // (internal/collect/artifact): the seccomp filters and the Landlock
-// ruleset of a version command. See docs/SECURITY.md 6.2 and 6.6.
+// ruleset of a version command. On Windows it runs version commands
+// itself (Run) and checks that sandbox (CheckCommand). See
+// docs/SECURITY.md 6.2 and 6.6.
 package sandbox
