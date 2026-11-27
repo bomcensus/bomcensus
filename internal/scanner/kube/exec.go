@@ -271,6 +271,7 @@ func CollectContainer(ctx context.Context, c *Client, t ExecTarget, d Deps) (*re
 	// The root of the container is image content: it is walked whole,
 	// whatever the walk paths configured for hosts are.
 	req.Policy.WalkPaths = []string{"/"}
+	req.Policy.ExcludePaths = append(slices.Clone(req.Policy.ExcludePaths), hostPathDirs(pod, spec)...)
 	reqJSON, err := json.Marshal(req)
 	if err != nil {
 		return nil, finish(dto.CoverageFailed, "encode request"), fmt.Errorf("kube: encode request: %w", err)

@@ -38,7 +38,7 @@ const (
 	// Content that is not part of the image (volumes seen through the
 	// container root) can be this old in the report.
 	imageScanMaxAge = 24 * time.Hour
-	imageScanKey    = "probe.image.v1."
+	imageScanKey    = "probe.image.v2."
 )
 
 // imageScan is the content read for one image digest.

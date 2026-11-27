@@ -161,7 +161,7 @@ func newCollector(env *collect.Env, in Inputs) *collector {
 
 func (c *collector) run(ctx context.Context) *report.ArtifactsSection {
 	start := time.Now()
-	c.mounts = loadMounts(c.env)
+	c.mounts = loadMounts(c.env, c.excluded)
 
 	running := c.sameRoot(c.in.Running)
 	for i := range running {

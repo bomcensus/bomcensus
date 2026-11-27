@@ -131,29 +131,40 @@ type mountTable struct {
 	// duplicates are bind mounts whose content is reachable through another
 	// mount of the same file system.
 	duplicates map[string]bool
+	// hostDirs are mounts of a container root that show a directory of the
+	// host; see markHostDirs.
+	hostDirs map[string]bool
 }
 
 // loadMounts reads the mount table that applies to env.Root: the probe's own
 // for the host, the process's for a container root under /proc/<pid>/root.
 // It returns nil when neither applies; the walk then relies on statfs.
-func loadMounts(env *collect.Env) *mountTable {
+// excluded tells the logical paths the host walk leaves out.
+func loadMounts(env *collect.Env, excluded func(string) bool) *mountTable {
 	proc := env.Proc
 	if proc == "" {
 		proc = "/proc"
 	}
-	var file string
+	self := filepath.Join(proc, "self", "mountinfo")
 	switch root := strings.TrimSuffix(env.Root, "/"); {
 	case root == "":
-		file = filepath.Join(proc, "self", "mountinfo")
+		return readMountinfo(self)
 	case strings.HasPrefix(root, proc+"/") && strings.HasSuffix(root, "/root"):
 		pid := strings.TrimSuffix(strings.TrimPrefix(root, proc+"/"), "/root")
 		if _, err := strconv.Atoi(pid); err != nil {
 			return nil
 		}
-		file = filepath.Join(proc, pid, "mountinfo")
+		t := readMountinfo(filepath.Join(proc, pid, "mountinfo"))
+		if host := readMountinfo(self); t != nil && host != nil {
+			t.markHostDirs(host, excluded)
+		}
+		return t
 	default:
 		return nil
 	}
+}
+
+func readMountinfo(file string) *mountTable {
 	f, err := os.Open(file)
 	if err != nil {
 		return nil
@@ -162,8 +173,42 @@ func loadMounts(env *collect.Env) *mountTable {
 	return parseMountinfo(f)
 }
 
+// markHostDirs marks the mounts of a container root that show a directory
+// of the host not excluded from the host walk, such as a hostPath volume or
+// the node root mounted by an agent. That content belongs to the host, not to
+// the image of the container. Volumes in the container storage of the host
+// (excluded from its walk) stay in the container walk.
+func (t *mountTable) markHostDirs(host *mountTable, excluded func(string) bool) {
+	for point, m := range t.byPoint {
+		if point == "/" || skipFSType(m.fsType) {
+			continue
+		}
+		for _, h := range host.byPoint {
+			if h.majorMinor != m.majorMinor || skipFSType(h.fsType) || host.duplicates[h.point] || !under(m.root, h.root) {
+				continue
+			}
+			p := path.Join(h.point, strings.TrimPrefix(m.root, h.root))
+			if !excluded(p) && host.deepest(p) == h.point {
+				t.hostDirs[point] = true
+				break
+			}
+		}
+	}
+}
+
+// deepest returns the point of the mount that holds the path p.
+func (t *mountTable) deepest(p string) string {
+	best := ""
+	for q := range t.byPoint {
+		if under(p, q) && len(q) > len(best) {
+			best = q
+		}
+	}
+	return best
+}
+
 func parseMountinfo(r io.Reader) *mountTable {
-	t := &mountTable{byPoint: map[string]mount{}, duplicates: map[string]bool{}}
+	t := &mountTable{byPoint: map[string]mount{}, duplicates: map[string]bool{}, hostDirs: map[string]bool{}}
 	var all []mount
 	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 0, 4096), 1<<20)
@@ -387,11 +432,12 @@ func (c *collector) walkDir(ctx context.Context, logical string, parentDev uint6
 }
 
 // enterMount decides whether a directory that may be a mount point is
-// walked. Pseudo and remote file systems and duplicate bind mounts are not.
+// walked. Pseudo and remote file systems, duplicate bind mounts and host
+// directories in a container root are not.
 func (c *collector) enterMount(fd int, logical string, dev, parentDev uint64) bool {
 	if c.mounts != nil {
 		if m, ok := c.mounts.byPoint[logical]; ok {
-			return !skipFSType(m.fsType) && !c.mounts.duplicates[logical]
+			return !skipFSType(m.fsType) && !c.mounts.duplicates[logical] && !c.mounts.hostDirs[logical]
 		}
 	}
 	if dev == parentDev {

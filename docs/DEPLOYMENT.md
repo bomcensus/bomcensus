@@ -351,6 +351,7 @@ A container that the kubelet created for a pod carries the pod's uid in its labe
 - Versions from version commands come from exec only: the node agent reads container roots from the node and extracts versions statically. Image content collected through exec replaces content that a node agent read, and an image known only from node agents is collected once through exec. In the runtime layer, a file that an exec collected after the container started is taken from the exec.
 - Listening ports (Processes, "listen 포트"): a socket in a pod's network is listed under the workload, with the node that saw it. Sockets in the node's network, including those of `hostNetwork` pods, stay with the node.
 - Go symbol checks of such a container are also asked of the node agent.
+- Directories of the node mounted into a container (`hostPath` volumes, the node root of the node agent) are node content: neither the node agent nor an exec collection reads them as part of the container's image. Volumes kept by the kubelet or the container runtime, such as `emptyDir`, and network or block volumes are still read through the container.
 - The node agent's collection raises the coverage of a pod container; it does not lower what exec collected.
 
 Links need a node agent and a scanner of this release, and one cluster sync after the upgrade.
