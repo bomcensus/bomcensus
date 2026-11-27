@@ -105,7 +105,7 @@ func (s *Service) applyK8sContainer(ctx context.Context, tx store.Store, subj su
 			}
 		}
 		if digest != "" {
-			if _, err := tx.PutImageContent(ctx, store.ImageContent{Digest: digest, Coverage: cov, CollectedAt: at,
+			if _, err := tx.PutImageContent(ctx, store.ImageContent{Digest: digest, Coverage: cov, CollectedAt: at, Exec: true,
 				Packages: content.Packages, Artifacts: content.Artifacts}); err != nil {
 				return "", fmt.Errorf("ingest: put image content: %w", err)
 			}

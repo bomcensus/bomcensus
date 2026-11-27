@@ -91,9 +91,23 @@ func (d *DB) findingInputs(ctx context.Context, assetID string) (store.FindingIn
 	}
 
 	// Vulnerable components: installed on the asset or in a container's
-	// layers, and the content of the images of current containers.
+	// layers, and the content of the images of current containers. In the
+	// runtime layer of a node container, a file that an exec into the
+	// workload container collected after the node container started is
+	// taken from the exec: only there could its version command run.
 	rows, err := d.q.Query(ctx, `
-		WITH n AS (SELECT * FROM `+fiNodes+`)
+		WITH n AS (SELECT * FROM `+fiNodes+`),
+		ex AS (
+			SELECT n.host_id, n.host_container, array_agg(DISTINCT x) AS locations
+			FROM n
+			JOIN asset_containers hc ON hc.asset_id = n.host_id AND hc.name = n.host_container
+			JOIN asset_sections s ON s.asset_id = $1 AND s.container = n.container AND s.section = 'artifacts'
+				AND s.collected_at >= coalesce(hc.started_at, hc.first_seen)
+			JOIN asset_components e ON e.asset_id = $1 AND e.container = n.container AND e.layer = 'runtime'
+				AND e.removed_at IS NULL
+			CROSS JOIN unnest(e.locations) x
+			GROUP BY 1, 2
+		)
 		SELECT x.container, x.layer, x.digest, x.locations, x.in_use,
 			c.id, c.type, c.name, c.version, c.arch, c.distro, c.purl, c.source_name, c.origin
 		FROM (
@@ -106,9 +120,12 @@ func (d *DB) findingInputs(ctx context.Context, assetID string) (store.FindingIn
 			FROM asset_containers ct JOIN image_components ic ON ic.digest = ct.image_digest
 			WHERE ct.asset_id = $1 AND ct.gone_at IS NULL AND ct.image_digest <> '' AND ct.name <> ALL($2::text[])
 			UNION ALL
-			SELECT n.container, ac.layer, '', ac.locations, ac.in_use, ac.component_id
+			SELECT n.container, ac.layer, '', l.locations, ac.in_use, ac.component_id
 			FROM n JOIN asset_components ac ON ac.asset_id = n.host_id AND ac.container = n.host_container
-			WHERE ac.removed_at IS NULL
+			LEFT JOIN ex ON ex.host_id = n.host_id AND ex.host_container = n.host_container
+			CROSS JOIN LATERAL (SELECT ARRAY(SELECT x FROM unnest(ac.locations) x
+				WHERE x <> ALL(coalesce(ex.locations, '{}'))) AS locations) l
+			WHERE ac.removed_at IS NULL AND (cardinality(l.locations) > 0 OR cardinality(ac.locations) = 0)
 			UNION ALL
 			SELECT n.container, 'image', ct.image_digest, ic.locations, false, ic.component_id
 			FROM n JOIN asset_containers ct ON ct.asset_id = n.host_id AND ct.name = n.host_container

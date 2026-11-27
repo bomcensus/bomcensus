@@ -147,6 +147,48 @@ func TestPodLinks(t *testing.T) {
 		t.Fatalf("stale host: sources %+v", in.Sources)
 	}
 
+	// An exec into the workload container after the node container started
+	// collected the same file: its version (from the version command)
+	// replaces the static one of the node agent.
+	opensslExec := ivDeb("openssl", "3.0.13-0ubuntu3.4")
+	_, err = db.ReplaceAssetComponents(ctx, store.ComponentScope{AssetID: wl, Container: "nginx",
+		Source: store.SourceArtifacts, Layer: store.LayerRuntime}, ivPkgObs(opensslExec), store.ReplaceOptions{At: ivT0})
+	ivMust(t, err)
+	ivMust(t, db.SetSectionStates(ctx, wl, []store.SectionState{{Container: "nginx", Section: "artifacts",
+		Coverage: store.CoverageFull, CollectedAt: ivT0.Add(time.Minute)}}))
+	pending, err = db.PendingMatches(ctx, store.MatchEpoch{ServerID: srv.ID, Revision: 1}, 10)
+	ivMust(t, err)
+	cms = nil
+	for _, p := range pending {
+		cms = append(cms, store.ComponentMatch{ComponentID: p.ID, Status: store.MatchChecked,
+			Vulns: []store.ComponentVuln{{VulnID: "CVE-" + p.Name, Method: "package", FixState: "fixed"}}})
+	}
+	ivMust(t, db.SaveMatches(ctx, store.MatchBatch{Epoch: store.MatchEpoch{ServerID: srv.ID, Revision: 1}, Components: cms,
+		Vulns: []store.VulnMeta{{ID: "CVE-openssl"}}}))
+	opensslVersions := func() []string {
+		t.Helper()
+		in, err := db.FindingInputs(ctx, wl)
+		ivMust(t, err)
+		var vs []string
+		for _, s := range in.Sources {
+			if s.Component.Name == "openssl" {
+				vs = append(vs, s.Component.Version)
+			}
+		}
+		slices.Sort(vs)
+		return vs
+	}
+	if v := opensslVersions(); !slices.Equal(v, []string{"3.0.13-0ubuntu3.4"}) {
+		t.Fatalf("exec after start: openssl %v", v)
+	}
+	// An exec from before the node container started does not count.
+	_, err = db.q.Exec(ctx, `UPDATE asset_containers SET started_at = $3 WHERE asset_id = $1 AND name = $2`,
+		host, podCtr, ivT0.Add(2*time.Minute))
+	ivMust(t, err)
+	if v := opensslVersions(); !slices.Equal(v, []string{"3.0.13-0ubuntu3", "3.0.13-0ubuntu3.4"}) {
+		t.Fatalf("exec before start: openssl %v", v)
+	}
+
 	// A host report makes the workload dirty, a cluster sync the host.
 	for _, id := range []string{host, wl} {
 		in, err := db.FindingInputs(ctx, id)
