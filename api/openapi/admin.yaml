@@ -4324,6 +4324,11 @@ components:
           type: string
         container:
           type: string
+        node:
+          description: >-
+            Host whose node agent saw the socket, for a socket in the network
+            of a pod container; the row then belongs to the pod's workload.
+          type: string
         processId:
           description: Absent when the owning process could not be determined.
           type: string

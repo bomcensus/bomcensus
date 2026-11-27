@@ -3896,8 +3896,11 @@ type ListenPortRow struct {
 	ComponentName *string `json:"componentName,omitempty"`
 	Container     *string `json:"container,omitempty"`
 	ExePath       *string `json:"exePath,omitempty"`
-	Pid           *int    `json:"pid,omitempty"`
-	Port          int     `json:"port"`
+
+	// Node Host whose node agent saw the socket, for a socket in the network of a pod container; the row then belongs to the pod's workload.
+	Node *string `json:"node,omitempty"`
+	Pid  *int    `json:"pid,omitempty"`
+	Port int     `json:"port"`
 
 	// ProcessId Absent when the owning process could not be determined.
 	ProcessId *string     `json:"processId,omitempty"`

@@ -110,6 +110,9 @@ type collector struct {
 	bootTime time.Time
 	users    map[int]string
 	hidepid  bool
+	// hostNetNS is the network namespace link of PID 1, empty when it
+	// cannot be read.
+	hostNetNS string
 
 	exeDenied     int // executable link unreadable, path guessed from argv[0]
 	mapsDenied    int // maps unreadable although the executable was readable
@@ -155,6 +158,9 @@ func newCollector(env *collect.Env) *collector {
 	c.users = readPasswd(env.Path("/etc/passwd"))
 	if !env.Privileged {
 		c.hidepid = hidepidMounted(c.proc)
+	}
+	if ns, err := os.Readlink(filepath.Join(c.proc, "1", "ns", "net")); err == nil {
+		c.hostNetNS = ns
 	}
 	return c
 }
@@ -230,6 +236,7 @@ func (c *collector) process(pid int) (*procInfo, bool) {
 	}
 	if ns, err := os.Readlink(filepath.Join(dir, "ns", "net")); err == nil {
 		info.netns = ns
+		p.OtherNetNS = c.hostNetNS != "" && ns != c.hostNetNS
 	} else if info.sockets {
 		info.sockets = false
 		if !gone(err) {
@@ -292,7 +299,7 @@ func (c *collector) reasons(total int) []string {
 
 // digestVersion changes whenever the digest body or the masking rules change,
 // so that a probe update re-sends the section.
-const digestVersion = 2
+const digestVersion = 3
 
 // digestProcess is the part of a process that goes into the section digest.
 //
@@ -322,6 +329,7 @@ type digestProcess struct {
 	Listen      []report.Listen    `json:"listen"`
 	ContainerID string             `json:"container_id"`
 	MountNS     uint64             `json:"mount_ns"`
+	OtherNetNS  bool               `json:"other_netns"`
 }
 
 type digestBody struct {
@@ -340,7 +348,7 @@ func sectionDigest(collectCmdline bool, infos []*procInfo, unowned []report.Unow
 			PID: p.PID, PPID: p.PPID, User: p.User, UID: p.UID,
 			Exe: p.Exe, ExeSource: p.ExeSource, ExeState: p.ExeState, SHA256: p.SHA256,
 			StartTicks: info.startTicks, HasCmdline: p.Cmdline != "",
-			Libs: p.Libs, Listen: p.Listen, ContainerID: p.ContainerID, MountNS: p.MountNS,
+			Libs: p.Libs, Listen: p.Listen, ContainerID: p.ContainerID, MountNS: p.MountNS, OtherNetNS: p.OtherNetNS,
 		})
 	}
 	return report.Digest(body)

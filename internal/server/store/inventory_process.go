@@ -66,6 +66,9 @@ type ProcessObservation struct {
 	StartedAt time.Time
 	Libs      []MappedLib
 	Listen    []ListenAddr
+	// OtherNetNS is set when the process is in another network namespace
+	// than the host's; its Listen sockets are in that namespace.
+	OtherNetNS bool
 	// Container is the container name on a host; ignored for a pod scope.
 	Container string
 	// Packages are the OS packages owning the executable and the shared
@@ -167,6 +170,9 @@ type ListenPortRow struct {
 	Asset     AssetBrief
 	Pod       string
 	Container string
+	// Node is the host whose node agent saw the socket, for a socket in the
+	// network of a pod container listed under the pod's workload.
+	Node string
 	// ProcessID is empty for an unowned port; UID is then the socket owner.
 	ProcessID string
 	PID       int

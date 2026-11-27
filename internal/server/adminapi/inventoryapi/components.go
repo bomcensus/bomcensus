@@ -188,6 +188,7 @@ func (h *Handlers) ListListenPorts(ctx context.Context, req gen.ListListenPortsR
 			AssetId:   r.Asset.ID,
 			AssetName: r.Asset.Name,
 			Container: str(r.Container),
+			Node:      str(r.Node),
 			ProcessId: str(r.ProcessID),
 			ExePath:   str(r.Exe),
 			User:      str(r.User),

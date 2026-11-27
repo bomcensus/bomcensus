@@ -45,12 +45,13 @@ func (d *DB) ReplaceProcesses(ctx context.Context, scope store.ProcessScope, sna
 		Packages     []string          `json:"packages"`
 	}
 	type listenRow struct {
-		Container string    `json:"container"`
-		PID       int       `json:"pid"`
-		StartedAt time.Time `json:"started_at"`
-		Proto     string    `json:"proto"`
-		Address   string    `json:"address"`
-		Port      int       `json:"port"`
+		Container  string    `json:"container"`
+		PID        int       `json:"pid"`
+		StartedAt  time.Time `json:"started_at"`
+		Proto      string    `json:"proto"`
+		Address    string    `json:"address"`
+		Port       int       `json:"port"`
+		OtherNetNS bool      `json:"other_netns"`
 	}
 	type unownedRow struct {
 		Proto   string `json:"proto"`
@@ -98,7 +99,7 @@ func (d *DB) ReplaceProcesses(ctx context.Context, scope store.ProcessScope, sna
 			ComponentID: comp, Packages: p.Packages,
 		}
 		for _, l := range p.Listen {
-			listens[listenKey{k, l.Proto, l.Address, l.Port}] = listenRow{container, p.PID, started, l.Proto, l.Address, l.Port}
+			listens[listenKey{k, l.Proto, l.Address, l.Port}] = listenRow{container, p.PID, started, l.Proto, l.Address, l.Port, p.OtherNetNS}
 		}
 	}
 	unownedSet := map[unownedRow]bool{}
@@ -202,14 +203,14 @@ func (d *DB) ReplaceProcesses(ctx context.Context, scope store.ProcessScope, sna
 			return ivErr(op, err)
 		}
 		_, err = d.q.Exec(ctx, `
-			INSERT INTO listen_ports (asset_id, pod, container, process_id, proto, address, port, uid)
-			SELECT $1, $2, p.container, p.id, l.proto, l.address, l.port, NULL
+			INSERT INTO listen_ports (asset_id, pod, container, process_id, proto, address, port, uid, other_netns)
+			SELECT $1, $2, p.container, p.id, l.proto, l.address, l.port, NULL, l.other_netns
 			FROM jsonb_to_recordset($4::jsonb) AS l(container text, pid integer, started_at timestamptz,
-				proto text, address text, port integer)
+				proto text, address text, port integer, other_netns boolean)
 			JOIN processes p ON `+scopeCond+` AND p.container = l.container AND p.pid = l.pid
 				AND p.started_at = l.started_at
 			UNION ALL
-			SELECT $1, $2, $3, NULL, u.proto, u.address, u.port, u.uid
+			SELECT $1, $2, $3, NULL, u.proto, u.address, u.port, u.uid, false
 			FROM jsonb_to_recordset($5::jsonb) AS u(proto text, address text, port integer, uid integer)`,
 			scope.AssetID, scope.Pod, scope.Container, listenJS, unownedJS)
 		return ivErr(op, err)
@@ -400,11 +401,24 @@ func (d *DB) ListListenPorts(ctx context.Context, f store.ListenPortFilter, p st
 		q.where(`(l.address ILIKE %[1]s OR l.port::text ILIKE %[1]s OR p.exe ILIKE %[1]s
 			OR p.user_name ILIKE %[1]s OR a.name ILIKE %[1]s)`, ivLike(f.Q))
 	}
-	from := `FROM listen_ports l JOIN assets a ON a.id = l.asset_id
+	// A socket in the network of a host container linked to a pod belongs
+	// to the pod's workload; the exec collections of a pod container that
+	// a node agent saw recently are left out, as in the findings.
+	owned := `(SELECT l.proto, l.address, l.port, l.process_id, l.uid,
+			coalesce(k.workload_id, l.asset_id) AS asset_id, coalesce(k.pod, l.pod) AS pod,
+			coalesce(k.container, l.container) AS container, coalesce(k.host_name, '') AS node
+		FROM listen_ports l
+		LEFT JOIN LATERAL (SELECT lk.workload_id, lk.pod, lk.container, lk.host_name FROM ` + pdLinks + ` lk
+			WHERE l.other_netns AND lk.host_id = l.asset_id AND lk.host_container = l.container
+			ORDER BY lk.workload_id LIMIT 1) k ON true
+		WHERE l.pod = '' OR NOT EXISTS (SELECT 1 FROM ` + pdLinks + ` lk WHERE lk.workload_id = l.asset_id
+			AND lk.pod = l.pod AND lk.container = l.container
+			AND lk.host_seen >= ` + q.arg(mgNow().Add(-store.NodeEvidenceMaxAge)) + `))`
+	from := `FROM ` + owned + ` l JOIN assets a ON a.id = l.asset_id
 		LEFT JOIN k8s_clusters k ON k.id = a.cluster_id
 		LEFT JOIN processes p ON p.id = l.process_id
 		LEFT JOIN components c ON c.id = p.component_id` + q.whereSQL()
-	sel := `l.proto, l.address, l.port, ` + ivBriefCols + `, l.pod, l.container, COALESCE(p.id::text, ''),
+	sel := `l.proto, l.address, l.port, ` + ivBriefCols + `, l.pod, l.container, l.node, COALESCE(p.id::text, ''),
 		COALESCE(p.pid, 0), COALESCE(p.exe, ''), COALESCE(p.user_name, ''), COALESCE(l.uid, p.uid, 0), ` + ivComponentCols
 	var out []store.ListenPortRow
 	total, err := ivPage(ctx, d, op, q, sel, from, order, p, func(rows pgx.Rows) error {
@@ -412,7 +426,7 @@ func (d *DB) ListListenPorts(ctx context.Context, f store.ListenPortFilter, p st
 		var c store.Component
 		dest := []any{&r.Proto, &r.Address, &r.Port}
 		dest = append(dest, ivBriefDest(&r.Asset)...)
-		dest = append(dest, &r.Pod, &r.Container, &r.ProcessID, &r.PID, &r.Exe, &r.User, &r.UID)
+		dest = append(dest, &r.Pod, &r.Container, &r.Node, &r.ProcessID, &r.PID, &r.Exe, &r.User, &r.UID)
 		if err := rows.Scan(append(dest, ivComponentDest(&c)...)...); err != nil {
 			return err
 		}

@@ -5,6 +5,7 @@
 package postgres
 
 import (
+	"fmt"
 	"slices"
 	"testing"
 	"time"
@@ -58,14 +59,19 @@ func TestPodLinks(t *testing.T) {
 	ivMust(t, err)
 	ivMust(t, db.SetSectionStates(ctx, host, []store.SectionState{{Section: "processes", Coverage: store.CoverageFull, CollectedAt: ivT0}}))
 	_, err = db.ReplaceProcesses(ctx, store.ProcessScope{AssetID: host}, store.ProcessSnapshot{At: ivT0, Processes: []store.ProcessObservation{
-		{PID: 70242, Exe: "/usr/sbin/nginx", StartedAt: ivT0, Container: podCtr,
+		{PID: 70242, Exe: "/usr/sbin/nginx", StartedAt: ivT0, Container: podCtr, OtherNetNS: true,
 			Listen: []store.ListenAddr{{Proto: "tcp", Address: "0.0.0.0", Port: 8080}}},
-		{PID: 500, Exe: "/usr/sbin/nginx", StartedAt: ivT0, Container: "standalone"},
+		{PID: 500, Exe: "/usr/sbin/nginx", StartedAt: ivT0, Container: "standalone", OtherNetNS: true,
+			Listen: []store.ListenAddr{{Proto: "tcp", Address: "0.0.0.0", Port: 80}}},
+		// In the host's network (a hostNetwork pod): a port of the host.
+		{PID: 600, Exe: "/usr/bin/kube-proxy", StartedAt: ivT0, Container: podCtr,
+			Listen: []store.ListenAddr{{Proto: "tcp", Address: "0.0.0.0", Port: 10256}}},
 	}})
 	ivMust(t, err)
 	// The scanner collected the same pod through exec before.
 	_, err = db.ReplaceProcesses(ctx, store.ProcessScope{AssetID: wl, Pod: "web-abc", Container: "nginx"},
-		store.ProcessSnapshot{At: ivT0, Processes: []store.ProcessObservation{{PID: 9, Exe: "/usr/sbin/nginx", StartedAt: ivT0}}})
+		store.ProcessSnapshot{At: ivT0, Processes: []store.ProcessObservation{{PID: 9, Exe: "/usr/sbin/nginx", StartedAt: ivT0,
+			Listen: []store.ListenAddr{{Proto: "tcp", Address: "0.0.0.0", Port: 8080}}}}})
 	ivMust(t, err)
 
 	pending, err := db.PendingMatches(ctx, store.MatchEpoch{ServerID: srv.ID, Revision: 1}, 10)
@@ -112,15 +118,38 @@ func TestPodLinks(t *testing.T) {
 	if layers["musl"] != store.FindingLayerImage || layers["openssl"] != store.FindingLayerRuntime {
 		t.Fatalf("workload layers %v", layers)
 	}
-	if len(in.Processes) != 1 {
+	if len(in.Processes) != 2 || in.Processes[0].PID != 600 {
 		t.Fatalf("workload processes %+v", in.Processes)
 	}
-	p := in.Processes[0]
+	p := in.Processes[1]
 	if p.PID != 70242 || p.Node != "worker-1" || p.Pod != "web-abc" || p.Container != "nginx" || !slices.Equal(p.Ports, []string{"tcp/8080"}) {
 		t.Fatalf("workload process %+v", p)
 	}
 	if in.ProcessCoverage["nginx"] != store.CoverageFull {
 		t.Fatalf("process coverage %v", in.ProcessCoverage)
+	}
+
+	// The pod's socket is listed once, under the workload; the host keeps
+	// the sockets of its own network and of the standalone container.
+	ports := func(asset string) []string {
+		t.Helper()
+		rows, total, err := db.ListListenPorts(ctx, store.ListenPortFilter{AssetID: asset}, store.Page{Limit: 10})
+		ivMust(t, err)
+		if total != len(rows) {
+			t.Fatalf("listen ports of %s: total %d, rows %+v", asset, total, rows)
+		}
+		var out []string
+		for _, r := range rows {
+			out = append(out, fmt.Sprintf("%s/%s %d %d %s", r.Pod, r.Container, r.Port, r.PID, r.Node))
+		}
+		slices.Sort(out)
+		return out
+	}
+	if got := ports(host); !slices.Equal(got, []string{"/" + podCtr + " 10256 600 ", "/standalone 80 500 "}) {
+		t.Fatalf("host ports %q", got)
+	}
+	if got := ports(wl); !slices.Equal(got, []string{"web-abc/nginx 8080 70242 worker-1"}) {
+		t.Fatalf("workload ports %q", got)
 	}
 
 	detail, err := db.GetAsset(ctx, host)

@@ -186,7 +186,7 @@ const protoOptions = [
       <template v-else-if="tab === 'ports'">
         <Panel flush>
           <LoadError v-if="portsError" :error="portsError" @retry="refreshPorts" />
-          <DataTable v-else :columns="portColumns" v-model:sort="portSort" v-model:page="portPage" v-model:size="portSize" :total="portTotal" :loading="portsPending" :rows="portRows" :row-key="(r) => `${r.assetId}/${r.container ?? ''}/${r.proto}/${r.address}/${r.port}`">
+          <DataTable v-else :columns="portColumns" v-model:sort="portSort" v-model:page="portPage" v-model:size="portSize" :total="portTotal" :loading="portsPending" :rows="portRows" :row-key="(r) => `${r.assetId}/${r.container ?? ''}/${r.processId ?? ''}/${r.proto}/${r.address}/${r.port}`">
             <template #cell-port="{ row }"><span class="mono whitespace-nowrap">{{ row.proto }}/{{ row.port }}</span></template>
             <template #cell-bind="{ row }">
               <span class="mono whitespace-nowrap">{{ row.address }}</span>
@@ -201,6 +201,7 @@ const protoOptions = [
             <template #cell-user="{ row }">{{ row.user ?? '—' }}</template>
             <template #cell-asset="{ row }">
               <NuxtLink :to="`/assets/${row.assetId}?tab=processes`" class="link">{{ row.assetName }}</NuxtLink>
+              <span v-if="row.node" class="mono whitespace-nowrap text-xs text-ink-3"> @ {{ row.node }}</span>
             </template>
             <template #cell-component="{ row }">
               <NuxtLink v-if="row.componentId" :to="`/components/${encodeURIComponent(row.componentId)}`" class="link">

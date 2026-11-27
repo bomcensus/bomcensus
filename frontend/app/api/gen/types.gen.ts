@@ -679,6 +679,10 @@ export type ListenPortRow = {
     assetName: string;
     container?: string;
     /**
+     * Host whose node agent saw the socket, for a socket in the network of a pod container; the row then belongs to the pod's workload.
+     */
+    node?: string;
+    /**
      * Absent when the owning process could not be determined.
      */
     processId?: string;
