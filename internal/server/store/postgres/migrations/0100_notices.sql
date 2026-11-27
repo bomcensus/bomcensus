@@ -15,7 +15,6 @@ CREATE TABLE notices (
     published       timestamptz,
     summary         text NOT NULL DEFAULT '',
     cve_ids         text[] NOT NULL DEFAULT '{}',
-    related_cve_ids text[] NOT NULL DEFAULT '{}',
     advisory_ids    text[] NOT NULL DEFAULT '{}',
     -- [{vendor, product, cpe_vendor, cpe_product, affected, fixed}]
     software        jsonb NOT NULL DEFAULT '[]',

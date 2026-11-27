@@ -18,7 +18,7 @@ func ntNotice(id string) store.Notice {
 	published := time.Date(2026, 3, 4, 0, 0, 0, 0, time.UTC)
 	return store.Notice{ID: id, Source: "kisa", Title: "OpenSSL 보안 업데이트 권고", URL: "https://knvd.example/" + id,
 		Published: &published, Summary: "OpenSSL fixes a buffer overflow.", CVEIDs: []string{"CVE-2026-1000"},
-		RelatedCVEIDs: []string{"CVE-2025-9999"}, AdvisoryIDs: []string{"KVE-2026-0001"},
+		AdvisoryIDs: []string{"KVE-2026-0001"},
 		Software: []store.NoticeSoftware{{Vendor: "OpenSSL", Product: "OpenSSL", CPEVendor: "openssl", CPEProduct: "openssl",
 			Affected: "3.0.0 ~ 3.0.13", Fixed: "3.0.14"}}}
 }
@@ -65,7 +65,7 @@ func TestNotices(t *testing.T) {
 
 	n := ntOne(t)(db.ListNotices(ctx, store.NoticeFilter{}, scPage()))
 	if n.ID != "kisa-1" || n.Assets != 2 || n.NewAssets != 2 || !n.Unread() || n.ReadAt != nil || n.Title == "" ||
-		len(n.Software) != 1 || n.Software[0].Fixed != "3.0.14" || n.RelatedCVEIDs[0] != "CVE-2025-9999" ||
+		len(n.Software) != 1 || n.Software[0].Fixed != "3.0.14" ||
 		!n.FirstMatched.Equal(ivT0) || n.Published == nil {
 		t.Fatalf("notice %+v", n)
 	}
@@ -80,7 +80,7 @@ func TestNotices(t *testing.T) {
 	}
 
 	// Search and filters.
-	for _, q := range []string{"kisa-1", "openssl 보안", "fixes a buffer", "CVE-2025-9999", "KVE-2026", "OpenSSL"} {
+	for _, q := range []string{"kisa-1", "openssl 보안", "fixes a buffer", "CVE-2026-1000", "KVE-2026", "OpenSSL"} {
 		ntOne(t)(db.ListNotices(ctx, store.NoticeFilter{Q: q}, scPage()))
 	}
 	for _, f := range []store.NoticeFilter{{Q: "nginx"}, {Source: "tmaxsoft"}, {Q: "cpe_vendor"}} {

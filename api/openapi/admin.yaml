@@ -6757,7 +6757,7 @@ components:
           type: string
     Notice:
       type: object
-      required: [noticeId, source, title, cveIds, relatedCveIds, advisoryIds, software, assets, newAssets, unread, firstMatched, lastMatched]
+      required: [noticeId, source, title, cveIds, advisoryIds, software, assets, newAssets, unread, firstMatched, lastMatched]
       properties:
         noticeId:
           description: Source-prefixed id, for example `kisa-6219`.
@@ -6779,11 +6779,6 @@ components:
           type: string
         cveIds:
           description: CVE ids printed in the notice.
-          type: array
-          items:
-            type: string
-        relatedCveIds:
-          description: CVE ids the feed links to the notice (same software, published close to it) that the notice does not print.
           type: array
           items:
             type: string

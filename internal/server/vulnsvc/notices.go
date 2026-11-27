@@ -18,17 +18,16 @@ import (
 // API). Times are strings so that a malformed one drops the time, not the
 // response.
 type notice struct {
-	ID            string           `json:"id"`
-	Source        string           `json:"source"`
-	Title         string           `json:"title"`
-	URL           string           `json:"url"`
-	Published     string           `json:"published"`
-	Summary       string           `json:"summary"`
-	CVEIDs        []string         `json:"cve_ids"`
-	RelatedCVEIDs []string         `json:"related_cve_ids"`
-	AdvisoryIDs   []string         `json:"advisory_ids"`
-	Software      []noticeSoftware `json:"software"`
-	Updated       string           `json:"updated"`
+	ID          string           `json:"id"`
+	Source      string           `json:"source"`
+	Title       string           `json:"title"`
+	URL         string           `json:"url"`
+	Published   string           `json:"published"`
+	Summary     string           `json:"summary"`
+	CVEIDs      []string         `json:"cve_ids"`
+	AdvisoryIDs []string         `json:"advisory_ids"`
+	Software    []noticeSoftware `json:"software"`
+	Updated     string           `json:"updated"`
 }
 
 type noticeSoftware struct {
@@ -72,7 +71,7 @@ func noticesByID(in []notice) map[string]store.Notice {
 		}
 		m := store.Notice{ID: n.ID, Source: n.Source, Title: clean(n.Title, maxNoticeTitle), URL: webURL(n.URL),
 			Published: parseTime(n.Published), Summary: clean(n.Summary, maxNoticeSummary),
-			CVEIDs: cleanList(n.CVEIDs), RelatedCVEIDs: cleanList(n.RelatedCVEIDs), AdvisoryIDs: cleanList(n.AdvisoryIDs),
+			CVEIDs: cleanList(n.CVEIDs), AdvisoryIDs: cleanList(n.AdvisoryIDs),
 			Modified: parseTime(n.Updated)}
 		for _, s := range n.Software {
 			if len(m.Software) == maxNoticeSoftware {

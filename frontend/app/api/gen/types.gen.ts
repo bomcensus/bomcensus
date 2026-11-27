@@ -2378,10 +2378,6 @@ export type Notice = {
      */
     cveIds: Array<string>;
     /**
-     * CVE ids the feed links to the notice (same software, published close to it) that the notice does not print.
-     */
-    relatedCveIds: Array<string>;
-    /**
      * Other ids (KVE-, vendor ids).
      */
     advisoryIds: Array<string>;

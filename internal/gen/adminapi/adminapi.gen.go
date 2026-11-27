@@ -3990,12 +3990,9 @@ type Notice struct {
 	Published *time.Time `json:"published,omitempty"`
 
 	// ReadAt The latest read mark of the scopes of the matching assets. With `unread`, assets started matching after it.
-	ReadAt *time.Time `json:"readAt,omitempty"`
-	ReadBy *string    `json:"readBy,omitempty"`
-
-	// RelatedCveIds CVE ids the feed links to the notice (same software, published close to it) that the notice does not print.
-	RelatedCveIds []string         `json:"relatedCveIds"`
-	Software      []NoticeSoftware `json:"software"`
+	ReadAt   *time.Time       `json:"readAt,omitempty"`
+	ReadBy   *string          `json:"readBy,omitempty"`
+	Software []NoticeSoftware `json:"software"`
 
 	// Source `kisa`, `tmaxsoft`, ...
 	Source string `json:"source"`

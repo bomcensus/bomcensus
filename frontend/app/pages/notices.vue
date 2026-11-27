@@ -218,10 +218,6 @@ const matchedAssets = computed(() => new Set(detail.value?.matches.map((m) => m.
                 <dt>CVE</dt>
                 <dd class="mono text-xs">{{ detail.notice.cveIds.join(', ') }}</dd>
               </template>
-              <template v-if="detail.notice.relatedCveIds.length">
-                <dt title="공지에 적혀 있지 않지만 같은 소프트웨어에 대해 공지 전후 1년 안에 공개된 CVE">관련 CVE</dt>
-                <dd class="mono text-xs">{{ detail.notice.relatedCveIds.join(', ') }}</dd>
-              </template>
               <template v-if="detail.notice.advisoryIds.length">
                 <dt>기타 식별자</dt>
                 <dd class="mono text-xs">{{ detail.notice.advisoryIds.join(', ') }}</dd>

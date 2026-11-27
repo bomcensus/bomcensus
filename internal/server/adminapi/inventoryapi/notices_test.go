@@ -53,7 +53,7 @@ func TestNoticeHandlers(t *testing.T) {
 	n := l.Items[0]
 	if n.NoticeId != "kisa-100" || n.Assets != 2 || n.NewAssets != 2 || !n.Unread || n.ReadAt != nil ||
 		*n.Url != "https://knvd.example/100" || len(n.Software) != 1 || *n.Software[0].Fixed != "3.0.14" ||
-		n.RelatedCveIds == nil || n.CveIds[0] != "CVE-2026-1" {
+		n.CveIds[0] != "CVE-2026-1" {
 		t.Fatalf("notice %+v", n)
 	}
 	s, err := h.GetNoticeSummary(ctx, gen.GetNoticeSummaryRequestObject{})

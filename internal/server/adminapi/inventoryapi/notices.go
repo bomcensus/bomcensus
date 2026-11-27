@@ -22,7 +22,7 @@ const maxNoticeIDLen = 128
 func noticeDTO(n store.NoticeRow) gen.Notice {
 	d := gen.Notice{
 		NoticeId: n.ID, Source: n.Source, Title: n.Title, Url: optStr(n.URL), Published: n.Published,
-		Summary: optStr(n.Summary), CveIds: strs(n.CVEIDs), RelatedCveIds: strs(n.RelatedCVEIDs),
+		Summary: optStr(n.Summary), CveIds: strs(n.CVEIDs),
 		AdvisoryIds: strs(n.AdvisoryIDs), Software: make([]gen.NoticeSoftware, 0, len(n.Software)), Updated: n.Modified,
 		Assets: n.Assets, NewAssets: n.NewAssets, Unread: n.Unread(), FirstMatched: n.FirstMatched,
 		LastMatched: n.LastMatched, ReadAt: n.ReadAt, ReadBy: optStr(n.ReadBy),

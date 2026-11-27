@@ -38,7 +38,7 @@ func answerNotices(revision int64) func(int, matchRequest) (*http.Response, erro
 				map[string]any{"id": "kisa-6219", "source": "kisa", "title": " 지니언스 NAC 보안 업데이트 권고 ",
 					"url": "https://knvd.krcert.or.kr/detailSecNo.do?IDX=6219", "published": "2026-03-04T00:00:00+09:00",
 					"summary": "Genian NAC fixes a command injection.", "cve_ids": []string{"CVE-2026-1000", "", "CVE-2026-1000"},
-					"related_cve_ids": []string{"CVE-2025-9999"}, "advisory_ids": []string{"KVE-2026-0001"},
+					"advisory_ids": []string{"KVE-2026-0001"},
 					"software": []any{map[string]any{"vendor": "지니언스", "product": "Genian NAC", "cpe_vendor": "genians",
 						"cpe_product": "genian_nac", "affected": "6.0.0 ~ 6.0.41", "fixed": "6.0.42"}},
 					"updated": "not a time"},
@@ -78,7 +78,7 @@ func TestRunNotices(t *testing.T) {
 	published := time.Date(2026, 3, 3, 15, 0, 0, 0, time.UTC)
 	if n.ID != "kisa-6219" || n.Source != "kisa" || n.Title != "지니언스 NAC 보안 업데이트 권고" ||
 		n.URL != "https://knvd.krcert.or.kr/detailSecNo.do?IDX=6219" || n.Published == nil || !n.Published.Equal(published) ||
-		n.Modified != nil || len(n.CVEIDs) != 1 || n.CVEIDs[0] != "CVE-2026-1000" || n.RelatedCVEIDs[0] != "CVE-2025-9999" ||
+		n.Modified != nil || len(n.CVEIDs) != 1 || n.CVEIDs[0] != "CVE-2026-1000" ||
 		n.AdvisoryIDs[0] != "KVE-2026-0001" || len(n.Software) != 1 || n.Software[0].CPEProduct != "genian_nac" ||
 		n.Software[0].Fixed != "6.0.42" {
 		t.Fatalf("notice %+v", n)
