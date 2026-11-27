@@ -313,6 +313,17 @@ check() {
 		fail "host $HOST_NAME lists the pod's port $APP_PORT: $(cat "$LOGS/ports.json")"
 	fi
 
+	log "checking processes"
+	api GET "/assets/$WORKLOAD/processes?limit=200" >"$LOGS/workload-processes.json"
+	jq -e --arg n "$HOST_NAME" --arg c "$APP_CONTAINER" \
+		'(.items | length > 0) and all(.items[]; .node == $n and .container == $c)' \
+		"$LOGS/workload-processes.json" >/dev/null || fail "workload processes: $(cat "$LOGS/workload-processes.json")"
+	api GET "/assets/$HOST/processes?limit=200" >"$LOGS/host-processes.json"
+	if jq -e --arg c "$HOST_CONTAINER" '[.items[] | select(.container == $c)] | length > 0' \
+		"$LOGS/host-processes.json" >/dev/null; then
+		fail "host $HOST_NAME lists the processes of the pod container $HOST_CONTAINER"
+	fi
+
 	log "checking the image content"
 	# The node reports the image by the digest of the pod status, so both
 	# collections wrote the content of the same digest.
@@ -322,6 +333,32 @@ check() {
 	method=$(psql_q "SELECT ic.method FROM image_components ic JOIN components c ON c.id = ic.component_id
 		WHERE ic.digest = '$DIGEST' AND c.name = '$APP_SOFTWARE' AND c.type <> 'apk' LIMIT 1")
 	[ "$method" = exec ] || fail "$APP_SOFTWARE of $DIGEST detected by '$method', not by its version command"
+	# The node agent's container has the node root mounted at /host: that
+	# is the node's content, not its image's.
+	local leaked
+	leaked=$(psql_q "SELECT count(*) FROM image_components ic
+		JOIN asset_containers ct ON ct.image_digest = ic.digest AND ct.name LIKE 'bomcensus/%-node-agent-%/agent'
+		WHERE EXISTS (SELECT 1 FROM unnest(ic.locations) l WHERE l LIKE '/host/%')")
+	[ "$leaked" = 0 ] || fail "the node agent image has $leaked components under /host"
+}
+
+# pod_pruned: no process of GONE_POD is stored; otherwise it asks for
+# another sync (one may be running already).
+pod_pruned() {
+	[ "$(psql_q "SELECT count(*) FROM processes WHERE asset_id = '$WORKLOAD' AND pod = '$GONE_POD'")" = 0 ] && return 0
+	api POST "/k8s/clusters/$CLUSTER_ID/sync" >/dev/null 2>&1 || true
+	return 1
+}
+
+# check_pruned: the processes the exec collections stored for a pod go when
+# a sync no longer finds the pod.
+check_pruned() {
+	GONE_POD=$($KUBECTL -n "$APP_NS" get pods -l app=web -o jsonpath='{.items[0].metadata.name}')
+	[ "$(psql_q "SELECT count(*) > 0 FROM processes WHERE asset_id = '$WORKLOAD' AND pod = '$GONE_POD'")" = t ] ||
+		fail "no exec processes stored for $GONE_POD"
+	log "deleting pod $GONE_POD"
+	$KUBECTL -n "$APP_NS" delete pod "$GONE_POD" --wait=true >/dev/null
+	wait_for "the processes of $GONE_POD to go" pod_pruned
 }
 
 main() {
@@ -340,6 +377,7 @@ main() {
 	seed_vuln
 	wait_for "the workload's finding with the node's process" workload_finding
 	check
+	check_pruned
 	log "ok"
 }
 
