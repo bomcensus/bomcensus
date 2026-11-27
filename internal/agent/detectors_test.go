@@ -91,8 +91,11 @@ func TestDetectorTableSync(t *testing.T) {
 	if s := h.srv.DetectorSends(); s != 2 {
 		t.Fatalf("table sent %d times", s)
 	}
+	// The directive is acknowledged once queued; the run follows.
+	runs := len(probeRequests(t, h))
 	h.srv.Queue(map[string]any{"type": "collect", "id": "c1", "sections": []string{"artifacts"}})
 	h.wait("collect acknowledged", func() bool { return h.srv.Acked("c1") })
+	h.wait("collect run", func() bool { return len(probeRequests(t, h)) > runs })
 	reqs := probeRequests(t, h)
 	if last := reqs[len(reqs)-1]; strings.Contains(last, `"detectors"`) {
 		t.Fatalf("refused table passed to the probe: %s", last)
