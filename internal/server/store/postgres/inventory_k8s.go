@@ -509,6 +509,9 @@ func (d *DB) ReplaceClusterInventory(ctx context.Context, clusterID string, inv 
 		if err := d.pdTouchClusterLinks(ctx, clusterID); err != nil {
 			return ivErr(op, err)
 		}
+		if err := d.ivPruneGonePods(ctx, clusterID, at); err != nil {
+			return ivErr(op, err)
+		}
 
 		rows, err = d.q.Query(ctx, `
 			SELECT id::text, namespace, kind, name, excluded, COALESCE(asset_id::text, '')

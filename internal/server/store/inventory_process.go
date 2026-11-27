@@ -145,6 +145,9 @@ func (p Process) Suspicious() bool {
 // ProcessRow is a process with its asset and executable component.
 type ProcessRow struct {
 	Process
+	// Node is the host whose node agent saw the process, for a process of
+	// a pod container listed under the pod's workload.
+	Node      string
 	Asset     AssetBrief
 	Component *Component
 }

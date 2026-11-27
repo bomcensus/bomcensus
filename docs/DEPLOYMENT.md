@@ -347,7 +347,7 @@ The pod reproduces the split of the systemd units (SECURITY.md §6.7):
 A container that the kubelet created for a pod carries the pod's uid in its labels. When a scanner also syncs the cluster, that uid links the node's container to the pod and its workload asset. The scanner still collects the pod through exec; each source is used for what it sees best:
 
 - Findings belong to the workload only. The node lists the container, marked with its workload, and leaves it out of its own findings. Pods of excluded workloads, and pods of clusters that no scanner syncs, stay with the node.
-- Processes come from the node agent while its node reported within the last 2 hours, from exec collections otherwise. A process shows the node it runs on.
+- Processes come from the node agent while its node reported within the last 2 hours, from exec collections otherwise. They are listed under the workload only (Processes and the asset pages), and a process shows the node it runs on. When a sync no longer finds a pod, the processes and ports that exec collections stored for it are removed.
 - Versions from version commands come from exec only: the node agent reads container roots from the node and extracts versions statically. Image content collected through exec replaces content that a node agent read, and an image known only from node agents is collected once through exec. In the runtime layer, a file that an exec collected after the container started is taken from the exec.
 - Listening ports (Processes, "listen 포트"): a socket in a pod's network is listed under the workload, with the node that saw it. Sockets in the node's network, including those of `hostNetwork` pods, stay with the node.
 - Go symbol checks of such a container are also asked of the node agent.

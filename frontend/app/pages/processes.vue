@@ -153,6 +153,7 @@ const protoOptions = [
           <DataTable v-else :columns="restartColumns" v-model:sort="sort" v-model:page="page" v-model:size="size" :total="processTotal" :loading="processesPending" :rows="processes" :row-key="(p) => p.id">
             <template #cell-asset="{ row }">
               <NuxtLink :to="`/assets/${row.assetId}?tab=processes`" class="link">{{ row.assetName }}</NuxtLink>
+              <span v-if="row.node" class="mono whitespace-nowrap text-xs text-ink-3"> @ {{ row.node }}</span>
             </template>
             <template #cell-process="{ row }">
               <span class="mono">{{ exeName(row.exePath) }}</span> <span class="mono whitespace-nowrap text-xs text-ink-3">pid {{ row.pid }}</span>
@@ -171,6 +172,7 @@ const protoOptions = [
           <DataTable v-else :columns="suspiciousColumns" v-model:sort="sort" v-model:page="page" v-model:size="size" :total="processTotal" :loading="processesPending" :rows="processes" :row-key="(p) => p.id">
             <template #cell-asset="{ row }">
               <NuxtLink :to="`/assets/${row.assetId}?tab=processes`" class="link">{{ row.assetName }}</NuxtLink>
+              <span v-if="row.node" class="mono whitespace-nowrap text-xs text-ink-3"> @ {{ row.node }}</span>
             </template>
             <template #cell-process="{ row }">
               <span class="mono">{{ exeName(row.exePath) }}</span> <span class="mono whitespace-nowrap text-xs text-ink-3">pid {{ row.pid }}</span>
@@ -219,6 +221,7 @@ const protoOptions = [
           <DataTable v-else :columns="allColumns" v-model:sort="sort" v-model:page="page" v-model:size="size" :total="processTotal" :loading="processesPending" :rows="processes" :row-key="(p) => p.id">
             <template #cell-asset="{ row }">
               <NuxtLink :to="`/assets/${row.assetId}?tab=processes`" class="link">{{ row.assetName }}</NuxtLink>
+              <span v-if="row.node" class="mono whitespace-nowrap text-xs text-ink-3"> @ {{ row.node }}</span>
             </template>
             <template #cell-process="{ row }">
               <span class="mono">{{ exeName(row.exePath) }}</span> <span class="mono whitespace-nowrap text-xs text-ink-3">pid {{ row.pid }}</span>

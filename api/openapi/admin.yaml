@@ -4295,6 +4295,11 @@ components:
         container:
           description: Name of the container the process runs in.
           type: string
+        node:
+          description: >-
+            Host whose node agent saw the process, for a process of a pod
+            container; the process then belongs to the pod's workload.
+          type: string
         componentId:
           description: Component that owns the executable, when known.
           type: string

@@ -151,6 +151,35 @@ func TestPodLinks(t *testing.T) {
 	if got := ports(wl); !slices.Equal(got, []string{"web-abc/nginx 8080 70242 worker-1"}) {
 		t.Fatalf("workload ports %q", got)
 	}
+	// Processes are listed once too: those of the pod container under the
+	// workload, the node's own under the host.
+	procs := func(asset string) []string {
+		t.Helper()
+		rows, total, err := db.ListProcesses(ctx, store.ProcessFilter{AssetID: asset, Sort: "pid"}, store.Page{Limit: 10})
+		ivMust(t, err)
+		if total != len(rows) {
+			t.Fatalf("processes of %s: total %d, rows %+v", asset, total, rows)
+		}
+		var out []string
+		for _, r := range rows {
+			if r.AssetID != asset {
+				t.Fatalf("process of %s listed with asset %s", asset, r.AssetID)
+			}
+			out = append(out, fmt.Sprintf("%s/%s %d %s", r.Pod, r.Container, r.PID, r.Node))
+		}
+		return out
+	}
+	if got := procs(host); !slices.Equal(got, []string{"/standalone 500 "}) {
+		t.Fatalf("host processes %q", got)
+	}
+	if got := procs(wl); !slices.Equal(got, []string{"web-abc/nginx 600 worker-1", "web-abc/nginx 70242 worker-1"}) {
+		t.Fatalf("workload processes %q", got)
+	}
+	all, total, err := db.ListProcesses(ctx, store.ProcessFilter{}, store.Page{Limit: 10})
+	ivMust(t, err)
+	if total != 3 || len(all) != 3 {
+		t.Fatalf("all processes %d %+v", total, all)
+	}
 
 	detail, err := db.GetAsset(ctx, host)
 	ivMust(t, err)
@@ -174,6 +203,18 @@ func TestPodLinks(t *testing.T) {
 	}
 	if len(in.Sources) != 2 {
 		t.Fatalf("stale host: sources %+v", in.Sources)
+	}
+	if got := procs(host); !slices.Equal(got, []string{"/standalone 500 "}) {
+		t.Fatalf("stale host: host processes %q", got)
+	}
+	if got := procs(wl); !slices.Equal(got, []string{"web-abc/nginx 9 "}) {
+		t.Fatalf("stale host: workload processes %q", got)
+	}
+	if got := ports(wl); !slices.Equal(got, []string{"web-abc/nginx 8080 9 "}) {
+		t.Fatalf("stale host: workload ports %q", got)
+	}
+	if got := ports(host); !slices.Equal(got, []string{"/" + podCtr + " 10256 600 ", "/standalone 80 500 "}) {
+		t.Fatalf("stale host: host ports %q", got)
 	}
 
 	// An exec into the workload container after the node container started

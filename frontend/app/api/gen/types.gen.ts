@@ -661,6 +661,10 @@ export type ProcessInfo = {
      */
     container?: string;
     /**
+     * Host whose node agent saw the process, for a process of a pod container; the process then belongs to the pod's workload.
+     */
+    node?: string;
+    /**
      * Component that owns the executable, when known.
      */
     componentId?: string;

@@ -243,6 +243,7 @@ func processInfo(r store.ProcessRow) gen.ProcessInfo {
 		DeletedLibs: libs,
 		Listen:      listen,
 		Container:   str(r.Container),
+		Node:        str(r.Node),
 		ComponentId: str(r.ComponentID),
 	}
 }

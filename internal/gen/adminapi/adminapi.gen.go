@@ -4163,15 +4163,18 @@ type ProcessInfo struct {
 	ExeSource ExeSource `json:"exeSource"`
 
 	// ExeState `replaced`: another file now exists at the path. `deleted`: nothing exists at the path. `memfd`: executed from an anonymous memory file.
-	ExeState  ExeState     `json:"exeState"`
-	Id        string       `json:"id"`
-	Listen    []ListenPort `json:"listen"`
-	Pid       int          `json:"pid"`
-	Ppid      *int         `json:"ppid,omitempty"`
-	Sha256    *string      `json:"sha256,omitempty"`
-	StartedAt time.Time    `json:"startedAt"`
-	Uid       *int         `json:"uid,omitempty"`
-	User      string       `json:"user"`
+	ExeState ExeState     `json:"exeState"`
+	Id       string       `json:"id"`
+	Listen   []ListenPort `json:"listen"`
+
+	// Node Host whose node agent saw the process, for a process of a pod container; the process then belongs to the pod's workload.
+	Node      *string   `json:"node,omitempty"`
+	Pid       int       `json:"pid"`
+	Ppid      *int      `json:"ppid,omitempty"`
+	Sha256    *string   `json:"sha256,omitempty"`
+	StartedAt time.Time `json:"startedAt"`
+	Uid       *int      `json:"uid,omitempty"`
+	User      string    `json:"user"`
 }
 
 // ProcessList defines model for ProcessList.

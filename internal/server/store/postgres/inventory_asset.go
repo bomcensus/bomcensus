@@ -598,11 +598,12 @@ func (d *DB) Dashboard(ctx context.Context) (store.InventoryCounts, error) {
 	if err := rows.Err(); err != nil {
 		return out, ivErr(op, err)
 	}
+	procs := ivOwnedProcesses(q.arg(mgNow().Add(-store.NodeEvidenceMaxAge)), "")
 	err = d.q.QueryRow(ctx, `
 		SELECT
-			(SELECT count(*) FROM processes p JOIN assets a ON a.id = p.asset_id
+			(SELECT count(*) FROM `+procs+` p JOIN assets a ON a.id = p.asset_id
 				WHERE a.gone_at IS NULL AND p.needs_restart AND `+sc.col("a.scope_id")+`),
-			(SELECT count(*) FROM processes p JOIN assets a ON a.id = p.asset_id
+			(SELECT count(*) FROM `+procs+` p JOIN assets a ON a.id = p.asset_id
 				WHERE a.gone_at IS NULL AND p.suspicious AND `+sc.col("a.scope_id")+`),
 			(SELECT count(*) FROM components c WHERE `+sc.component("c.id")+`),
 			(SELECT count(*) FROM images i WHERE `+sc.image("i.digest")+`),
