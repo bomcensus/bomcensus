@@ -39,7 +39,7 @@ func (d *DB) ivAtomic(ctx context.Context, fn func(*DB) error) error {
 		return fmt.Errorf("postgres: begin: %w", err)
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck // no-op after commit
-	if err := fn(&DB{pool: d.pool, q: tx, inTx: true}); err != nil {
+	if err := fn(&DB{pool: d.pool, q: tx, inTx: true, feat: d.feat}); err != nil {
 		return err
 	}
 	if err := tx.Commit(ctx); err != nil {

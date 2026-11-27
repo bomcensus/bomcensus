@@ -157,25 +157,29 @@ func (d *DB) GetAgentByIdentityKey(ctx context.Context, key []byte) (store.Agent
 	return d.mgAgentBy(ctx, "get agent by identity key", "a.identity_key = $1", key, "")
 }
 
+// mgAgentStatus is store.Agent.Status with the online threshold $3.
+const mgAgentStatus = `(CASE WHEN a.state = 'pending' THEN 'pending_approval'
+	WHEN a.state = 'revoked' THEN 'revoked'
+	WHEN a.last_seen >= $3 THEN 'online' ELSE 'offline' END)`
+
 var mgAgentSort = map[string]string{
-	"hostname":    "a.hostname",
-	"version":     "a.version",
-	"address":     "a.address",
-	"last_seen":   "a.last_seen",
-	"enrolled_at": "a.enrolled_at",
+	"hostname":     "a.hostname",
+	"status":       mgAgentStatus,
+	"version":      `version_sort_key('semver', a.version) COLLATE "C"`,
+	"connect_mode": "a.connect_mode",
+	"tls_mode":     "a.tls_mode",
+	"privilege":    "a.privilege",
+	"update_state": `(CASE a.update_state WHEN 'pending' THEN 1 WHEN 'updating' THEN 2 WHEN 'rolled_back' THEN 3 ELSE 0 END)`,
+	"address":      "a.address",
+	"last_seen":    "a.last_seen",
+	"enrolled_at":  "a.enrolled_at",
 }
 
-// mgAgentWhere filters with $1..$6 and the scope of the call.
+// mgAgentWhere filters with $1..$11 and the scope of the call.
 func mgAgentWhere(sc sqlScope) string {
 	return `
 	WHERE ($1 = '' OR a.kind = $1)
-	  AND (CASE $2
-	         WHEN '' THEN true
-	         WHEN 'pending_approval' THEN a.state = 'pending'
-	         WHEN 'revoked' THEN a.state = 'revoked'
-	         WHEN 'online' THEN a.state = 'approved' AND a.last_seen >= $3
-	         WHEN 'offline' THEN a.state = 'approved' AND (a.last_seen IS NULL OR a.last_seen < $3)
-	         ELSE false END)
+	  AND ($2 = '' OR ` + mgAgentStatus + ` = $2)
 	  AND ($4 = '' OR a.connect_mode = $4)
 	  AND ($5 = '' OR a.tls_mode = $5)
 	  AND ($6 = '' OR strpos(lower(a.hostname), lower($6)) > 0
@@ -184,35 +188,35 @@ func mgAgentWhere(sc sqlScope) string {
 	              OR strpos(a.id::text, lower($6)) > 0
 	              OR strpos(lower(a.os), lower($6)) > 0
 	              OR strpos(lower(a.listen_address), lower($6)) > 0)
+	  AND ($7 = '' OR coalesce(nullif(a.update_state, ''), 'up_to_date') = $7)
+	  AND ($8 = '' OR a.register_key_id = $8)
+	  AND ($9 = '' OR a.version = $9)
+	  AND (NOT $10 OR (a.state <> 'revoked'
+	       AND (($11 <> '' AND a.version <> $11) OR coalesce(nullif(a.update_state, ''), 'up_to_date') <> 'up_to_date')))
 	  AND ` + sc.shared("a.kind", "a.scope_id")
 }
 
 // ListAgents implements store.Agents.
 func (d *DB) ListAgents(ctx context.Context, f store.AgentFilter, p store.Page) ([]store.Agent, int, error) {
+	const op = "list agents"
 	p = p.Normalize()
-	key, dir := strings.TrimPrefix(f.Sort, "-"), "ASC"
-	if strings.HasPrefix(f.Sort, "-") {
-		dir = "DESC"
+	order, err := mgOrder(op, f.Sort, "hostname", mgAgentSort, false, "lower(a.hostname), a.id")
+	if err != nil {
+		return nil, 0, err
 	}
-	if key == "" {
-		key = "hostname"
-	}
-	col, ok := mgAgentSort[key]
-	if !ok {
-		return nil, 0, fmt.Errorf("postgres: list agents: sort %q: %w", f.Sort, store.ErrInvalid)
-	}
-	q, sc, err := scoped(ctx, "list agents", string(f.Kind), string(f.Status), f.OnlineAfter.UTC(), string(f.ConnectMode),
-		string(f.TLSMode), strings.TrimSpace(f.Q))
+	q, sc, err := scoped(ctx, op, string(f.Kind), string(f.Status), f.OnlineAfter.UTC(), string(f.ConnectMode),
+		string(f.TLSMode), strings.TrimSpace(f.Q), string(f.UpdateState), f.RegisterKeyID, f.Version,
+		f.Outdated, f.TargetVersion)
 	if err != nil {
 		return nil, 0, err
 	}
 	args := q.args
 	n := len(args)
 	rows, err := d.q.Query(ctx, `SELECT `+mgAgentColumns+`, count(*) OVER () FROM agents a`+mgAgentWhere(sc)+
-		` ORDER BY `+col+` `+dir+fmt.Sprintf(` NULLS LAST, a.id LIMIT $%d OFFSET $%d`, n+1, n+2),
+		order+fmt.Sprintf(` LIMIT $%d OFFSET $%d`, n+1, n+2),
 		append(args, p.Limit, p.Offset)...)
 	if err != nil {
-		return nil, 0, mgErr("list agents", err)
+		return nil, 0, mgErr(op, err)
 	}
 	defer rows.Close()
 	out := []store.Agent{}
@@ -220,16 +224,16 @@ func (d *DB) ListAgents(ctx context.Context, f store.AgentFilter, p store.Page) 
 	for rows.Next() {
 		a, err := mgScanAgent(rows, &total)
 		if err != nil {
-			return nil, 0, mgErr("list agents", err)
+			return nil, 0, mgErr(op, err)
 		}
 		out = append(out, a)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, 0, mgErr("list agents", err)
+		return nil, 0, mgErr(op, err)
 	}
 	if len(out) == 0 && p.Offset > 0 {
 		if err := d.q.QueryRow(ctx, `SELECT count(*) FROM agents a`+mgAgentWhere(sc), args[:n]...).Scan(&total); err != nil {
-			return nil, 0, mgErr("list agents", err)
+			return nil, 0, mgErr(op, err)
 		}
 	}
 	return out, total, nil

@@ -149,6 +149,8 @@ type ProcessRow struct {
 // ProcessFilter narrows ListProcesses. Zero fields do not filter.
 type ProcessFilter struct {
 	AssetID string
+	// ID selects one process.
+	ID string
 	// Container selects one container; a pointer to "" selects the asset
 	// itself.
 	Container *string

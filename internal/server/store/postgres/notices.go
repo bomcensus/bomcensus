@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -18,17 +19,16 @@ import (
 var _ store.Notices = (*DB)(nil)
 
 type ntNoticeRow struct {
-	ID            string                 `json:"notice_id"`
-	Source        string                 `json:"source"`
-	Title         string                 `json:"title"`
-	URL           string                 `json:"url"`
-	Published     *time.Time             `json:"published"`
-	Summary       string                 `json:"summary"`
-	CVEIDs        []string               `json:"cve_ids"`
-	RelatedCVEIDs []string               `json:"related_cve_ids"`
-	AdvisoryIDs   []string               `json:"advisory_ids"`
-	Software      []store.NoticeSoftware `json:"software"`
-	Modified      *time.Time             `json:"modified"`
+	ID          string                 `json:"notice_id"`
+	Source      string                 `json:"source"`
+	Title       string                 `json:"title"`
+	URL         string                 `json:"url"`
+	Published   *time.Time             `json:"published"`
+	Summary     string                 `json:"summary"`
+	CVEIDs      []string               `json:"cve_ids"`
+	AdvisoryIDs []string               `json:"advisory_ids"`
+	Software    []store.NoticeSoftware `json:"software"`
+	Modified    *time.Time             `json:"modified"`
 }
 
 type ntLinkRow struct {
@@ -48,7 +48,7 @@ func (d *DB) ntSave(ctx context.Context, b store.MatchBatch, ids []string, at ti
 				sw = []store.NoticeSoftware{}
 			}
 			rows = append(rows, ntNoticeRow{ID: n.ID, Source: n.Source, Title: n.Title, URL: n.URL, Published: n.Published,
-				Summary: n.Summary, CVEIDs: vuStrings(n.CVEIDs), RelatedCVEIDs: vuStrings(n.RelatedCVEIDs),
+				Summary: n.Summary, CVEIDs: vuStrings(n.CVEIDs),
 				AdvisoryIDs: vuStrings(n.AdvisoryIDs), Software: sw, Modified: n.Modified})
 		}
 		js, err := json.Marshal(rows)
@@ -56,16 +56,16 @@ func (d *DB) ntSave(ctx context.Context, b store.MatchBatch, ids []string, at ti
 			return fmt.Errorf("postgres: save notices: %w", err)
 		}
 		if _, err := d.q.Exec(ctx, `
-			INSERT INTO notices (notice_id, source, title, url, published, summary, cve_ids, related_cve_ids,
+			INSERT INTO notices (notice_id, source, title, url, published, summary, cve_ids,
 				advisory_ids, software, modified, updated_at)
-			SELECT x.notice_id, x.source, x.title, x.url, x.published, x.summary, x.cve_ids, x.related_cve_ids,
+			SELECT x.notice_id, x.source, x.title, x.url, x.published, x.summary, x.cve_ids,
 				x.advisory_ids, x.software, x.modified, $2
 			FROM jsonb_to_recordset($1::text::jsonb) AS x(notice_id text, source text, title text, url text,
-				published timestamptz, summary text, cve_ids text[], related_cve_ids text[], advisory_ids text[],
+				published timestamptz, summary text, cve_ids text[], advisory_ids text[],
 				software jsonb, modified timestamptz)
 			ON CONFLICT (notice_id) DO UPDATE SET source = excluded.source, title = excluded.title, url = excluded.url,
 				published = excluded.published, summary = excluded.summary, cve_ids = excluded.cve_ids,
-				related_cve_ids = excluded.related_cve_ids, advisory_ids = excluded.advisory_ids,
+				advisory_ids = excluded.advisory_ids,
 				software = excluded.software, modified = excluded.modified, updated_at = excluded.updated_at`,
 			string(js), at); err != nil {
 			return mgErr("save notices", err)
@@ -132,14 +132,14 @@ func ntSummary(q *ivQuery, sc sqlScope, f store.NoticeFilter) string {
 		GROUP BY m.notice_id`
 }
 
-const ntCols = `n.notice_id, n.source, n.title, n.url, n.published, n.summary, n.cve_ids, n.related_cve_ids,
+const ntCols = `n.notice_id, n.source, n.title, n.url, n.published, n.summary, n.cve_ids,
 	n.advisory_ids, n.software::text, n.modified, s.assets, s.new_assets, s.first_matched, s.last_matched,
 	s.read_at, s.read_by`
 
 func ntScan(r mgRow, n *store.NoticeRow) error {
 	var sw string
 	var by *string
-	if err := r.Scan(&n.ID, &n.Source, &n.Title, &n.URL, &n.Published, &n.Summary, &n.CVEIDs, &n.RelatedCVEIDs,
+	if err := r.Scan(&n.ID, &n.Source, &n.Title, &n.URL, &n.Published, &n.Summary, &n.CVEIDs,
 		&n.AdvisoryIDs, &sw, &n.Modified, &n.Assets, &n.NewAssets, &n.FirstMatched, &n.LastMatched,
 		&n.ReadAt, &by); err != nil {
 		return err
@@ -153,6 +153,33 @@ func ntScan(r mgRow, n *store.NoticeRow) error {
 	n.Published, n.Modified, n.ReadAt = mgUTCPtr(n.Published), mgUTCPtr(n.Modified), mgUTCPtr(n.ReadAt)
 	n.FirstMatched, n.LastMatched = n.FirstMatched.UTC(), n.LastMatched.UTC()
 	return nil
+}
+
+// ntSorts are the sort keys of ListNotices.
+var ntSorts = map[string]string{
+	"published":    "n.published",
+	"title":        "lower(n.title)",
+	"source":       "n.source",
+	"assets":       "s.assets",
+	"last_matched": "s.last_matched",
+}
+
+// ntOrder is the ORDER BY clause of a notice sort; values that are absent
+// come last in both directions.
+func ntOrder(sort string) (string, error) {
+	if sort == "" {
+		return ` ORDER BY (s.new_assets > 0) DESC, n.published DESC NULLS LAST, n.notice_id`, nil
+	}
+	key, desc := strings.CutPrefix(sort, "-")
+	expr, ok := ntSorts[key]
+	if !ok {
+		return "", ivInvalid("list notices", fmt.Sprintf("unknown sort key %q", sort))
+	}
+	dir := " ASC"
+	if desc {
+		dir = " DESC"
+	}
+	return " ORDER BY " + expr + dir + " NULLS LAST, n.published DESC NULLS LAST, n.notice_id", nil
 }
 
 // ListNotices implements store.Notices.
@@ -174,12 +201,15 @@ func (d *DB) ListNotices(ctx context.Context, f store.NoticeFilter, p store.Page
 	}
 	if f.Q != "" {
 		q.where(`(n.notice_id ILIKE %[1]s OR n.title ILIKE %[1]s OR n.summary ILIKE %[1]s
-			OR array_to_string(n.cve_ids || n.related_cve_ids || n.advisory_ids, ' ') ILIKE %[1]s
+			OR array_to_string(n.cve_ids || n.advisory_ids, ' ') ILIKE %[1]s
 			OR EXISTS (SELECT 1 FROM jsonb_array_elements(n.software) sw
 				WHERE sw->>'vendor' ILIKE %[1]s OR sw->>'product' ILIKE %[1]s))`, ivLike(f.Q))
 	}
 	from += q.whereSQL()
-	order := ` ORDER BY (s.new_assets > 0) DESC, n.published DESC NULLS LAST, n.notice_id`
+	order, err := ntOrder(f.Sort)
+	if err != nil {
+		return nil, 0, err
+	}
 	var out []store.NoticeRow
 	total, err := ivPage(ctx, d, op, q, ntCols, from, order, p, func(rows pgx.Rows) error {
 		var n store.NoticeRow

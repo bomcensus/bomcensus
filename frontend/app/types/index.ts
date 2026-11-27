@@ -61,6 +61,7 @@ export type {
   K8sClusterCreate,
   K8sClusterUpdate,
   K8sWorkload,
+  K8sNamespace,
   K8sPodPhase,
   K8sPodContainer,
   K8sPod,

@@ -7,33 +7,73 @@
 <script setup lang="ts">
 import type { ExeState, ListenPortRow, ProcessInfo } from '~/types'
 import type { TableColumn } from '~/types/table'
-import { fetchAll, listListenPorts, listProcesses } from '~/api'
+import { listListenPorts, listProcesses, type QueryOf } from '~/api'
 
 useHead({ title: '프로세스 · bomcensus' })
 
-const tab = ref('restart')
+type ProcessView = 'restart' | 'suspicious' | 'all'
+const tabKeys = ['restart', 'suspicious', 'ports', 'all']
+const route = useRoute()
+// Read before the lists are created, so that a tab from the URL does not reset their page
+const tab = ref(typeof route.query.view === 'string' && tabKeys.includes(route.query.view) ? route.query.view : 'restart')
 
+const empty = { items: [], total: 0 }
+
+// One process list; its view follows the tab. The state filter applies to the All tab only.
 const {
-  data: processes,
+  items: processes,
+  total: processTotal,
   pending: processesPending,
   error: processesError,
   refresh: refreshProcesses,
-} = useLoad('processes', () => fetchAll((page) => listProcesses(page)), () => [])
+  q,
+  filters,
+  sort,
+  page,
+  size,
+} = useServerList(
+  'processes',
+  (p) => {
+    if (tab.value === 'ports') return Promise.resolve(empty)
+    const { state, ...rest } = p
+    return listProcesses({ ...rest, view: tab.value as ProcessView, state: tab.value === 'all' ? state : undefined } as QueryOf<typeof listProcesses>)
+  },
+  { filters: { state: '' }, sort: 'asset', url: true, deps: () => tab.value },
+)
+
 const {
-  data: portRows,
+  items: portRows,
+  total: portTotal,
   pending: portsPending,
   error: portsError,
   refresh: refreshPorts,
-} = useLoad('listen-ports', () => fetchAll((page) => listListenPorts(page)), () => [])
+  q: portQ,
+  filters: portFilters,
+  sort: portSort,
+  page: portPage,
+  size: portSize,
+} = useServerList(
+  'listen-ports',
+  (p) => (tab.value === 'ports' ? listListenPorts(p as QueryOf<typeof listListenPorts>) : Promise.resolve(empty)),
+  { filters: { proto: '' }, sort: 'port', url: 'ports', deps: () => tab.value },
+)
 
-const restartRows = computed(() => processes.value.filter(needsRestart))
-const suspiciousRows = computed(() => processes.value.filter(isSuspicious))
+// Unfiltered counts of the tabs
+const { data: counts } = useLoad('processes:counts', async () => {
+  const [restart, suspicious, all, ports] = await Promise.all([
+    listProcesses({ view: 'restart', limit: 1 }),
+    listProcesses({ view: 'suspicious', limit: 1 }),
+    listProcesses({ view: 'all', limit: 1 }),
+    listListenPorts({ limit: 1 }),
+  ])
+  return { restart: restart.total, suspicious: suspicious.total, all: all.total, ports: ports.total }
+})
 
 const tabs = computed(() => [
-  { key: 'restart', label: '재시작 필요', count: restartRows.value.length },
-  { key: 'suspicious', label: '의심 프로세스', count: suspiciousRows.value.length },
-  { key: 'ports', label: 'listen 포트', count: portRows.value.length },
-  { key: 'all', label: '전체', count: processes.value.length },
+  { key: 'restart', label: '재시작 필요', count: counts.value?.restart },
+  { key: 'suspicious', label: '의심 프로세스', count: counts.value?.suspicious },
+  { key: 'ports', label: 'listen 포트', count: counts.value?.ports },
+  { key: 'all', label: '전체', count: counts.value?.all },
 ])
 
 const exeName = (path: string) => path.split(/[\\/]/).filter(Boolean).pop() ?? path
@@ -53,56 +93,42 @@ function suspiciousState(p: ProcessInfo): string {
 const suspiciousTone = (p: ProcessInfo) => (p.exeState === 'deleted' || p.exeState === 'memfd' ? 'danger' : 'warn')
 
 const baseColumns: TableColumn<ProcessInfo>[] = [
-  { key: 'asset', label: '자산', sortValue: (p) => p.assetName },
-  { key: 'process', label: '프로세스', sortValue: (p) => exeName(p.exePath) },
-  { key: 'user', label: '사용자', sortValue: (p) => p.user, hideBelow: 'sm' },
+  { key: 'asset', label: '자산', sort: 'asset' },
+  { key: 'process', label: '프로세스', sort: 'exe' },
+  { key: 'user', label: '사용자', sort: 'user', hideBelow: 'sm' },
 ]
 const restartColumns: TableColumn<ProcessInfo>[] = [
   ...baseColumns,
   { key: 'files', label: '교체된 파일', hideBelow: 'md' },
-  { key: 'startedAt', label: '시작', align: 'right', sortValue: (p) => p.startedAt, hideBelow: 'sm' },
+  { key: 'startedAt', label: '시작', align: 'right', sort: 'startedAt', sortDesc: true, hideBelow: 'sm' },
 ]
 const suspiciousColumns: TableColumn<ProcessInfo>[] = [
   ...baseColumns,
-  { key: 'state', label: '상태', sortValue: (p) => suspiciousState(p) },
+  { key: 'state', label: '상태', sort: 'state' },
   { key: 'path', label: '경로', hideBelow: 'md' },
   { key: 'sha', label: 'sha256', hideBelow: 'lg' },
-  { key: 'startedAt', label: '시작', align: 'right', sortValue: (p) => p.startedAt, hideBelow: 'sm' },
+  { key: 'startedAt', label: '시작', align: 'right', sort: 'startedAt', sortDesc: true, hideBelow: 'sm' },
 ]
 const portColumns: TableColumn<ListenPortRow>[] = [
-  { key: 'port', label: '포트', sortValue: (r) => r.port },
-  { key: 'bind', label: 'bind 주소', sortValue: (r) => r.address, hideBelow: 'sm' },
-  { key: 'process', label: '프로세스', sortValue: (r) => (r.exePath ? exeName(r.exePath) : '') },
-  { key: 'user', label: '사용자', sortValue: (r) => r.user ?? '', hideBelow: 'md' },
-  { key: 'asset', label: '자산', sortValue: (r) => r.assetName },
+  { key: 'port', label: '포트', sort: 'port' },
+  { key: 'bind', label: 'bind 주소', sort: 'address', hideBelow: 'sm' },
+  { key: 'process', label: '프로세스', sort: 'process' },
+  { key: 'user', label: '사용자', sort: 'user', hideBelow: 'md' },
+  { key: 'asset', label: '자산', sort: 'asset' },
   { key: 'component', label: '컴포넌트', hideBelow: 'lg' },
 ]
 const allColumns: TableColumn<ProcessInfo>[] = [
   ...baseColumns,
-  { key: 'state', label: '상태', sortValue: (p) => p.exeState },
+  { key: 'state', label: '상태', sort: 'state' },
   { key: 'path', label: '경로', hideBelow: 'md' },
-  { key: 'startedAt', label: '시작', align: 'right', sortValue: (p) => p.startedAt, hideBelow: 'sm' },
+  { key: 'startedAt', label: '시작', align: 'right', sort: 'startedAt', sortDesc: true, hideBelow: 'sm' },
 ]
 
-// Filter for the All tab
-const q = ref('')
-const assetId = ref('')
-const state = ref('')
-const assetOptions = computed(() => {
-  const byId = new Map(processes.value.map((p) => [p.assetId, p.assetName]))
-  return [...byId].map(([value, label]) => ({ value, label })).sort((a, b) => a.label.localeCompare(b.label))
-})
 const stateOptions = (Object.keys(exeStateLabel) as ExeState[]).map((value) => ({ value, label: exeStateLabel[value] }))
-
-const allRows = computed(() => {
-  const needle = q.value.trim().toLowerCase()
-  return processes.value.filter((p) => {
-    if (assetId.value && p.assetId !== assetId.value) return false
-    if (state.value && p.exeState !== state.value) return false
-    if (!needle) return true
-    return [exeName(p.exePath), p.exePath, p.user, p.cmdline].some((v) => v.toLowerCase().includes(needle))
-  })
-})
+const protoOptions = [
+  { value: 'tcp', label: 'TCP' },
+  { value: 'udp', label: 'UDP' },
+]
 </script>
 
 <template>
@@ -112,10 +138,19 @@ const allRows = computed(() => {
     <AppTabs v-model="tab" :tabs="tabs" query-key="view" />
 
     <div class="mt-3">
+      <FilterBar v-if="tab === 'ports'" :count="portTotal" unit="개">
+        <SearchInput v-model="portQ" placeholder="주소, 포트, 프로세스, 자산" />
+        <SelectFilter v-model="portFilters.proto" label="프로토콜" :options="protoOptions" />
+      </FilterBar>
+      <FilterBar v-else :count="processTotal" unit="개">
+        <SearchInput v-model="q" placeholder="실행 파일, 사용자, cmdline, 자산" />
+        <SelectFilter v-if="tab === 'all'" v-model="filters.state" label="상태" :options="stateOptions" />
+      </FilterBar>
+
       <template v-if="tab === 'restart'">
         <Panel flush>
           <LoadError v-if="processesError" :error="processesError" @retry="refreshProcesses" />
-          <DataTable v-else :columns="restartColumns" :loading="processesPending" :rows="restartRows" :row-key="(p) => p.id" :page-size="25">
+          <DataTable v-else :columns="restartColumns" v-model:sort="sort" v-model:page="page" v-model:size="size" :total="processTotal" :loading="processesPending" :rows="processes" :row-key="(p) => p.id">
             <template #cell-asset="{ row }">
               <NuxtLink :to="`/assets/${row.assetId}?tab=processes`" class="link">{{ row.assetName }}</NuxtLink>
             </template>
@@ -133,7 +168,7 @@ const allRows = computed(() => {
       <template v-else-if="tab === 'suspicious'">
         <Panel flush>
           <LoadError v-if="processesError" :error="processesError" @retry="refreshProcesses" />
-          <DataTable v-else :columns="suspiciousColumns" :loading="processesPending" :rows="suspiciousRows" :row-key="(p) => p.id" :page-size="25">
+          <DataTable v-else :columns="suspiciousColumns" v-model:sort="sort" v-model:page="page" v-model:size="size" :total="processTotal" :loading="processesPending" :rows="processes" :row-key="(p) => p.id">
             <template #cell-asset="{ row }">
               <NuxtLink :to="`/assets/${row.assetId}?tab=processes`" class="link">{{ row.assetName }}</NuxtLink>
             </template>
@@ -151,7 +186,7 @@ const allRows = computed(() => {
       <template v-else-if="tab === 'ports'">
         <Panel flush>
           <LoadError v-if="portsError" :error="portsError" @retry="refreshPorts" />
-          <DataTable v-else :columns="portColumns" :loading="portsPending" :rows="portRows" :row-key="(r) => `${r.assetId}/${r.container ?? ''}/${r.proto}/${r.address}/${r.port}`" :page-size="25">
+          <DataTable v-else :columns="portColumns" v-model:sort="portSort" v-model:page="portPage" v-model:size="portSize" :total="portTotal" :loading="portsPending" :rows="portRows" :row-key="(r) => `${r.assetId}/${r.container ?? ''}/${r.proto}/${r.address}/${r.port}`">
             <template #cell-port="{ row }"><span class="mono whitespace-nowrap">{{ row.proto }}/{{ row.port }}</span></template>
             <template #cell-bind="{ row }">
               <span class="mono whitespace-nowrap">{{ row.address }}</span>
@@ -178,14 +213,9 @@ const allRows = computed(() => {
       </template>
 
       <template v-else>
-        <FilterBar :count="allRows.length" :total="processes.length" unit="개">
-          <SearchInput v-model="q" placeholder="실행 파일, 사용자, cmdline" />
-          <SelectFilter v-model="assetId" label="자산" :options="assetOptions" />
-          <SelectFilter v-model="state" label="상태" :options="stateOptions" />
-        </FilterBar>
         <Panel flush>
           <LoadError v-if="processesError" :error="processesError" @retry="refreshProcesses" />
-          <DataTable v-else :columns="allColumns" :loading="processesPending" :rows="allRows" :row-key="(p) => p.id" :page-size="25">
+          <DataTable v-else :columns="allColumns" v-model:sort="sort" v-model:page="page" v-model:size="size" :total="processTotal" :loading="processesPending" :rows="processes" :row-key="(p) => p.id">
             <template #cell-asset="{ row }">
               <NuxtLink :to="`/assets/${row.assetId}?tab=processes`" class="link">{{ row.assetName }}</NuxtLink>
             </template>

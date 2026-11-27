@@ -314,3 +314,9 @@ export const integrityAlgoLabel: Record<string, string> = {
   sha384: 'SHA-384',
   sha512: 'SHA-512',
 }
+
+/** Options of a yes/no select filter (TriState in useServerList); '' is "All" */
+export const triStateOptions = (yes: string, no: string) => [
+  { value: 'true', label: yes },
+  { value: 'false', label: no },
+]

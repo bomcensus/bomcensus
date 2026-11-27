@@ -6,7 +6,7 @@
 
 <script setup lang="ts">
 import type { IntegrityGroup, IntegrityStatus } from '~/types'
-import { getIntegritySummary, listIntegrityFileNodes, listIntegrityFiles } from '~/api'
+import { getIntegritySummary, listIntegrityFileNodes, listIntegrityFiles, type QueryOf } from '~/api'
 
 useHead({ title: '파일 무결성 · bomcensus' })
 
@@ -24,6 +24,15 @@ const tabModel = computed({
 
 const q = ref('')
 const status = ref('')
+// '-assets' is the server's default order and stays out of the query.
+const sort = ref('-assets')
+const sortOptions = [
+  { value: '-assets', label: '노드 많은 순' },
+  { value: '-lastSeen', label: '최근 발견순' },
+  { value: 'firstSeen', label: '처음 발견 오래된 순' },
+  { value: 'path', label: '경로순' },
+  { value: 'package', label: '패키지순' },
+]
 const qDebounced = ref('')
 let qTimer: ReturnType<typeof setTimeout> | undefined
 watch(q, (v) => {
@@ -31,17 +40,26 @@ watch(q, (v) => {
   qTimer = setTimeout(() => (qDebounced.value = v.trim()), 300)
 })
 const statusOptions = (['modified', 'missing'] as const).map((s) => ({ value: s, label: integrityStatusLabel[s] }))
-const filters = computed(() => ({
+// Paging of the list. Any other change starts over from the first page.
+const page = ref(0)
+const size = ref(50)
+const conditions = computed(() => ({
   q: qDebounced.value || undefined,
   status: (status.value || undefined) as IntegrityStatus | undefined,
-  limit: 500,
+  sort: sort.value === '-assets' ? undefined : (sort.value as QueryOf<typeof listIntegrityFiles>['sort']),
 }))
+watch([() => JSON.stringify(conditions.value), size], () => (page.value = 0))
+const filters = computed(() => ({ ...conditions.value, limit: size.value, offset: page.value * size.value }))
 
 const { data: summary, refresh: refreshSummary } = useLoad('integrity:summary', getIntegritySummary)
 const { data: list, pending, error, refresh: refreshList } = useLoad(
   () => `integrity:files:${JSON.stringify(filters.value)}`,
   () => (view.value === 'files' ? listIntegrityFiles(filters.value) : Promise.resolve(undefined)),
 )
+// Allowing files can empty the last page; go back to the page that is now last.
+watch(list, (l) => {
+  if (l && !l.items.length && page.value > 0) page.value = Math.max(0, Math.ceil(l.total / size.value) - 1)
+})
 
 // A group is selected by path, status and content.
 const keyOf = (g: IntegrityGroup) => `${g.status}|${g.actualSha256 ?? ''}|${g.path}`
@@ -97,6 +115,12 @@ const short = (h: string) => `${h.slice(0, 12)}…`
       <FilterBar :count="list?.total" unit="개">
         <SearchInput v-model="q" placeholder="경로, 패키지, 호스트" />
         <SelectFilter v-model="status" label="상태" :options="statusOptions" />
+        <label class="inline-flex items-center">
+          <span class="sr-only">정렬</span>
+          <select v-model="sort" class="select max-w-44" :class="sort !== '-assets' ? 'border-accent text-accent' : ''">
+            <option v-for="o in sortOptions" :key="o.value" :value="o.value">정렬: {{ o.label }}</option>
+          </select>
+        </label>
       </FilterBar>
 
       <div class="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,28rem)_minmax(0,1fr)]">
@@ -124,9 +148,7 @@ const short = (h: string) => `${h.slice(0, 12)}…`
               </button>
             </li>
           </ul>
-          <p v-if="list && list.total > list.items.length" class="px-3.5 py-2 text-xs text-ink-3">
-            {{ list.items.length }}개만 보입니다. 검색이나 필터로 좁히세요.
-          </p>
+          <TablePager v-if="list && (list.total > size || page > 0)" v-model:page="page" v-model:size="size" :total="list.total" compact />
         </Panel>
 
         <div class="min-w-0">

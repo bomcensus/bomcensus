@@ -136,7 +136,7 @@ func (h *Handlers) ListProcesses(ctx context.Context, req gen.ListProcessesReque
 		f.AssetID = *prm.AssetId
 	}
 	if f.Sort, err = sortKey(prm.Sort, map[string]string{
-		"asset": "asset", "exe": "exe", "user": "user", "state": "state", "startedAt": "started_at",
+		"asset": "asset", "exe": "exe", "user": "user", "state": "state", "startedAt": "started_at", "risk": "risk",
 	}); err != nil {
 		return nil, err
 	}

@@ -38,6 +38,7 @@ type DB struct {
 	pool *pgxpool.Pool
 	q    querier
 	inTx bool
+	feat *features
 }
 
 // Open connects to the database. It does not run migrations.
@@ -50,7 +51,7 @@ func Open(ctx context.Context, url string) (*DB, error) {
 		pool.Close()
 		return nil, fmt.Errorf("postgres: ping: %w", err)
 	}
-	return &DB{pool: pool, q: pool}, nil
+	return &DB{pool: pool, q: pool, feat: &features{}}, nil
 }
 
 // Pool exposes the connection pool to code in this module that must share it,
@@ -60,7 +61,8 @@ func (d *DB) Pool() *pgxpool.Pool { return d.pool }
 // Close releases the pool.
 func (d *DB) Close() { d.pool.Close() }
 
-// Migrate applies the embedded migrations.
+// Migrate applies the embedded migrations, then adds the search indexes
+// that need pg_trgm when it is available.
 func (d *DB) Migrate(ctx context.Context) error {
 	sub, err := fs.Sub(migrationsFS, "migrations")
 	if err != nil {
@@ -68,7 +70,10 @@ func (d *DB) Migrate(ctx context.Context) error {
 	}
 	sqlDB := stdlib.OpenDBFromPool(d.pool)
 	defer sqlDB.Close()
-	return migrate(ctx, sqlDB, sub)
+	if err := migrate(ctx, sqlDB, sub); err != nil {
+		return err
+	}
+	return d.ensureSearchIndexes(ctx)
 }
 
 func migrate(ctx context.Context, db *sql.DB, dir fs.FS) error {
@@ -92,7 +97,7 @@ func (d *DB) WithTx(ctx context.Context, fn func(store.Store) error) error {
 		return fmt.Errorf("postgres: begin: %w", err)
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck // no-op after commit
-	if err := fn(&DB{pool: d.pool, q: tx, inTx: true}); err != nil {
+	if err := fn(&DB{pool: d.pool, q: tx, inTx: true, feat: d.feat}); err != nil {
 		return err
 	}
 	if err := tx.Commit(ctx); err != nil {

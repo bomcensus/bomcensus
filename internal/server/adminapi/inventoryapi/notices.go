@@ -22,7 +22,7 @@ const maxNoticeIDLen = 128
 func noticeDTO(n store.NoticeRow) gen.Notice {
 	d := gen.Notice{
 		NoticeId: n.ID, Source: n.Source, Title: n.Title, Url: optStr(n.URL), Published: n.Published,
-		Summary: optStr(n.Summary), CveIds: strs(n.CVEIDs), RelatedCveIds: strs(n.RelatedCVEIDs),
+		Summary: optStr(n.Summary), CveIds: strs(n.CVEIDs),
 		AdvisoryIds: strs(n.AdvisoryIDs), Software: make([]gen.NoticeSoftware, 0, len(n.Software)), Updated: n.Modified,
 		Assets: n.Assets, NewAssets: n.NewAssets, Unread: n.Unread(), FirstMatched: n.FirstMatched,
 		LastMatched: n.LastMatched, ReadAt: n.ReadAt, ReadBy: optStr(n.ReadBy),
@@ -59,6 +59,13 @@ func (h *Handlers) ListNotices(ctx context.Context, req gen.ListNoticesRequestOb
 		return nil, apierr.Invalid("source must be at most 32 bytes")
 	}
 	f := store.NoticeFilter{Q: q, Source: source, IncludeRead: prm.IncludeRead != nil && *prm.IncludeRead}
+	if prm.Sort != nil && *prm.Sort != gen.ListNoticesParamsSortRank {
+		if f.Sort, err = sortKey(prm.Sort, map[string]string{
+			"published": "published", "title": "title", "source": "source", "assets": "assets", "lastMatched": "last_matched",
+		}); err != nil {
+			return nil, err
+		}
+	}
 	rows, total, err := h.cfg.Store.ListNotices(ctx, f, p)
 	if err != nil {
 		return nil, err

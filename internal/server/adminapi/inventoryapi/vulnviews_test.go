@@ -99,6 +99,21 @@ func TestVulnerabilityViews(t *testing.T) {
 	if u := list.(gen.ListVulnerableComponents200JSONResponse); u.Total != 1 || u.Items[0].Name != "nginx" {
 		t.Fatalf("q filter %+v", u)
 	}
+	// Sorting by a field: openssl has more CVEs and assets; a name sort
+	// ascends; an unknown field is refused.
+	for _, c := range []struct {
+		sort  gen.ListVulnerableComponentsParamsSort
+		first string
+	}{{"-cves", "openssl"}, {"cves", "nginx"}, {"-assets", "openssl"}, {"name", "nginx"}, {"-name", "openssl"}, {"rank", "nginx"}} {
+		list, err = f.h.ListVulnerableComponents(ctx, gen.ListVulnerableComponentsRequestObject{Params: gen.ListVulnerableComponentsParams{Sort: &c.sort}})
+		must(t, err)
+		if u := list.(gen.ListVulnerableComponents200JSONResponse); u.Total != 2 || u.Items[0].Name != c.first {
+			t.Fatalf("sort %s: %+v", c.sort, u.Items)
+		}
+	}
+	bad := gen.ListVulnerableComponentsParamsSort("-rank")
+	_, err = f.h.ListVulnerableComponents(ctx, gen.ListVulnerableComponentsRequestObject{Params: gen.ListVulnerableComponentsParams{Sort: &bad}})
+	wantStatus(t, "unknown sort", err, http.StatusBadRequest)
 
 	// Component detail.
 	det, err := f.h.GetVulnerableComponent(ctx, gen.GetVulnerableComponentRequestObject{Id: ids["nginx"]})
@@ -117,6 +132,20 @@ func TestVulnerabilityViews(t *testing.T) {
 	cves := cl.(gen.ListVulnerabilities200JSONResponse)
 	if cves.Total != 3 || cves.Items[0].VulnId != "CVE-C" || cves.Items[1].VulnId != "CVE-A" {
 		t.Fatalf("cves %+v", cves)
+	}
+	for _, c := range []struct {
+		sort  gen.ListVulnerabilitiesParamsSort
+		order []string
+	}{{"vulnId", []string{"CVE-A", "CVE-B", "CVE-C"}}, {"-vulnId", []string{"CVE-C", "CVE-B", "CVE-A"}}} {
+		cl, err = f.h.ListVulnerabilities(ctx, gen.ListVulnerabilitiesRequestObject{Params: gen.ListVulnerabilitiesParams{Sort: &c.sort}})
+		must(t, err)
+		var got []string
+		for _, v := range cl.(gen.ListVulnerabilities200JSONResponse).Items {
+			got = append(got, v.VulnId)
+		}
+		if !slices.Equal(got, c.order) {
+			t.Fatalf("sort %s: %v", c.sort, got)
+		}
 	}
 	cd, err := f.h.GetVulnerability(ctx, gen.GetVulnerabilityRequestObject{VulnId: "CVE-A"})
 	must(t, err)

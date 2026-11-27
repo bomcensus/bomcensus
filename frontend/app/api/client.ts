@@ -72,6 +72,7 @@ export interface Page {
 
 /**
  * Loads every item of a list endpoint by paging through it 1000 items at a time.
+ * Only for short reference lists (choices of a form, a lookup by id). A list a page shows goes through useServerList.
  * Usage: fetchAll((page) => listAssets(page)), or fetchAll((page) => listAssetComponents(id, { ...page, includeRemoved: true })).
  */
 export async function fetchAll<T>(list: (page: Page) => Promise<{ items: T[]; total: number }>): Promise<T[]> {

@@ -5,20 +5,27 @@
 -->
 
 <script setup lang="ts">
-import { getVulnerableImage, listVulnerableImages } from '~/api'
+import { getVulnerableImage, listVulnerableImages, type QueryOf } from '~/api'
 
 // Vulnerabilities of image contents, running or not. Only component-scoped judgments apply to images.
 const props = defineProps<{ selected: string }>()
 const emit = defineEmits<{ select: [digest: string] }>()
 
-const q = ref('')
-const { data: list, pending, error, refresh } = useLoad('vulns:images', () => listVulnerableImages({ limit: 1000 }))
-const items = computed(() => {
-  const needle = q.value.trim().toLowerCase()
-  return (list.value?.items ?? []).filter(
-    (i) => !needle || i.digest.includes(needle) || i.tags.some((t) => t.toLowerCase().includes(needle)),
-  )
-})
+const { items, total, pending, error, refresh, q, filters, sort, page, size } = useServerList(
+  'vulns:images',
+  (p) => listVulnerableImages(p as QueryOf<typeof listVulnerableImages>),
+  { filters: { severity: '', kev: false }, sort: 'rank', pageSize: 50 },
+)
+const severityOptions = (['critical', 'high', 'medium', 'low', 'negligible'] as const).map((s) => ({ value: s, label: severityLabel[s] }))
+// 'rank' is the server's risk order (running first, then KEV, EPSS and CVSS).
+const sortOptions = [
+  { value: 'rank', label: '위험도순' },
+  { value: '-score', label: 'CVSS 높은 순' },
+  { value: '-epss', label: 'EPSS 높은 순' },
+  { value: '-cves', label: 'CVE 많은 순' },
+  { value: '-containers', label: '실행 중 컨테이너 많은 순' },
+  { value: 'tag', label: '태그순' },
+]
 const current = computed(() => props.selected || items.value[0]?.digest || '')
 const { data: detail, error: detailError, refresh: refreshDetail } = useLoad(
   () => `vulns:image:${current.value}`,
@@ -29,13 +36,23 @@ const title = (tags: string[], digest: string) => tags[0] ?? shortHash(digest)
 
 <template>
   <div>
-    <FilterBar :count="items.length" :total="list?.total" unit="개">
+    <FilterBar :count="total" unit="개">
       <SearchInput v-model="q" placeholder="태그, digest" />
+      <SelectFilter v-model="filters.severity" label="심각도" :options="severityOptions" />
+      <label class="inline-flex items-center gap-1.5 text-sm">
+        <input v-model="filters.kev" type="checkbox" class="size-[15px] accent-(--accent)" /> KEV만
+      </label>
+      <label class="inline-flex items-center">
+        <span class="sr-only">정렬</span>
+        <select v-model="sort" class="select max-w-44" :class="sort !== 'rank' ? 'border-accent text-accent' : ''">
+          <option v-for="o in sortOptions" :key="o.value" :value="o.value">정렬: {{ o.label }}</option>
+        </select>
+      </label>
     </FilterBar>
     <div class="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]">
       <Panel flush class="min-w-0 self-start">
         <LoadError v-if="error" :error="error" @retry="refresh" />
-        <LoadingText v-else-if="pending && !list" class="p-3.5" />
+        <LoadingText v-else-if="pending && !items.length" class="p-3.5" />
         <p v-else-if="!items.length" class="px-3.5 py-3 text-sm text-ink-2">취약점이 있는 이미지가 없습니다.</p>
         <ul v-else class="max-h-[70vh] overflow-y-auto">
           <li v-for="i in items" :key="i.digest">
@@ -60,6 +77,7 @@ const title = (tags: string[], digest: string) => tags[0] ?? shortHash(digest)
             </button>
           </li>
         </ul>
+        <TablePager v-if="total > size || page > 0" v-model:page="page" v-model:size="size" :total="total" compact />
       </Panel>
 
       <div class="min-w-0">

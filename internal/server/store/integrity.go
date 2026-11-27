@@ -119,6 +119,10 @@ type IntegrityFilter struct {
 	SHA256 *string
 	// IncludeAllowed also returns findings hidden by an allow rule.
 	IncludeAllowed bool
+	// Sort orders ListIntegrityGroups: "" (most assets first), assets,
+	// path, package, first_seen or last_seen, prefixed with "-" for
+	// descending.
+	Sort string
 }
 
 // IntegritySummary are the numbers of the integrity page.

@@ -46,7 +46,7 @@ func (h *Handlers) ListK8sClusters(ctx context.Context, req gen.ListK8sClustersR
 	f.ScopeID = deref(prm.ScopeId)
 	if f.Sort, err = sortKey(prm.Sort, map[string]string{
 		"name": "name", "version": "version", "connection": "connection", "execEnabled": "exec_enabled",
-		"workloadCount": "workloads", "lastSync": "last_sync",
+		"workloadCount": "workloads", "excludedCount": "excluded", "syncStatus": "sync_status", "lastSync": "last_sync",
 	}); err != nil {
 		return nil, err
 	}
@@ -234,6 +234,24 @@ func (h *Handlers) ListK8sWorkloads(ctx context.Context, req gen.ListK8sWorkload
 			ExcludedBy: str(r.ExcludedBy),
 			Coverages:  covs,
 		})
+	}
+	return out, nil
+}
+
+// ListK8sNamespaces implements gen.StrictServerInterface.
+func (h *Handlers) ListK8sNamespaces(ctx context.Context, req gen.ListK8sNamespacesRequestObject) (gen.ListK8sNamespacesResponseObject, error) {
+	rows, err := h.cfg.Store.ListWorkloadNamespaces(ctx, req.Id)
+	if err != nil {
+		return nil, err
+	}
+	if len(rows) == 0 {
+		if _, err := h.getCluster(ctx, req.Id); err != nil {
+			return nil, err
+		}
+	}
+	out := gen.ListK8sNamespaces200JSONResponse{Items: make([]gen.K8sNamespace, 0, len(rows)), Total: len(rows)}
+	for _, r := range rows {
+		out.Items = append(out.Items, gen.K8sNamespace{Name: r.Name, WorkloadCount: r.Workloads})
 	}
 	return out, nil
 }

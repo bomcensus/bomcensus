@@ -2,7 +2,7 @@
 
 import { type Client, type ClientMeta, formDataBodySerializer, type Options as Options2, type RequestResult, type TDataShape } from './client';
 import { client } from './client.gen';
-import type { ApproveAgentData, ApproveAgentErrors, ApproveAgentResponses, ChangeAgentTlsAnchorData, ChangeAgentTlsAnchorErrors, ChangeAgentTlsAnchorResponses, CheckDetectorTableData, CheckDetectorTableErrors, CheckDetectorTableResponses, CollectAssetData, CollectAssetErrors, CollectAssetResponses, CreateCredentialData, CreateCredentialErrors, CreateCredentialResponses, CreateDetectDirData, CreateDetectDirErrors, CreateDetectDirResponses, CreateFeedServerData, CreateFeedServerErrors, CreateFeedServerResponses, CreateIntegrityAllowRulesData, CreateIntegrityAllowRulesErrors, CreateIntegrityAllowRulesResponses, CreateK8sClusterData, CreateK8sClusterErrors, CreateK8sClusterResponses, CreateListenTargetData, CreateListenTargetErrors, CreateListenTargetResponses, CreateRegisterKeyData, CreateRegisterKeyErrors, CreateRegisterKeyResponses, CreateScanTargetData, CreateScanTargetErrors, CreateScanTargetResponses, CreateTriageRuleData, CreateTriageRuleErrors, CreateTriageRuleResponses, DeleteCredentialData, DeleteCredentialErrors, DeleteCredentialResponses, DeleteDetectDirData, DeleteDetectDirErrors, DeleteDetectDirResponses, DeleteFeedServerData, DeleteFeedServerErrors, DeleteFeedServerResponses, DeleteK8sClusterData, DeleteK8sClusterErrors, DeleteK8sClusterResponses, DeleteListenTargetData, DeleteListenTargetErrors, DeleteListenTargetResponses, DeleteScanTargetData, DeleteScanTargetErrors, DeleteScanTargetResponses, ExportVexData, ExportVexErrors, ExportVexResponses, GetAgentData, GetAgentErrors, GetAgentResponses, GetAssetData, GetAssetErrors, GetAssetIntegrityData, GetAssetIntegrityErrors, GetAssetIntegrityResponses, GetAssetResponses, GetComponentData, GetComponentErrors, GetComponentResponses, GetCurrentUserData, GetCurrentUserErrors, GetCurrentUserResponses, GetDashboardData, GetDashboardErrors, GetDashboardResponses, GetDefaultDetectorTableData, GetDefaultDetectorTableErrors, GetDefaultDetectorTableResponses, GetDetectorTableData, GetDetectorTableErrors, GetDetectorTableResponses, GetDetectorTableRevisionData, GetDetectorTableRevisionErrors, GetDetectorTableRevisionResponses, GetDetectorTableUsageData, GetDetectorTableUsageErrors, GetDetectorTableUsageResponses, GetFeedInstanceData, GetFeedInstanceErrors, GetFeedInstanceResponses, GetImageData, GetImageErrors, GetImageResponses, GetIntegrityPolicyData, GetIntegrityPolicyErrors, GetIntegrityPolicyResponses, GetIntegritySummaryData, GetIntegritySummaryErrors, GetIntegritySummaryResponses, GetK8sClusterData, GetK8sClusterErrors, GetK8sClusterResponses, GetMetaData, GetMetaErrors, GetMetaResponses, GetNoticeData, GetNoticeErrors, GetNoticeResponses, GetNoticeSummaryData, GetNoticeSummaryErrors, GetNoticeSummaryResponses, GetRegisterKeyData, GetRegisterKeyErrors, GetRegisterKeyResponses, GetTlsSettingsData, GetTlsSettingsErrors, GetTlsSettingsResponses, GetUpdateSettingsData, GetUpdateSettingsErrors, GetUpdateSettingsResponses, GetVulnerabilityData, GetVulnerabilityErrors, GetVulnerabilityResponses, GetVulnerabilitySummaryData, GetVulnerabilitySummaryErrors, GetVulnerabilitySummaryResponses, GetVulnerableComponentData, GetVulnerableComponentErrors, GetVulnerableComponentResponses, GetVulnerableImageData, GetVulnerableImageErrors, GetVulnerableImageResponses, GetVulnerableProcessData, GetVulnerableProcessErrors, GetVulnerableProcessResponses, ListAgentsData, ListAgentsErrors, ListAgentsResponses, ListAssetComponentsData, ListAssetComponentsErrors, ListAssetComponentsResponses, ListAssetGroupsData, ListAssetGroupsErrors, ListAssetGroupsResponses, ListAssetInstancesData, ListAssetInstancesErrors, ListAssetInstancesResponses, ListAssetNoticesData, ListAssetNoticesErrors, ListAssetNoticesResponses, ListAssetProcessesData, ListAssetProcessesErrors, ListAssetProcessesResponses, ListAssetsData, ListAssetsErrors, ListAssetsResponses, ListAssetVulnerabilitiesData, ListAssetVulnerabilitiesErrors, ListAssetVulnerabilitiesResponses, ListComponentAssetsData, ListComponentAssetsErrors, ListComponentAssetsResponses, ListComponentsData, ListComponentsErrors, ListComponentsResponses, ListComponentVulnerabilitiesData, ListComponentVulnerabilitiesErrors, ListComponentVulnerabilitiesResponses, ListCredentialsData, ListCredentialsErrors, ListCredentialsResponses, ListDetectDirsData, ListDetectDirsErrors, ListDetectDirsResponses, ListDetectorTableRevisionsData, ListDetectorTableRevisionsErrors, ListDetectorTableRevisionsResponses, ListFeedServersData, ListFeedServersErrors, ListFeedServersResponses, ListImagesData, ListImagesErrors, ListImagesResponses, ListIntegrityAllowRulesData, ListIntegrityAllowRulesErrors, ListIntegrityAllowRulesResponses, ListIntegrityFileNodesData, ListIntegrityFileNodesErrors, ListIntegrityFileNodesResponses, ListIntegrityFilesData, ListIntegrityFilesErrors, ListIntegrityFilesResponses, ListK8sClustersData, ListK8sClustersErrors, ListK8sClustersResponses, ListK8sWorkloadPodsData, ListK8sWorkloadPodsErrors, ListK8sWorkloadPodsResponses, ListK8sWorkloadsData, ListK8sWorkloadsErrors, ListK8sWorkloadsResponses, ListListenPortsData, ListListenPortsErrors, ListListenPortsResponses, ListListenTargetsData, ListListenTargetsErrors, ListListenTargetsResponses, ListNoticesData, ListNoticesErrors, ListNoticesResponses, ListProcessesData, ListProcessesErrors, ListProcessesResponses, ListRegisterKeysData, ListRegisterKeysErrors, ListRegisterKeysResponses, ListReleasesData, ListReleasesErrors, ListReleasesResponses, ListScanTargetsData, ListScanTargetsErrors, ListScanTargetsResponses, ListTriageEventsData, ListTriageEventsErrors, ListTriageEventsResponses, ListTriageRulesData, ListTriageRulesErrors, ListTriageRulesResponses, ListVulnerabilitiesData, ListVulnerabilitiesErrors, ListVulnerabilitiesResponses, ListVulnerableComponentsData, ListVulnerableComponentsErrors, ListVulnerableComponentsResponses, ListVulnerableImagesData, ListVulnerableImagesErrors, ListVulnerableImagesResponses, ListVulnerableProcessesData, ListVulnerableProcessesErrors, ListVulnerableProcessesResponses, LoginData, LoginErrors, LoginResponses, LogoutData, LogoutErrors, LogoutResponses, MarkNoticesReadData, MarkNoticesReadErrors, MarkNoticesReadResponses, MarkNoticesUnreadData, MarkNoticesUnreadErrors, MarkNoticesUnreadResponses, PutIntegrityPolicyData, PutIntegrityPolicyErrors, PutIntegrityPolicyResponses, RematchFeedServerData, RematchFeedServerErrors, RematchFeedServerResponses, ResetDetectorTableData, ResetDetectorTableErrors, ResetDetectorTableResponses, RevokeAgentData, RevokeAgentErrors, RevokeAgentResponses, RevokeIntegrityAllowRuleData, RevokeIntegrityAllowRuleErrors, RevokeIntegrityAllowRuleResponses, RevokeRegisterKeyData, RevokeRegisterKeyErrors, RevokeRegisterKeyResponses, RevokeTriageRuleData, RevokeTriageRuleErrors, RevokeTriageRuleResponses, RotateCredentialSecretData, RotateCredentialSecretErrors, RotateCredentialSecretResponses, RunScanTargetData, RunScanTargetErrors, RunScanTargetResponses, SaveDetectorTableData, SaveDetectorTableErrors, SaveDetectorTableResponses, SetUpdateSettingsData, SetUpdateSettingsErrors, SetUpdateSettingsResponses, SyncK8sClusterData, SyncK8sClusterErrors, SyncK8sClusterResponses, TestFeedServerData, TestFeedServerErrors, TestFeedServerResponses, TrustFeedServerKeyData, TrustFeedServerKeyErrors, TrustFeedServerKeyResponses, UpdateAgentData, UpdateAgentErrors, UpdateAgentResponses, UpdateDetectDirData, UpdateDetectDirErrors, UpdateDetectDirResponses, UpdateFeedServerData, UpdateFeedServerErrors, UpdateFeedServerResponses, UpdateK8sClusterData, UpdateK8sClusterErrors, UpdateK8sClusterResponses, UpdateListenTargetData, UpdateListenTargetErrors, UpdateListenTargetResponses, UpdateScanTargetData, UpdateScanTargetErrors, UpdateScanTargetResponses, UpdateTlsEndpointData, UpdateTlsEndpointErrors, UpdateTlsEndpointResponses, UploadReleaseData, UploadReleaseErrors, UploadReleaseResponses } from './types.gen';
+import type { ApproveAgentData, ApproveAgentErrors, ApproveAgentResponses, ChangeAgentTlsAnchorData, ChangeAgentTlsAnchorErrors, ChangeAgentTlsAnchorResponses, CheckDetectorTableData, CheckDetectorTableErrors, CheckDetectorTableResponses, CollectAssetData, CollectAssetErrors, CollectAssetResponses, CreateCredentialData, CreateCredentialErrors, CreateCredentialResponses, CreateDetectDirData, CreateDetectDirErrors, CreateDetectDirResponses, CreateFeedServerData, CreateFeedServerErrors, CreateFeedServerResponses, CreateIntegrityAllowRulesData, CreateIntegrityAllowRulesErrors, CreateIntegrityAllowRulesResponses, CreateK8sClusterData, CreateK8sClusterErrors, CreateK8sClusterResponses, CreateListenTargetData, CreateListenTargetErrors, CreateListenTargetResponses, CreateRegisterKeyData, CreateRegisterKeyErrors, CreateRegisterKeyResponses, CreateScanTargetData, CreateScanTargetErrors, CreateScanTargetResponses, CreateTriageRuleData, CreateTriageRuleErrors, CreateTriageRuleResponses, DeleteCredentialData, DeleteCredentialErrors, DeleteCredentialResponses, DeleteDetectDirData, DeleteDetectDirErrors, DeleteDetectDirResponses, DeleteFeedServerData, DeleteFeedServerErrors, DeleteFeedServerResponses, DeleteK8sClusterData, DeleteK8sClusterErrors, DeleteK8sClusterResponses, DeleteListenTargetData, DeleteListenTargetErrors, DeleteListenTargetResponses, DeleteScanTargetData, DeleteScanTargetErrors, DeleteScanTargetResponses, ExportVexData, ExportVexErrors, ExportVexResponses, GetAgentData, GetAgentErrors, GetAgentResponses, GetAssetData, GetAssetErrors, GetAssetIntegrityData, GetAssetIntegrityErrors, GetAssetIntegrityResponses, GetAssetProcessData, GetAssetProcessErrors, GetAssetProcessResponses, GetAssetResponses, GetComponentData, GetComponentErrors, GetComponentResponses, GetCurrentUserData, GetCurrentUserErrors, GetCurrentUserResponses, GetDashboardData, GetDashboardErrors, GetDashboardResponses, GetDefaultDetectorTableData, GetDefaultDetectorTableErrors, GetDefaultDetectorTableResponses, GetDetectorTableData, GetDetectorTableErrors, GetDetectorTableResponses, GetDetectorTableRevisionData, GetDetectorTableRevisionErrors, GetDetectorTableRevisionResponses, GetDetectorTableUsageData, GetDetectorTableUsageErrors, GetDetectorTableUsageResponses, GetFeedInstanceData, GetFeedInstanceErrors, GetFeedInstanceResponses, GetImageData, GetImageErrors, GetImageResponses, GetIntegrityPolicyData, GetIntegrityPolicyErrors, GetIntegrityPolicyResponses, GetIntegritySummaryData, GetIntegritySummaryErrors, GetIntegritySummaryResponses, GetK8sClusterData, GetK8sClusterErrors, GetK8sClusterResponses, GetMetaData, GetMetaErrors, GetMetaResponses, GetNoticeData, GetNoticeErrors, GetNoticeResponses, GetNoticeSummaryData, GetNoticeSummaryErrors, GetNoticeSummaryResponses, GetRegisterKeyData, GetRegisterKeyErrors, GetRegisterKeyResponses, GetTlsSettingsData, GetTlsSettingsErrors, GetTlsSettingsResponses, GetUpdateSettingsData, GetUpdateSettingsErrors, GetUpdateSettingsResponses, GetVulnerabilityData, GetVulnerabilityErrors, GetVulnerabilityResponses, GetVulnerabilitySummaryData, GetVulnerabilitySummaryErrors, GetVulnerabilitySummaryResponses, GetVulnerableComponentData, GetVulnerableComponentErrors, GetVulnerableComponentResponses, GetVulnerableImageData, GetVulnerableImageErrors, GetVulnerableImageResponses, GetVulnerableProcessData, GetVulnerableProcessErrors, GetVulnerableProcessResponses, ListAgentsData, ListAgentsErrors, ListAgentsResponses, ListAssetComponentsData, ListAssetComponentsErrors, ListAssetComponentsResponses, ListAssetGroupsData, ListAssetGroupsErrors, ListAssetGroupsResponses, ListAssetInstancesData, ListAssetInstancesErrors, ListAssetInstancesResponses, ListAssetNoticesData, ListAssetNoticesErrors, ListAssetNoticesResponses, ListAssetProcessesData, ListAssetProcessesErrors, ListAssetProcessesResponses, ListAssetsData, ListAssetsErrors, ListAssetsResponses, ListAssetVulnerabilitiesData, ListAssetVulnerabilitiesErrors, ListAssetVulnerabilitiesResponses, ListComponentAssetsData, ListComponentAssetsErrors, ListComponentAssetsResponses, ListComponentsData, ListComponentsErrors, ListComponentsResponses, ListComponentVulnerabilitiesData, ListComponentVulnerabilitiesErrors, ListComponentVulnerabilitiesResponses, ListCredentialsData, ListCredentialsErrors, ListCredentialsResponses, ListDetectDirsData, ListDetectDirsErrors, ListDetectDirsResponses, ListDetectorTableRevisionsData, ListDetectorTableRevisionsErrors, ListDetectorTableRevisionsResponses, ListFeedServersData, ListFeedServersErrors, ListFeedServersResponses, ListImagesData, ListImagesErrors, ListImagesResponses, ListIntegrityAllowRulesData, ListIntegrityAllowRulesErrors, ListIntegrityAllowRulesResponses, ListIntegrityFileNodesData, ListIntegrityFileNodesErrors, ListIntegrityFileNodesResponses, ListIntegrityFilesData, ListIntegrityFilesErrors, ListIntegrityFilesResponses, ListK8sClustersData, ListK8sClustersErrors, ListK8sClustersResponses, ListK8sNamespacesData, ListK8sNamespacesErrors, ListK8sNamespacesResponses, ListK8sWorkloadPodsData, ListK8sWorkloadPodsErrors, ListK8sWorkloadPodsResponses, ListK8sWorkloadsData, ListK8sWorkloadsErrors, ListK8sWorkloadsResponses, ListListenPortsData, ListListenPortsErrors, ListListenPortsResponses, ListListenTargetsData, ListListenTargetsErrors, ListListenTargetsResponses, ListNoticesData, ListNoticesErrors, ListNoticesResponses, ListProcessesData, ListProcessesErrors, ListProcessesResponses, ListRegisterKeysData, ListRegisterKeysErrors, ListRegisterKeysResponses, ListReleasesData, ListReleasesErrors, ListReleasesResponses, ListScanTargetsData, ListScanTargetsErrors, ListScanTargetsResponses, ListTriageEventsData, ListTriageEventsErrors, ListTriageEventsResponses, ListTriageRulesData, ListTriageRulesErrors, ListTriageRulesResponses, ListVulnerabilitiesData, ListVulnerabilitiesErrors, ListVulnerabilitiesResponses, ListVulnerableComponentsData, ListVulnerableComponentsErrors, ListVulnerableComponentsResponses, ListVulnerableImagesData, ListVulnerableImagesErrors, ListVulnerableImagesResponses, ListVulnerableProcessesData, ListVulnerableProcessesErrors, ListVulnerableProcessesResponses, LoginData, LoginErrors, LoginResponses, LogoutData, LogoutErrors, LogoutResponses, MarkNoticesReadData, MarkNoticesReadErrors, MarkNoticesReadResponses, MarkNoticesUnreadData, MarkNoticesUnreadErrors, MarkNoticesUnreadResponses, PutIntegrityPolicyData, PutIntegrityPolicyErrors, PutIntegrityPolicyResponses, RematchFeedServerData, RematchFeedServerErrors, RematchFeedServerResponses, ResetDetectorTableData, ResetDetectorTableErrors, ResetDetectorTableResponses, RevokeAgentData, RevokeAgentErrors, RevokeAgentResponses, RevokeIntegrityAllowRuleData, RevokeIntegrityAllowRuleErrors, RevokeIntegrityAllowRuleResponses, RevokeRegisterKeyData, RevokeRegisterKeyErrors, RevokeRegisterKeyResponses, RevokeTriageRuleData, RevokeTriageRuleErrors, RevokeTriageRuleResponses, RotateCredentialSecretData, RotateCredentialSecretErrors, RotateCredentialSecretResponses, RunScanTargetData, RunScanTargetErrors, RunScanTargetResponses, SaveDetectorTableData, SaveDetectorTableErrors, SaveDetectorTableResponses, SetUpdateSettingsData, SetUpdateSettingsErrors, SetUpdateSettingsResponses, SyncK8sClusterData, SyncK8sClusterErrors, SyncK8sClusterResponses, TestFeedServerData, TestFeedServerErrors, TestFeedServerResponses, TrustFeedServerKeyData, TrustFeedServerKeyErrors, TrustFeedServerKeyResponses, UpdateAgentData, UpdateAgentErrors, UpdateAgentResponses, UpdateDetectDirData, UpdateDetectDirErrors, UpdateDetectDirResponses, UpdateFeedServerData, UpdateFeedServerErrors, UpdateFeedServerResponses, UpdateK8sClusterData, UpdateK8sClusterErrors, UpdateK8sClusterResponses, UpdateListenTargetData, UpdateListenTargetErrors, UpdateListenTargetResponses, UpdateScanTargetData, UpdateScanTargetErrors, UpdateScanTargetResponses, UpdateTlsEndpointData, UpdateTlsEndpointErrors, UpdateTlsEndpointResponses, UploadReleaseData, UploadReleaseErrors, UploadReleaseResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -141,7 +141,7 @@ export const listAssetComponents = <ThrowOnError extends boolean = false>(option
 /**
  * Processes of an asset
  *
- * `q` matches executable path, user, command line and pid.
+ * `q` matches executable path, user, command line and pid. Sort `-risk` puts suspicious processes first, then those that need a restart.
  */
 export const listAssetProcesses = <ThrowOnError extends boolean = false>(options: Options<ListAssetProcessesData, ThrowOnError>): RequestResult<ListAssetProcessesResponses, ListAssetProcessesErrors, ThrowOnError> => (options.client ?? client).get<ListAssetProcessesResponses, ListAssetProcessesErrors, ThrowOnError>({
     security: [{
@@ -150,6 +150,21 @@ export const listAssetProcesses = <ThrowOnError extends boolean = false>(options
             type: 'apiKey'
         }],
     url: '/assets/{id}/processes',
+    ...options
+});
+
+/**
+ * One current process of an asset
+ *
+ * `404` when the asset has no current process with this id.
+ */
+export const getAssetProcess = <ThrowOnError extends boolean = false>(options: Options<GetAssetProcessData, ThrowOnError>): RequestResult<GetAssetProcessResponses, GetAssetProcessErrors, ThrowOnError> => (options.client ?? client).get<GetAssetProcessResponses, GetAssetProcessErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'bomcensus_session',
+            type: 'apiKey'
+        }],
+    url: '/assets/{id}/processes/{processId}',
     ...options
 });
 
@@ -253,7 +268,8 @@ export const listComponentVulnerabilities = <ThrowOnError extends boolean = fals
  * `view=restart`: the executable or a mapped library was replaced on disk
  * (an old version is still in memory). `view=suspicious`: the executable
  * or a mapped library was deleted, or the process runs from a memfd.
- * `q` matches executable path, user and command line.
+ * `q` matches executable path, user, command line, pid and asset name.
+ * Sort `-risk` puts suspicious processes first, then those that need a restart.
  *
  */
 export const listProcesses = <ThrowOnError extends boolean = false>(options?: Options<ListProcessesData, ThrowOnError>): RequestResult<ListProcessesResponses, ListProcessesErrors, ThrowOnError> => (options?.client ?? client).get<ListProcessesResponses, ListProcessesErrors, ThrowOnError>({
@@ -311,6 +327,8 @@ export const getImage = <ThrowOnError extends boolean = false>(options: Options<
 
 /**
  * List Kubernetes clusters
+ *
+ * Sort `syncStatus` puts failed clusters first, then never synced ones.
  */
 export const listK8sClusters = <ThrowOnError extends boolean = false>(options?: Options<ListK8sClustersData, ThrowOnError>): RequestResult<ListK8sClustersResponses, ListK8sClustersErrors, ThrowOnError> => (options?.client ?? client).get<ListK8sClustersResponses, ListK8sClustersErrors, ThrowOnError>({
     security: [{
@@ -400,6 +418,21 @@ export const listK8sWorkloads = <ThrowOnError extends boolean = false>(options: 
 });
 
 /**
+ * Namespaces of a cluster's current workloads
+ *
+ * Every namespace with at least one current workload, by name.
+ */
+export const listK8sNamespaces = <ThrowOnError extends boolean = false>(options: Options<ListK8sNamespacesData, ThrowOnError>): RequestResult<ListK8sNamespacesResponses, ListK8sNamespacesErrors, ThrowOnError> => (options.client ?? client).get<ListK8sNamespacesResponses, ListK8sNamespacesErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'bomcensus_session',
+            type: 'apiKey'
+        }],
+    url: '/k8s/clusters/{id}/namespaces',
+    ...options
+});
+
+/**
  * Pods of a workload
  */
 export const listK8sWorkloadPods = <ThrowOnError extends boolean = false>(options: Options<ListK8sWorkloadPodsData, ThrowOnError>): RequestResult<ListK8sWorkloadPodsResponses, ListK8sWorkloadPodsErrors, ThrowOnError> => (options.client ?? client).get<ListK8sWorkloadPodsResponses, ListK8sWorkloadPodsErrors, ThrowOnError>({
@@ -429,6 +462,9 @@ export const syncK8sCluster = <ThrowOnError extends boolean = false>(options: Op
  * List agents and scanners
  *
  * `q` matches hostname, description, address, id, OS and listen address.
+ * `outdated=true` keeps agents and scanners that are not revoked and either run another
+ * version than the deployed one (update settings `targetVersion`) or are not `up_to_date`.
+ *
  */
 export const listAgents = <ThrowOnError extends boolean = false>(options?: Options<ListAgentsData, ThrowOnError>): RequestResult<ListAgentsResponses, ListAgentsErrors, ThrowOnError> => (options?.client ?? client).get<ListAgentsResponses, ListAgentsErrors, ThrowOnError>({
     security: [{
@@ -1293,6 +1329,8 @@ export const getVulnerabilitySummary = <ThrowOnError extends boolean = false>(op
  *
  * Ordered by exposure, then known exploitation, EPSS and CVSS; items
  * rated only negligible come last. `q` matches the component name, version and the CVE ids.
+ * Another `sort` orders by that field and keeps this order among equal values;
+ * items without the value come last.
  *
  */
 export const listVulnerableComponents = <ThrowOnError extends boolean = false>(options?: Options<ListVulnerableComponentsData, ThrowOnError>): RequestResult<ListVulnerableComponentsResponses, ListVulnerableComponentsErrors, ThrowOnError> => (options?.client ?? client).get<ListVulnerableComponentsResponses, ListVulnerableComponentsErrors, ThrowOnError>({
@@ -1323,6 +1361,8 @@ export const getVulnerableComponent = <ThrowOnError extends boolean = false>(opt
  *
  * Ordered by exposure, then known exploitation, EPSS and CVSS; items
  * rated only negligible come last. `q` matches the id, aliases, summary and component names.
+ * Another `sort` orders by that field and keeps this order among equal values;
+ * items without the value come last.
  *
  */
 export const listVulnerabilities = <ThrowOnError extends boolean = false>(options?: Options<ListVulnerabilitiesData, ThrowOnError>): RequestResult<ListVulnerabilitiesResponses, ListVulnerabilitiesErrors, ThrowOnError> => (options?.client ?? client).get<ListVulnerabilitiesResponses, ListVulnerabilitiesErrors, ThrowOnError>({
@@ -1367,6 +1407,9 @@ export const listAssetVulnerabilities = <ThrowOnError extends boolean = false>(o
  * Executables of processes that load vulnerable components
  *
  * Ordered by listening processes, then CVSS; items rated only negligible come last. `q` matches the executable path.
+ * Another `sort` orders by that field and keeps this order among equal values;
+ * items without the value come last.
+ *
  */
 export const listVulnerableProcesses = <ThrowOnError extends boolean = false>(options?: Options<ListVulnerableProcessesData, ThrowOnError>): RequestResult<ListVulnerableProcessesResponses, ListVulnerableProcessesErrors, ThrowOnError> => (options?.client ?? client).get<ListVulnerableProcessesResponses, ListVulnerableProcessesErrors, ThrowOnError>({
     security: [{
@@ -1397,6 +1440,10 @@ export const getVulnerableProcess = <ThrowOnError extends boolean = false>(optio
  * Every image with known content, running or not. Rules with a
  * component scope apply; asset and group scopes do not, an image
  * belonging to no asset. `q` matches digest and tags.
+ * Ordered by running images, then known exploitation, EPSS and CVSS;
+ * items rated only negligible come last. Another `sort` orders by that
+ * field (`tag` is the first tag, else the digest) and keeps this order
+ * among equal values; items without the value come last.
  *
  */
 export const listVulnerableImages = <ThrowOnError extends boolean = false>(options?: Options<ListVulnerableImagesData, ThrowOnError>): RequestResult<ListVulnerableImagesResponses, ListVulnerableImagesErrors, ThrowOnError> => (options?.client ?? client).get<ListVulnerableImagesResponses, ListVulnerableImagesErrors, ThrowOnError>({
@@ -1502,8 +1549,9 @@ export const listTriageEvents = <ThrowOnError extends boolean = false>(options?:
  * listed, with the counts of those assets. Read notices are left out
  * unless `includeRead` is set; a read notice is unread again when an
  * asset starts matching it after it was read (`newAssets`). Unread
- * notices come first, then the newest. `q` matches the id, title,
+ * notices come first, then the newest (`sort` `rank`). `q` matches the id, title,
  * summary, the CVE and advisory ids and the software names.
+ * Another `sort` orders by that field; notices without a date come last.
  *
  */
 export const listNotices = <ThrowOnError extends boolean = false>(options?: Options<ListNoticesData, ThrowOnError>): RequestResult<ListNoticesResponses, ListNoticesErrors, ThrowOnError> => (options?.client ?? client).get<ListNoticesResponses, ListNoticesErrors, ThrowOnError>({

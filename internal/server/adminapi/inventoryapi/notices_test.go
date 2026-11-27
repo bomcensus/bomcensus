@@ -53,7 +53,7 @@ func TestNoticeHandlers(t *testing.T) {
 	n := l.Items[0]
 	if n.NoticeId != "kisa-100" || n.Assets != 2 || n.NewAssets != 2 || !n.Unread || n.ReadAt != nil ||
 		*n.Url != "https://knvd.example/100" || len(n.Software) != 1 || *n.Software[0].Fixed != "3.0.14" ||
-		n.RelatedCveIds == nil || n.CveIds[0] != "CVE-2026-1" {
+		n.CveIds[0] != "CVE-2026-1" {
 		t.Fatalf("notice %+v", n)
 	}
 	s, err := h.GetNoticeSummary(ctx, gen.GetNoticeSummaryRequestObject{})
@@ -138,6 +138,15 @@ func TestNoticeHandlers(t *testing.T) {
 	}
 	_, err = h.ListNotices(ctx, gen.ListNoticesRequestObject{Params: gen.ListNoticesParams{Source: ptr(strings.Repeat("k", 33))}})
 	wantStatus(t, "long source", err, http.StatusBadRequest)
+	for _, srt := range []gen.ListNoticesParamsSort{"rank", "published", "-published", "title", "-source", "-assets", "lastMatched"} {
+		r, err = h.ListNotices(ctx, gen.ListNoticesRequestObject{Params: gen.ListNoticesParams{IncludeRead: ptr(true), Sort: &srt}})
+		must(t, err)
+		if l := r.(gen.ListNotices200JSONResponse); l.Total != 1 {
+			t.Fatalf("sort %s: %+v", srt, l)
+		}
+	}
+	_, err = h.ListNotices(ctx, gen.ListNoticesRequestObject{Params: gen.ListNoticesParams{Sort: ptr(gen.ListNoticesParamsSort("-rank"))}})
+	wantStatus(t, "unknown notice sort", err, http.StatusBadRequest)
 
 	u2, err := h.MarkNoticesUnread(ctx, gen.MarkNoticesUnreadRequestObject{Body: &gen.NoticeIds{Ids: []string{"kisa-100"}}})
 	must(t, err)

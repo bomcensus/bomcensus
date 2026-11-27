@@ -9,34 +9,38 @@ import { Plus } from '@lucide/vue'
 import type { RegisterKey, RegisterKeyState } from '~/types'
 import type { TableColumn } from '~/types/table'
 import type { Tone } from '~/utils/labels'
-import { createRegisterKey, fetchAll, listAssetGroups, listRegisterKeys, revokeRegisterKey, toApiError } from '~/api'
+import { createRegisterKey, fetchAll, listAssetGroups, listRegisterKeys, revokeRegisterKey, toApiError, type QueryOf } from '~/api'
 
 useHead({ title: 'Register Key · bomcensus' })
 
-const { data: keys, pending, error, refresh } = useLoad('register-keys', () => fetchAll((page) => listRegisterKeys(page)), () => [])
+const { items: keys, total, pending, error, refresh, q, filters, sort, page, size } = useServerList(
+  'register-keys',
+  (p) => listRegisterKeys(p as QueryOf<typeof listRegisterKeys>),
+  { filters: { target: '', state: '' }, sort: 'state', url: true },
+)
 const { data: groups } = useLoad('asset-groups', () => fetchAll((page) => listAssetGroups(page)), () => [])
 
 const stateLabel: Record<RegisterKeyState, string> = { valid: '유효', expired: '만료', revoked: '폐기', exhausted: '소진' }
 const stateTone: Record<RegisterKeyState, Tone> = { valid: 'ok', expired: 'neutral', revoked: 'neutral', exhausted: 'warn' }
-// Valid keys first
-const stateRank: Record<RegisterKeyState, number> = { valid: 0, exhausted: 1, expired: 2, revoked: 3 }
 
 const columns: TableColumn<RegisterKey>[] = [
-  { key: 'name', label: '이름', sortValue: (k) => k.name },
+  { key: 'name', label: '이름', sort: 'name' },
   { key: 'keyId', label: 'key-id', hideBelow: 'md' },
-  { key: 'target', label: '대상', sortValue: (k) => k.target, hideBelow: 'sm' },
-  { key: 'state', label: '상태', sortValue: (k) => stateRank[k.state] },
-  { key: 'expires', label: '만료', sortValue: (k) => k.expiresAt ?? '9999', hideBelow: 'sm' },
+  { key: 'target', label: '대상', sort: 'target', hideBelow: 'sm' },
+  { key: 'state', label: '상태', sort: 'state' },
+  { key: 'expires', label: '만료', sort: 'expiresAt', hideBelow: 'sm' },
   { key: 'cidrs', label: '허용 IP', hideBelow: 'lg' },
-  { key: 'uses', label: '사용', sortValue: (k) => k.usedCount, hideBelow: 'md' },
-  { key: 'approval', label: '승인 방식', sortValue: (k) => k.approval, hideBelow: 'md' },
-  { key: 'relaxed', label: 'TLS 완화 허용', sortValue: (k) => Number(k.allowRelaxedTls), hideBelow: 'md' },
-  { key: 'group', label: '기본 그룹', sortValue: (k) => k.defaultGroup, hideBelow: 'lg' },
+  { key: 'uses', label: '사용', sort: 'usedCount', sortDesc: true, hideBelow: 'md' },
+  { key: 'approval', label: '승인 방식', sort: 'approval', hideBelow: 'md' },
+  { key: 'relaxed', label: 'TLS 완화 허용', hideBelow: 'md' },
+  { key: 'group', label: '기본 그룹', hideBelow: 'lg' },
   { key: 'actions', label: '', align: 'right' },
 ]
 
 const targetLabel = { agent: 'Agent', scanner: 'Scanner' } as const
 const approvalLabel = { auto: '자동', manual: '수동 승인' } as const
+const targetOptions = Object.entries(targetLabel).map(([value, label]) => ({ value, label }))
+const stateOptions = (Object.keys(stateLabel) as RegisterKeyState[]).map((value) => ({ value, label: stateLabel[value] }))
 
 // ── Revoke ─────────────────────────────────────────────
 const revokeTarget = ref<RegisterKey>()
@@ -154,14 +158,23 @@ const installExample = computed(
       </template>
     </PageHeader>
 
+    <FilterBar :count="total" unit="개">
+      <SearchInput v-model="q" placeholder="이름, key-id" />
+      <SelectFilter v-model="filters.target" label="대상" :options="targetOptions" />
+      <SelectFilter v-model="filters.state" label="상태" :options="stateOptions" />
+    </FilterBar>
+
     <Panel flush>
       <LoadError v-if="error" :error="error" @retry="refresh" />
       <DataTable
         v-else
+        v-model:sort="sort"
+        v-model:page="page"
+        v-model:size="size"
         :columns="columns"
         :rows="keys"
+        :total="total"
         :row-key="(k) => k.id"
-        :initial-sort="{ key: 'state', dir: 'asc' }"
         :loading="pending"
       >
         <template #cell-name="{ row }">

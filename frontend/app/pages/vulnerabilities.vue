@@ -14,6 +14,7 @@ import {
   listVulnerabilities,
   listVulnerableComponents,
   toApiError,
+  type QueryOf,
 } from '~/api'
 
 useHead({ title: '취약점 · bomcensus' })
@@ -47,15 +48,46 @@ watch(q, (v) => {
   qTimer = setTimeout(() => (qDebounced.value = v.trim()), 300)
 })
 
-const filters = computed(() => ({
+// Sort of the list; 'rank' is the server's risk order and stays out of the query.
+const cveSort = ref('rank')
+const compSort = ref('rank')
+const sortModel = computed({
+  get: () => (view.value === 'cve' ? cveSort.value : compSort.value),
+  set: (v: string) => (view.value === 'cve' ? (cveSort.value = v) : (compSort.value = v)),
+})
+const cveSortOptions = [
+  { value: 'rank', label: '위험도순' },
+  { value: '-score', label: 'CVSS 높은 순' },
+  { value: '-epss', label: 'EPSS 높은 순' },
+  { value: '-assets', label: '자산 많은 순' },
+  { value: 'vulnId', label: 'ID순' },
+]
+const compSortOptions = [
+  { value: 'rank', label: '위험도순' },
+  { value: '-score', label: 'CVSS 높은 순' },
+  { value: '-epss', label: 'EPSS 높은 순' },
+  { value: '-cves', label: 'CVE 많은 순' },
+  { value: '-assets', label: '자산 많은 순' },
+  { value: 'name', label: '이름순' },
+]
+const sortOptions = computed(() => (view.value === 'cve' ? cveSortOptions : compSortOptions))
+
+// Paging of the list. Any other change starts over from the first page.
+const page = ref(0)
+const size = ref(50)
+
+const conditions = computed(() => ({
   q: qDebounced.value || undefined,
   severity: (severity.value || undefined) as Severity | undefined,
   exposure: (exposure.value || undefined) as Exposure | undefined,
   kev: kevOnly.value ? true : undefined,
   includeDeferred: hideDeferred.value ? undefined : true,
   includeNegligible: hideNegligible.value ? undefined : true,
-  limit: 500,
+  sort: sortModel.value === 'rank' ? undefined : sortModel.value,
 }))
+watch([() => JSON.stringify(conditions.value), view, size], () => (page.value = 0))
+
+const filters = computed(() => ({ ...conditions.value, limit: size.value, offset: page.value * size.value }))
 
 const severityOptions = (['critical', 'high', 'medium', 'low', 'negligible'] as const).map((s) => ({ value: s, label: severityLabel[s] }))
 const exposureOptions = (['listening', 'running', 'installed', 'unknown'] as const).map((e) => ({ value: e, label: exposureLabel[e] }))
@@ -65,11 +97,17 @@ const { data: summary, refresh: refreshSummary } = useLoad('vulns:summary', getV
 const listKey = computed(() => `vulns:${view.value}:${JSON.stringify(filters.value)}`)
 const { data: cveList, pending: cvesPending, error: cvesError, refresh: refreshCves } = useLoad(
   () => `${listKey.value}:cves`,
-  () => (view.value === 'cve' ? listVulnerabilities(filters.value) : Promise.resolve(undefined)),
+  () =>
+    view.value === 'cve'
+      ? listVulnerabilities({ ...filters.value, sort: filters.value.sort as QueryOf<typeof listVulnerabilities>['sort'] })
+      : Promise.resolve(undefined),
 )
 const { data: compList, pending: compsPending, error: compsError, refresh: refreshComps } = useLoad(
   () => `${listKey.value}:components`,
-  () => (view.value === 'component' ? listVulnerableComponents(filters.value) : Promise.resolve(undefined)),
+  () =>
+    view.value === 'component'
+      ? listVulnerableComponents({ ...filters.value, sort: filters.value.sort as QueryOf<typeof listVulnerableComponents>['sort'] })
+      : Promise.resolve(undefined),
 )
 
 // The first item is shown when nothing is selected.
@@ -186,6 +224,12 @@ const tabModel = computed({ get: () => view.value as string, set: (v: string) =>
         <input v-model="hideNegligible" type="checkbox" class="size-[15px] accent-(--accent)" /> Negligible 숨김
         <span v-if="summary?.negligible" class="mono text-xs text-ink-3">{{ summary.negligible }}</span>
       </label>
+      <label class="inline-flex items-center">
+        <span class="sr-only">정렬</span>
+        <select v-model="sortModel" class="select max-w-44" :class="sortModel !== 'rank' ? 'border-accent text-accent' : ''">
+          <option v-for="o in sortOptions" :key="o.value" :value="o.value">정렬: {{ o.label }}</option>
+        </select>
+      </label>
     </FilterBar>
 
     <div class="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]">
@@ -219,9 +263,7 @@ const tabModel = computed({ get: () => view.value as string, set: (v: string) =>
               </button>
             </li>
           </ul>
-          <p v-if="cveList && cveList.total > cveList.items.length" class="px-3.5 py-2 text-xs text-ink-3">
-            {{ cveList.items.length }}개만 보입니다. 검색이나 필터로 좁히세요.
-          </p>
+          <TablePager v-if="cveList && (cveList.total > size || page > 0)" v-model:page="page" v-model:size="size" :total="cveList.total" compact />
         </template>
 
         <template v-else>
@@ -254,9 +296,7 @@ const tabModel = computed({ get: () => view.value as string, set: (v: string) =>
               </button>
             </li>
           </ul>
-          <p v-if="compList && compList.total > compList.items.length" class="px-3.5 py-2 text-xs text-ink-3">
-            {{ compList.items.length }}개만 보입니다. 검색이나 필터로 좁히세요.
-          </p>
+          <TablePager v-if="compList && (compList.total > size || page > 0)" v-model:page="page" v-model:size="size" :total="compList.total" compact />
         </template>
       </Panel>
 

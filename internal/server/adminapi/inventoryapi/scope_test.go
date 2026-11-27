@@ -23,6 +23,11 @@ func TestDataScopes(t *testing.T) {
 	wantStatus(t, "asset of another scope", err, http.StatusNotFound)
 	_, err = h.GetK8sCluster(other, gen.GetK8sClusterRequestObject{Id: f.cluster})
 	wantStatus(t, "cluster of another scope", err, http.StatusNotFound)
+	ap, err := h.ListAssetProcesses(f.ctx, gen.ListAssetProcessesRequestObject{Id: f.web})
+	must(t, err)
+	_, err = h.GetAssetProcess(other, gen.GetAssetProcessRequestObject{Id: f.web,
+		ProcessId: ap.(gen.ListAssetProcesses200JSONResponse).Items[0].Id})
+	wantStatus(t, "process of another scope", err, http.StatusNotFound)
 	r, err := h.ListAssets(other, gen.ListAssetsRequestObject{})
 	must(t, err)
 	if l := r.(gen.ListAssets200JSONResponse); l.Total != 0 {

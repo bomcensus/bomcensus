@@ -95,6 +95,14 @@ type RegisterKeyFilter struct {
 	Q       string // case-insensitive substring of name or ID
 	Target  AgentKind
 	ScopeID string
+	// State is valid, exhausted, expired or revoked (see Usable), judged
+	// at Now.
+	State string
+	Now   time.Time
+	// Sort is one of name, target, state, expiresAt, usedCount, approval,
+	// createdAt, optionally prefixed with "-" for descending. Default
+	// -createdAt. state orders valid, exhausted, expired, revoked.
+	Sort string
 }
 
 // RegisterKeys stores register keys.
@@ -104,7 +112,7 @@ type RegisterKeys interface {
 	// Returns ErrConflict when the ID exists.
 	CreateRegisterKey(ctx context.Context, k RegisterKey) (RegisterKey, error)
 	GetRegisterKey(ctx context.Context, id string) (RegisterKey, error)
-	// ListRegisterKeys returns keys, newest first, and the total count.
+	// ListRegisterKeys returns keys in f.Sort order and the total count.
 	ListRegisterKeys(ctx context.Context, f RegisterKeyFilter, p Page) ([]RegisterKey, int, error)
 	// RevokeRegisterKey sets the revocation time. Revoking twice keeps the
 	// first time.

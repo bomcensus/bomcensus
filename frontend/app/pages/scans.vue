@@ -23,22 +23,48 @@ import {
   runScanTarget,
   toApiError,
   updateScanTarget,
+  type QueryOf,
 } from '~/api'
 
 useHead({ title: 'Agentless 수집 · bomcensus' })
 
 const {
-  data: targets,
+  items: targets,
+  total: targetsTotal,
   pending: targetsPending,
   error: targetsError,
   refresh: refreshTargets,
-} = useLoad('scan-targets', () => fetchAll((page) => listScanTargets(page)), () => [])
+  q: targetQ,
+  filters: targetFilters,
+  sort: targetSort,
+  page: targetPage,
+  size: targetSize,
+} = useServerList('scan-targets', (p) => listScanTargets(p as QueryOf<typeof listScanTargets>), {
+  filters: { scannerId: '', credentialId: '', lastResult: '' },
+  sort: 'name',
+  url: true,
+})
 const {
-  data: credentials,
+  items: credentialRows,
+  total: credentialsTotal,
   pending: credentialsPending,
   error: credentialsError,
-  refresh: refreshCredentials,
-} = useLoad('credentials', () => fetchAll((page) => listCredentials(page)), () => [])
+  refresh: refreshCredentialList,
+  q: credentialQ,
+  filters: credentialFilters,
+  sort: credentialSort,
+  page: credentialPage,
+  size: credentialSize,
+} = useServerList('credentials', (p) => listCredentials(p as QueryOf<typeof listCredentials>), {
+  filters: { kind: '' },
+  sort: 'name',
+  url: 'cred',
+})
+// Every credential, for names in the target list and the choices of the target form
+const { data: credentials, refresh: refreshCredentialChoices } = useLoad('credentials', () => fetchAll((page) => listCredentials(page)), () => [])
+async function refreshCredentials() {
+  await Promise.all([refreshCredentialList(), refreshCredentialChoices()])
+}
 const { data: agents } = useLoad('agents', () => fetchAll((page) => listAgents(page)), () => [])
 const { data: detectDirs, refresh: refreshDetectDirs } = useLoad('detect-dirs', async () => (await listDetectDirs()).items, () => [])
 
@@ -46,8 +72,8 @@ const tab = ref('targets')
 
 const countOf = (loading: boolean, n: number) => (loading ? undefined : n)
 const tabs = computed(() => [
-  { key: 'targets', label: '대상', count: countOf(targetsPending.value, targets.value.length) },
-  { key: 'credentials', label: '자격증명', count: countOf(credentialsPending.value, credentials.value.length) },
+  { key: 'targets', label: '대상', count: countOf(targetsPending.value, targetsTotal.value) },
+  { key: 'credentials', label: '자격증명', count: countOf(credentialsPending.value, credentialsTotal.value) },
 ])
 
 const credentialKindLabel: Record<CredentialKind, string> = {
@@ -88,29 +114,36 @@ function shortFingerprint(fp: string): string {
 }
 
 const targetColumns: TableColumn<ScanTarget>[] = [
-  { key: 'name', label: '이름', sortValue: (t) => t.name },
-  { key: 'protocol', label: '프로토콜', sortValue: (t) => t.protocol, hideBelow: 'sm' },
-  { key: 'address', label: '주소', sortValue: (t) => t.address },
-  { key: 'credential', label: '자격증명', sortValue: credentialName, hideBelow: 'lg' },
-  { key: 'scanner', label: 'Scanner', sortValue: scannerName, hideBelow: 'lg' },
+  { key: 'name', label: '이름', sort: 'name' },
+  { key: 'protocol', label: '프로토콜', hideBelow: 'sm' },
+  { key: 'address', label: '주소', sort: 'address' },
+  { key: 'credential', label: '자격증명', hideBelow: 'lg' },
+  { key: 'scanner', label: 'Scanner', hideBelow: 'lg' },
   { key: 'sudo', label: 'sudo', hideBelow: 'md' },
   { key: 'hostKey', label: 'host key', hideBelow: 'md' },
-  { key: 'schedule', label: '일정', sortValue: (t) => t.intervalMinutes, hideBelow: 'md' },
-  { key: 'detectDirs', label: '감지 대상 디렉터리', sortValue: (t) => t.detectDirIds.length, hideBelow: 'lg' },
-  { key: 'integrity', label: '파일 무결성', sortValue: (t) => (t.integrityEnabled ? 1 : 0), hideBelow: 'lg' },
-  { key: 'lastRun', label: '최근 결과', sortValue: (t) => t.lastRun?.at ?? '' },
+  { key: 'schedule', label: '일정', hideBelow: 'md' },
+  { key: 'detectDirs', label: '감지 대상 디렉터리', hideBelow: 'lg' },
+  { key: 'integrity', label: '파일 무결성', hideBelow: 'lg' },
+  { key: 'lastRun', label: '최근 결과', sort: 'lastRun', sortDesc: true },
   { key: 'actions', label: '', align: 'right' },
 ]
 
 const credentialColumns: TableColumn<Credential>[] = [
-  { key: 'name', label: '이름', sortValue: (c) => c.name },
-  { key: 'kind', label: '종류', sortValue: (c) => c.kind },
-  { key: 'username', label: '사용자', sortValue: (c) => c.username ?? '', hideBelow: 'sm' },
-  { key: 'fingerprint', label: '공개 키 fingerprint', sortValue: (c) => c.publicKeyFingerprint ?? '', hideBelow: 'md' },
-  { key: 'usedBy', label: '사용 대상', align: 'right', sortValue: (c) => c.usedBy },
-  { key: 'createdAt', label: '생성일', sortValue: (c) => c.createdAt, hideBelow: 'sm' },
+  { key: 'name', label: '이름', sort: 'name' },
+  { key: 'kind', label: '종류', sort: 'kind' },
+  { key: 'username', label: '사용자', sort: 'username', hideBelow: 'sm' },
+  { key: 'fingerprint', label: '공개 키 fingerprint', hideBelow: 'md' },
+  { key: 'usedBy', label: '사용 대상', align: 'right', sort: 'usedBy', sortDesc: true },
+  { key: 'createdAt', label: '생성일', sort: 'createdAt', sortDesc: true, hideBelow: 'sm' },
   { key: 'actions', label: '', align: 'right' },
 ]
+
+const scannerFilterOptions = computed(() =>
+  agents.value.filter((a) => a.kind === 'scanner').map((a) => ({ value: a.id, label: a.hostname })),
+)
+const credentialFilterOptions = computed(() => credentials.value.map((c) => ({ value: c.id, label: c.name })))
+const resultOptions = (Object.keys(resultLabel) as ScanResult[]).map((value) => ({ value, label: resultLabel[value] }))
+const credentialKindOptions = (Object.keys(credentialKindLabel) as CredentialKind[]).map((value) => ({ value, label: credentialKindLabel[value] }))
 
 // ── Run ───────────────────────────────────────────────
 
@@ -404,15 +437,23 @@ async function removeCred() {
     <div class="mt-4">
       <template v-if="tab === 'targets'">
         <p v-if="targetActionError" class="note note-danger mb-3" role="alert">{{ targetActionError }}</p>
+        <FilterBar :count="targetsTotal" unit="개">
+          <SearchInput v-model="targetQ" placeholder="이름, 주소" />
+          <SelectFilter v-model="targetFilters.scannerId" label="Scanner" :options="scannerFilterOptions" />
+          <SelectFilter v-model="targetFilters.credentialId" label="자격증명" :options="credentialFilterOptions" />
+          <SelectFilter v-model="targetFilters.lastResult" label="최근 결과" :options="resultOptions" />
+        </FilterBar>
         <Panel flush>
           <LoadError v-if="targetsError" :error="targetsError" @retry="refreshTargets" />
           <DataTable
             v-else
+            v-model:sort="targetSort"
+            v-model:page="targetPage"
+            v-model:size="targetSize"
             :columns="targetColumns"
             :rows="targets"
+            :total="targetsTotal"
             :row-key="(t) => t.id"
-            :page-size="25"
-            :initial-sort="{ key: 'name', dir: 'asc' }"
             :loading="targetsPending"
           >
             <template #cell-name="{ row }">
@@ -472,35 +513,44 @@ async function removeCred() {
         </Panel>
       </template>
 
-      <Panel v-else flush>
-        <LoadError v-if="credentialsError" :error="credentialsError" @retry="refreshCredentials" />
-        <DataTable
-          v-else
-          :columns="credentialColumns"
-          :rows="credentials"
-          :row-key="(c) => c.id"
-          :initial-sort="{ key: 'name', dir: 'asc' }"
-          :loading="credentialsPending"
-        >
-          <template #cell-name="{ row }">
-            <span class="font-medium">{{ row.name }}</span>
-          </template>
-          <template #cell-kind="{ row }">{{ credentialKindLabel[row.kind] }}</template>
-          <template #cell-username="{ row }"><span v-if="row.username" class="mono">{{ row.username }}</span><span v-else class="text-ink-3">—</span></template>
-          <template #cell-fingerprint="{ row }">
-            <span v-if="row.publicKeyFingerprint" class="mono whitespace-nowrap text-xs">{{ row.publicKeyFingerprint }}</span>
-            <span v-else class="text-ink-3">—</span>
-          </template>
-          <template #cell-usedBy="{ row }"><span class="mono whitespace-nowrap">{{ row.usedBy }}</span></template>
-          <template #cell-createdAt="{ row }"><span class="whitespace-nowrap">{{ formatDate(row.createdAt) }}</span></template>
-          <template #cell-actions="{ row }">
-            <span class="inline-flex items-center gap-1.5">
-              <AppButton size="sm" @click="openRotate(row)">비밀 교체</AppButton>
-              <AppButton size="sm" variant="danger" @click="askDeleteCred(row)">삭제</AppButton>
-            </span>
-          </template>
-        </DataTable>
-      </Panel>
+      <template v-else>
+        <FilterBar :count="credentialsTotal" unit="개">
+          <SearchInput v-model="credentialQ" placeholder="이름, 사용자" />
+          <SelectFilter v-model="credentialFilters.kind" label="종류" :options="credentialKindOptions" />
+        </FilterBar>
+        <Panel flush>
+          <LoadError v-if="credentialsError" :error="credentialsError" @retry="refreshCredentials" />
+          <DataTable
+            v-else
+            v-model:sort="credentialSort"
+            v-model:page="credentialPage"
+            v-model:size="credentialSize"
+            :columns="credentialColumns"
+            :rows="credentialRows"
+            :total="credentialsTotal"
+            :row-key="(c) => c.id"
+            :loading="credentialsPending"
+          >
+            <template #cell-name="{ row }">
+              <span class="font-medium">{{ row.name }}</span>
+            </template>
+            <template #cell-kind="{ row }">{{ credentialKindLabel[row.kind] }}</template>
+            <template #cell-username="{ row }"><span v-if="row.username" class="mono">{{ row.username }}</span><span v-else class="text-ink-3">—</span></template>
+            <template #cell-fingerprint="{ row }">
+              <span v-if="row.publicKeyFingerprint" class="mono whitespace-nowrap text-xs">{{ row.publicKeyFingerprint }}</span>
+              <span v-else class="text-ink-3">—</span>
+            </template>
+            <template #cell-usedBy="{ row }"><span class="mono whitespace-nowrap">{{ row.usedBy }}</span></template>
+            <template #cell-createdAt="{ row }"><span class="whitespace-nowrap">{{ formatDate(row.createdAt) }}</span></template>
+            <template #cell-actions="{ row }">
+              <span class="inline-flex items-center gap-1.5">
+                <AppButton size="sm" @click="openRotate(row)">비밀 교체</AppButton>
+                <AppButton size="sm" variant="danger" @click="askDeleteCred(row)">삭제</AppButton>
+              </span>
+            </template>
+          </DataTable>
+        </Panel>
+      </template>
     </div>
 
     <AppModal v-model:open="targetOpen" :title="editingTarget ? '대상 편집' : '대상 추가'">

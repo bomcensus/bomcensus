@@ -7,38 +7,25 @@
 <script setup lang="ts">
 import type { AssetKind, AssetSummary, CollectMethod, Coverage } from '~/types'
 import type { TableColumn } from '~/types/table'
-import { fetchAll, listAssets } from '~/api'
+import { fetchAll, listAssetGroups, listAssets, type QueryOf } from '~/api'
 
 useHead({ title: '자산 · bomcensus' })
 
-const { data: assets, pending, error, refresh } = useLoad('assets', () => fetchAll((page) => listAssets(page)), () => [])
-
-const q = ref('')
-const kind = ref('')
-const group = ref('')
-const method = ref('')
-const coverage = ref('')
-
-const rows = computed(() => {
-  const needle = q.value.trim().toLowerCase()
-  return assets.value.filter((a) => {
-    if (kind.value && a.kind !== kind.value) return false
-    if (group.value && a.group !== group.value) return false
-    if (method.value && a.method !== method.value) return false
-    if (coverage.value === 'limited' ? a.coverage === 'full' : coverage.value && a.coverage !== coverage.value) return false
-    if (!needle) return true
-    return [a.name, assetLocation(a), a.os?.name, a.os?.version, ...a.tags, ...(a.images ?? [])].some((v) => v?.toLowerCase().includes(needle))
-  })
-})
+const { items, total, pending, error, refresh, q, filters, sort, page, size } = useServerList(
+  'assets',
+  (p) => listAssets(p as QueryOf<typeof listAssets>),
+  { filters: { kind: '', group: '', method: '', coverage: '' }, sort: 'name', url: true },
+)
+const { data: groups } = useLoad('asset-groups', () => fetchAll((page) => listAssetGroups(page)), () => [])
 
 const columns: TableColumn<AssetSummary>[] = [
-  { key: 'name', label: '이름', sortValue: (a) => a.name },
-  { key: 'kind', label: '종류', sortValue: (a) => a.kind, hideBelow: 'sm' },
-  { key: 'os', label: 'OS', sortValue: (a) => a.os?.name ?? '', hideBelow: 'md' },
-  { key: 'group', label: '그룹', sortValue: (a) => a.group, hideBelow: 'lg' },
-  { key: 'method', label: '수집 방식', sortValue: (a) => a.method, hideBelow: 'md' },
-  { key: 'coverage', label: '수집 범위', sortValue: (a) => a.coverage },
-  { key: 'lastSeen', label: '최근 수집', align: 'right', sortValue: (a) => a.lastSeen, hideBelow: 'sm' },
+  { key: 'name', label: '이름', sort: 'name' },
+  { key: 'kind', label: '종류', sort: 'kind', hideBelow: 'sm' },
+  { key: 'os', label: 'OS', sort: 'os', hideBelow: 'md' },
+  { key: 'group', label: '그룹', sort: 'group', hideBelow: 'lg' },
+  { key: 'method', label: '수집 방식', sort: 'method', hideBelow: 'md' },
+  { key: 'coverage', label: '수집 범위', sort: 'coverage' },
+  { key: 'lastSeen', label: '최근 수집', align: 'right', sort: 'lastSeen', sortDesc: true, hideBelow: 'sm' },
 ]
 
 const kindOptions = (Object.keys(assetKindLabel) as AssetKind[]).map((value) => ({ value, label: assetKindLabel[value] }))
@@ -47,21 +34,19 @@ const coverageOptions = [
   { value: 'limited', label: '제한됨' },
   ...(Object.keys(coverageLabel) as Coverage[]).map((value) => ({ value, label: coverageLabel[value] })),
 ]
-const groupOptions = computed(() =>
-  [...new Set(assets.value.map((a) => a.group).filter(Boolean))].sort().map((value) => ({ value, label: value })),
-)
+const groupOptions = computed(() => groups.value.map((g) => ({ value: g.name, label: `${g.name} (${g.assetCount})` })))
 </script>
 
 <template>
   <div>
     <PageHeader title="자산" />
 
-    <FilterBar :count="rows.length" :total="assets.length" unit="개">
+    <FilterBar :count="total" unit="개">
       <SearchInput v-model="q" placeholder="이름, 주소, 이미지, OS, 태그" />
-      <SelectFilter v-model="kind" label="종류" :options="kindOptions" />
-      <SelectFilter v-model="group" label="그룹" :options="groupOptions" />
-      <SelectFilter v-model="method" label="수집 방식" :options="methodOptions" />
-      <SelectFilter v-model="coverage" label="수집 범위" :options="coverageOptions" />
+      <SelectFilter v-model="filters.kind" label="종류" :options="kindOptions" />
+      <SelectFilter v-model="filters.group" label="그룹" :options="groupOptions" />
+      <SelectFilter v-model="filters.method" label="수집 방식" :options="methodOptions" />
+      <SelectFilter v-model="filters.coverage" label="수집 범위" :options="coverageOptions" />
     </FilterBar>
 
     <Panel flush>
@@ -69,11 +54,13 @@ const groupOptions = computed(() =>
       <DataTable
         v-else
         :columns="columns"
-        :rows="rows"
+        v-model:sort="sort"
+        v-model:page="page"
+        v-model:size="size"
+        :rows="items"
+        :total="total"
         :row-key="(a) => a.id"
         :row-to="(a) => `/assets/${a.id}`"
-        :page-size="25"
-        :initial-sort="{ key: 'name', dir: 'asc' }"
         :loading="pending"
       >
         <template #cell-name="{ row }">

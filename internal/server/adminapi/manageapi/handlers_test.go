@@ -268,6 +268,37 @@ func TestRegisterKeys(t *testing.T) {
 	if l := decode[gen.RegisterKeyList](t, e.do("GET", "/register-keys?state=valid", nil)); l.Total != 0 {
 		t.Fatalf("valid filter %+v", l)
 	}
+
+	// States are judged at the handler clock; state sorts valid first.
+	for _, k := range []gen.RegisterKeyCreate{
+		{Name: "open", Target: gen.AgentKindAgent, Approval: gen.RegisterKeyApprovalAuto},
+		{Name: "short", Target: gen.AgentKindAgent, Approval: gen.RegisterKeyApprovalAuto, ExpiresAt: ptr(time.Now().Add(time.Hour))},
+		{Name: "once", Target: gen.AgentKindAgent, Approval: gen.RegisterKeyApprovalAuto, MaxUses: ptr(1)},
+	} {
+		c := decode[gen.RegisterKeyCreated](t, e.do("POST", "/register-keys", k))
+		if k.Name == "once" {
+			if _, err := e.db.ConsumeRegisterKey(ctx, c.Key.Id, time.Now()); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	e.h.now = func() time.Time { return time.Now().Add(2 * time.Hour) }
+	if l := decode[gen.RegisterKeyList](t, e.do("GET", "/register-keys?state=expired", nil)); l.Total != 1 || l.Items[0].Name != "short" {
+		t.Fatalf("expired filter %+v", l)
+	}
+	names := func(l gen.RegisterKeyList) string {
+		var out []string
+		for _, k := range l.Items {
+			out = append(out, k.Name)
+		}
+		return strings.Join(out, ",")
+	}
+	if l := decode[gen.RegisterKeyList](t, e.do("GET", "/register-keys?sort=state", nil)); names(l) != "open,once,short,rollout" {
+		t.Fatalf("state sort %s", names(l))
+	}
+	if l := decode[gen.RegisterKeyList](t, e.do("GET", "/register-keys?sort=-name&limit=2&offset=1", nil)); l.Total != 4 || names(l) != "rollout,open" {
+		t.Fatalf("name sort page %d %s", l.Total, names(l))
+	}
 }
 
 func TestAgents(t *testing.T) {
@@ -334,6 +365,19 @@ func TestAgents(t *testing.T) {
 		a.UpdateMessage == nil || *a.UpdateMessage != msg {
 		t.Fatalf("agent update %s %v", a.UpdateState, a.UpdateMessage)
 	}
+	if l := decode[gen.AgentList](t, e.do("GET", "/agents?updateState=rolled_back", nil)); l.Total != 1 || l.Items[0].Id != online.ID {
+		t.Fatalf("updateState filter %+v", l)
+	}
+	if l := decode[gen.AgentList](t, e.do("GET", "/agents?updateState=up_to_date&sort=-updateState", nil)); l.Total != 2 {
+		t.Fatalf("up_to_date filter %+v", l)
+	}
+	// Without a deployed version only the update state makes an agent outdated.
+	if l := decode[gen.AgentList](t, e.do("GET", "/agents?outdated=true", nil)); l.Total != 1 || l.Items[0].Id != online.ID {
+		t.Fatalf("outdated filter %+v", l)
+	}
+	if l := decode[gen.AgentList](t, e.do("GET", "/agents?sort=connMode", nil)); l.Total != 3 {
+		t.Fatalf("connMode sort %+v", l)
+	}
 
 	// The administrator-set description, searchable and clearable.
 	a := decode[gen.Agent](t, e.do("PATCH", "/agents/"+online.ID, gen.AgentUpdate{Description: ptr("  rack 3 scanner ")}))
@@ -390,6 +434,35 @@ func TestListenTargets(t *testing.T) {
 	if l := decode[gen.ListenTargetList](t, e.do("GET", "/listen-targets?state=connecting&q=AGENT1", nil)); l.Total != 1 {
 		t.Fatalf("list %+v", l)
 	}
+
+	// The bound agent's hostname is returned, searched and sorted by.
+	ctx := scope.System(context.Background())
+	bound := decode[gen.ListenTarget](t, e.do("POST", "/listen-targets", gen.ListenTargetCreate{Address: "bound.example:7443"}))
+	a, err := e.db.CreateAgent(ctx, store.Agent{Kind: store.AgentKindAgent, Hostname: "zeta-host", IdentityKey: []byte("listen-key"), State: store.AgentApproved})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := e.db.BindListenTargetAgent(ctx, bound.Id, a.ID); err != nil {
+		t.Fatal(err)
+	}
+	l := decode[gen.ListenTargetList](t, e.do("GET", "/listen-targets?q=zeta&sort=-agent", nil))
+	if l.Total != 1 || deref(l.Items[0].AgentHostname) != "zeta-host" || deref(l.Items[0].AgentId) != a.ID {
+		t.Fatalf("bound list %+v", l)
+	}
+	if l := decode[gen.ListenTargetList](t, e.do("GET", "/listen-targets?sort=-agent", nil)); l.Total != 2 || l.Items[0].Id != bound.Id {
+		t.Fatalf("sorted by agent %+v", l)
+	}
+	if l := decode[gen.ListenTargetList](t, e.do("GET", "/listen-targets?sort=agent&limit=1&offset=1", nil)); l.Total != 2 || len(l.Items) != 1 || l.Items[0].Id != bound.Id {
+		t.Fatalf("agent sort page %+v", l)
+	}
+	// The agent shows the target it is bound to.
+	if ag := decode[gen.Agent](t, e.do("GET", "/agents/"+a.ID, nil)); deref(ag.ListenTargetId) != bound.Id {
+		t.Fatalf("agent listen target %v", ag.ListenTargetId)
+	}
+	if l := decode[gen.AgentList](t, e.do("GET", "/agents?q=zeta", nil)); l.Total != 1 || deref(l.Items[0].ListenTargetId) != bound.Id {
+		t.Fatalf("agent list listen target %+v", l)
+	}
+	e.want(e.do("DELETE", "/listen-targets/"+bound.Id, nil), 204, "")
 
 	// Update: address and register key; null removes the key.
 	agentKey := decode[gen.RegisterKeyCreated](t, e.do("POST", "/register-keys", gen.RegisterKeyCreate{Name: "a", Target: gen.AgentKindAgent, Approval: gen.RegisterKeyApprovalAuto}))
@@ -607,6 +680,26 @@ func TestScanTargets(t *testing.T) {
 	if l := decode[gen.ScanTargetList](t, e.do("GET", "/scan-targets?lastResult=ok", nil)); l.Total != 0 {
 		t.Fatalf("lastResult filter %+v", l)
 	}
+	sys := scope.System(context.Background())
+	if err := e.db.RecordScanRun(sys, st.Id, store.ScanRun{At: time.Now(), Result: store.ScanOK}); err != nil {
+		t.Fatal(err)
+	}
+	if l := decode[gen.ScanTargetList](t, e.do("GET", "/scan-targets?lastResult=ok", nil)); l.Total != 1 || l.Items[0].Id != st.Id {
+		t.Fatalf("lastResult filter after a run %+v", l)
+	}
+	// Targets never run sort lowest.
+	if l := decode[gen.ScanTargetList](t, e.do("GET", "/scan-targets?sort=lastRun", nil)); l.Total != 2 || l.Items[0].Name != "app1" {
+		t.Fatalf("lastRun sort %+v", l)
+	}
+	if l := decode[gen.ScanTargetList](t, e.do("GET", "/scan-targets?sort=-lastRun", nil)); l.Items[0].Id != st.Id {
+		t.Fatalf("-lastRun sort %+v", l)
+	}
+	if l := decode[gen.ScanTargetList](t, e.do("GET", "/scan-targets?credentialId="+cred.Id, nil)); l.Total != 2 {
+		t.Fatalf("credential filter %+v", l)
+	}
+	if l := decode[gen.ScanTargetList](t, e.do("GET", "/scan-targets?credentialId="+kube.Id, nil)); l.Total != 0 {
+		t.Fatalf("other credential filter %+v", l)
+	}
 
 	// Update: absent fields kept, scanner set and cleared, host key reset.
 	sc, err := e.db.CreateAgent(scope.System(context.Background()), store.Agent{Kind: store.AgentKindScanner, IdentityKey: []byte("scanner-key"), State: store.AgentApproved})
@@ -618,6 +711,9 @@ func TestScanTargets(t *testing.T) {
 	if up.Name != "db1-primary" || up.Port != 2222 || up.IntervalMinutes != 0 || up.Sudo || deref(up.ScannerId) != sc.ID ||
 		up.Address != "10.0.0.1" || !up.HostKeyPinned || up.CredentialId != cred.Id {
 		t.Fatalf("updated %+v", up)
+	}
+	if l := decode[gen.ScanTargetList](t, e.do("GET", "/scan-targets?scannerId="+sc.ID, nil)); l.Total != 1 || l.Items[0].Id != st.Id {
+		t.Fatalf("scanner filter %+v", l)
 	}
 	up = decode[gen.ScanTarget](t, e.do("PATCH", "/scan-targets/"+st.Id, map[string]any{"scannerId": nil, "resetHostKey": true}))
 	if up.ScannerId != nil || up.HostKeyPinned || up.HostKeyFingerprint != nil || up.Name != "db1-primary" {

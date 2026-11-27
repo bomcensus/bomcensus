@@ -142,9 +142,19 @@ type AgentFilter struct {
 	TLSMode     TLSVerifyMode
 	// Q matches a case-insensitive substring of hostname, description,
 	// address, ID, OS or listen address.
-	Q string
-	// Sort is one of hostname, version, address, last_seen, enrolled_at,
-	// optionally prefixed with "-" for descending. Default hostname.
+	Q             string
+	UpdateState   UpdateState // up_to_date also matches agents that never reported one
+	RegisterKeyID string
+	Version       string
+	// Outdated keeps agents that are not revoked and either run another
+	// version than TargetVersion (when set) or are not up to date.
+	Outdated      bool
+	TargetVersion string
+	// Sort is one of hostname, status, version, connect_mode, tls_mode,
+	// privilege, update_state, address, last_seen, enrolled_at, optionally
+	// prefixed with "-" for descending. Default hostname. update_state
+	// orders up_to_date, pending, updating, rolled_back. Ties sort by
+	// hostname.
 	Sort string
 }
 

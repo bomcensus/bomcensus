@@ -197,12 +197,14 @@ func (d *DB) ListClusters(ctx context.Context, f store.ClusterFilter, p store.Pa
 	const op = "list clusters"
 	order, err := ivOrder(op, f.Sort, "name", map[string]string{
 		"name":         "c.name",
-		"version":      "c.version",
+		"version":      `version_sort_key('semver', c.version) COLLATE "C"`,
 		"connection":   "c.connection",
 		"exec_enabled": "c.exec_enabled",
 		"workloads":    "c.workloads",
 		"excluded":     "c.excluded",
-		"last_sync":    "c.last_sync",
+		// Failed, then never synced, then synced.
+		"sync_status": "CASE c.sync_status WHEN 'failed' THEN 0 WHEN 'never' THEN 1 ELSE 2 END",
+		"last_sync":   "c.last_sync",
 	}, "c.name, c.id")
 	if err != nil {
 		return nil, 0, err
@@ -617,6 +619,34 @@ func (d *DB) ListWorkloads(ctx context.Context, clusterID string, f store.Worklo
 		return nil
 	})
 	return out, total, err
+}
+
+// ListWorkloadNamespaces implements store.InventoryQuery.
+func (d *DB) ListWorkloadNamespaces(ctx context.Context, clusterID string) ([]store.WorkloadNamespace, error) {
+	const op = "list workload namespaces"
+	q, sc, err := scoped(ctx, op, clusterID)
+	if err != nil {
+		return nil, err
+	}
+	if !ivValidID(clusterID) {
+		return nil, nil
+	}
+	rows, err := d.q.Query(ctx, `
+		SELECT namespace, count(*) FROM k8s_workloads
+		WHERE cluster_id = $1 AND gone_at IS NULL AND `+sc.cluster("cluster_id")+`
+		GROUP BY namespace ORDER BY namespace`, q.args...)
+	if err != nil {
+		return nil, ivErr(op, err)
+	}
+	out, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (store.WorkloadNamespace, error) {
+		var n store.WorkloadNamespace
+		err := r.Scan(&n.Name, &n.Workloads)
+		return n, err
+	})
+	if err != nil {
+		return nil, ivErr(op, err)
+	}
+	return out, nil
 }
 
 // GetWorkload implements store.InventoryQuery.

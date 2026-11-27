@@ -202,8 +202,9 @@ type InventoryQuery interface {
 	// Sorts by asset (default), container, method, in_use or first_seen.
 	ListComponentAssets(ctx context.Context, componentID string, f ComponentAssetFilter, p Page) ([]ComponentAssetRow, int, error)
 
-	// ListProcesses sorts by asset (default), pid, exe, user, state or
-	// started_at.
+	// ListProcesses sorts by asset (default), pid, exe, user, state,
+	// started_at or risk (suspicious above needing a restart above the
+	// rest).
 	ListProcesses(ctx context.Context, f ProcessFilter, p Page) ([]ProcessRow, int, error)
 	// ListListenPorts sorts by port (default), address, proto, exe, user or
 	// asset.
@@ -220,6 +221,9 @@ type InventoryQuery interface {
 	// ListWorkloads sorts by namespace (default), kind, name, replicas or
 	// pods.
 	ListWorkloads(ctx context.Context, clusterID string, f WorkloadFilter, p Page) ([]K8sWorkloadRow, int, error)
+	// ListWorkloadNamespaces returns the namespaces of the cluster's current
+	// workloads with their counts, by name.
+	ListWorkloadNamespaces(ctx context.Context, clusterID string) ([]WorkloadNamespace, error)
 	// ListWorkloadPods sorts like ListAssetInstances.
 	ListWorkloadPods(ctx context.Context, workloadID string, f PodFilter, p Page) ([]K8sPod, int, error)
 	// GetWorkload returns a workload, also a gone one.

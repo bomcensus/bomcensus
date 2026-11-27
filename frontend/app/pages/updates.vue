@@ -8,52 +8,92 @@
 import { Upload } from '@lucide/vue'
 import type { Agent, Release } from '~/types'
 import type { TableColumn } from '~/types/table'
-import { fetchAll, getUpdateSettings, listAgents, listReleases, setUpdateSettings, toApiError, uploadRelease } from '~/api'
+import { fetchAll, getUpdateSettings, listAgents, listReleases, setUpdateSettings, toApiError, uploadRelease, type QueryOf } from '~/api'
 
 useHead({ title: '업데이트 · bomcensus' })
 
 const {
-  data: releases,
+  items: releases,
+  total: releasesTotal,
   pending: releasesPending,
   error: releasesError,
-  refresh: refreshReleases,
-} = useLoad('releases', () => fetchAll((page) => listReleases(page)), () => [])
+  refresh: refreshReleaseList,
+  q: releaseQ,
+  filters: releaseFilters,
+  sort: releaseSort,
+  page: releasePage,
+  size: releaseSize,
+} = useServerList('releases', (p) => listReleases(p as QueryOf<typeof listReleases>), {
+  filters: { source: '', verified: false },
+  sort: '-version',
+  url: true,
+})
+// Verified releases are the choices of the rollout version
+const { data: verifiedReleases, refresh: refreshVerified } = useLoad(
+  'releases:verified',
+  () => fetchAll((page) => listReleases({ ...page, verified: true })),
+  () => [],
+)
+async function refreshReleases() {
+  await Promise.all([refreshReleaseList(), refreshVerified()])
+}
 const { data: settings, error: settingsError, refresh: refreshSettings } = useLoad('update-settings', () => getUpdateSettings())
-const {
-  data: agents,
-  pending: agentsPending,
-  error: agentsError,
-  refresh: refreshAgents,
-} = useLoad('agents', () => fetchAll((page) => listAgents(page)), () => [])
-
 const targetVersion = computed(() => settings.value?.targetVersion ?? null)
+
+// Rollout numbers over agents that are not revoked, from list totals
+const { data: rollout, error: rolloutError } = useLoad(
+  () => `updates:rollout:${targetVersion.value ?? ''}`,
+  async () => {
+    const count = (q: QueryOf<typeof listAgents>) => listAgents({ ...q, kind: 'agent', limit: 1 }).then((r) => r.total)
+    const v = targetVersion.value
+    const [all, revoked, on, onRevoked] = await Promise.all([
+      count({}),
+      count({ status: 'revoked' }),
+      v ? count({ version: v }) : 0,
+      v ? count({ version: v, status: 'revoked' }) : 0,
+    ])
+    return { live: all - revoked, onTarget: on - onRevoked }
+  },
+)
+
+// Agents and scanners that are not revoked and not on the deployed version or not up to date
+const {
+  items: outdated,
+  total: outdatedTotal,
+  pending: outdatedPending,
+  error: outdatedError,
+  refresh: refreshOutdated,
+  sort: outdatedSort,
+  page: outdatedPage,
+  size: outdatedSize,
+} = useServerList('outdated', (p) => listAgents({ ...p, outdated: true } as QueryOf<typeof listAgents>), {
+  sort: 'hostname',
+  url: 'outdated',
+  deps: () => targetVersion.value,
+})
 
 const sourceLabel = { online: '온라인', upload: '업로드' } as const
 
 const releaseColumns: TableColumn<Release>[] = [
-  { key: 'version', label: '버전', sortValue: (r) => r.version },
-  { key: 'publishedAt', label: '게시일', sortValue: (r) => r.publishedAt },
-  { key: 'source', label: '출처', sortValue: (r) => r.source, hideBelow: 'sm' },
+  { key: 'version', label: '버전', sort: 'version', sortDesc: true },
+  { key: 'publishedAt', label: '게시일', sort: 'publishedAt', sortDesc: true },
+  { key: 'source', label: '출처', hideBelow: 'sm' },
   { key: 'platforms', label: '플랫폼', hideBelow: 'md' },
-  { key: 'verified', label: '서명 검증', sortValue: (r) => Number(r.verified) },
+  { key: 'verified', label: '서명 검증' },
 ]
+const sourceOptions = Object.entries(sourceLabel).map(([value, label]) => ({ value, label }))
 const outdatedColumns: TableColumn<Agent>[] = [
-  { key: 'hostname', label: '호스트명', sortValue: (a) => a.hostname },
-  { key: 'version', label: '버전', sortValue: (a) => a.version },
-  { key: 'updateState', label: '업데이트 상태', sortValue: (a) => a.updateState },
-  { key: 'lastSeen', label: '최근 접속', align: 'right', sortValue: (a) => a.lastSeen, hideBelow: 'sm' },
+  { key: 'hostname', label: '호스트명', sort: 'hostname' },
+  { key: 'version', label: '버전', sort: 'version' },
+  { key: 'updateState', label: '업데이트 상태', sort: 'updateState', sortDesc: true },
+  { key: 'lastSeen', label: '최근 접속', align: 'right', sort: 'lastSeen', sortDesc: true, hideBelow: 'sm' },
 ]
 
 // ── Rollout status ────────────────────────────────────────
-const liveAgents = computed(() => agents.value.filter((a) => a.kind === 'agent' && a.status !== 'revoked'))
-const onTarget = computed(() => liveAgents.value.filter((a) => a.version === targetVersion.value).length)
-const percent = computed(() => (liveAgents.value.length > 0 ? Math.round((onTarget.value / liveAgents.value.length) * 100) : 0))
-
-const outdated = computed(() =>
-  agents.value.filter(
-    (a) => a.status !== 'revoked' && ((targetVersion.value !== null && a.version !== targetVersion.value) || a.updateState !== 'up_to_date'),
-  ),
-)
+const percent = computed(() => {
+  const r = rollout.value
+  return r && r.live > 0 ? Math.round((r.onTarget / r.live) * 100) : 0
+})
 
 // ── Release upload ────────────────────────────────────
 const uploadOpen = ref(false)
@@ -90,15 +130,24 @@ async function submitUpload() {
 const changeOpen = ref(false)
 const change = reactive({ version: '', interval: 60, error: '' })
 const changeBusy = ref(false)
-const verifiedReleases = computed(() => releases.value.filter((r) => r.verified))
 
-function openChange() {
+// Versions of the agents that are not revoked, loaded when the dialog opens, for the downgrade warning
+const changeAgents = ref<Agent[]>([])
+
+async function openChange() {
   Object.assign(change, {
     version: settings.value?.targetVersion ?? '',
     interval: settings.value?.checkIntervalMinutes ?? 60,
     error: '',
   })
+  changeAgents.value = []
   changeOpen.value = true
+  try {
+    const all = await fetchAll((page) => listAgents({ ...page, kind: 'agent' }))
+    changeAgents.value = all.filter((a) => a.status !== 'revoked')
+  } catch {
+    // The warning is left out when the agents cannot be loaded
+  }
 }
 
 // Compare numerically per dot-separated part. Lexical comparison gives 1.10 < 1.9, which is wrong
@@ -112,7 +161,7 @@ function cmpVersion(a: string, b: string): number {
   return 0
 }
 const downgradeCount = computed(
-  () => liveAgents.value.filter((a) => change.version && cmpVersion(a.version, change.version) > 0).length,
+  () => changeAgents.value.filter((a) => change.version && cmpVersion(a.version, change.version) > 0).length,
 )
 
 async function saveChange() {
@@ -153,9 +202,9 @@ async function saveChange() {
         </div>
         <div class="min-w-0">
           <div class="text-xs text-ink-3">적용된 Agent</div>
-          <template v-if="!agentsPending && !agentsError">
-            <div class="mono whitespace-nowrap text-lg">{{ onTarget }} / {{ liveAgents.length }}</div>
-            <div class="mt-1.5 h-1.5 overflow-hidden rounded-sm bg-surface-2" role="img" :aria-label="`${onTarget} / ${liveAgents.length}`">
+          <template v-if="rollout && !rolloutError">
+            <div class="mono whitespace-nowrap text-lg">{{ rollout.onTarget }} / {{ rollout.live }}</div>
+            <div class="mt-1.5 h-1.5 overflow-hidden rounded-sm bg-surface-2" role="img" :aria-label="`${rollout.onTarget} / ${rollout.live}`">
               <div class="h-full bg-accent" :style="{ width: `${percent}%` }" />
             </div>
           </template>
@@ -173,13 +222,25 @@ async function saveChange() {
         <template #actions>
           <AppButton size="sm" :icon="Upload" @click="openUpload">릴리스 업로드</AppButton>
         </template>
+        <div class="border-b border-line px-3 pt-3">
+          <FilterBar :count="releasesTotal" unit="개">
+            <SearchInput v-model="releaseQ" placeholder="버전, 릴리스 노트" />
+            <SelectFilter v-model="releaseFilters.source" label="출처" :options="sourceOptions" />
+            <label class="inline-flex items-center gap-1.5 text-sm">
+              <input v-model="releaseFilters.verified" type="checkbox" class="accent-(--accent)" /> 검증된 것만
+            </label>
+          </FilterBar>
+        </div>
         <LoadError v-if="releasesError" :error="releasesError" @retry="refreshReleases" />
         <DataTable
           v-else
+          v-model:sort="releaseSort"
+          v-model:page="releasePage"
+          v-model:size="releaseSize"
           :columns="releaseColumns"
           :rows="releases"
+          :total="releasesTotal"
           :row-key="(r) => r.version"
-          :initial-sort="{ key: 'publishedAt', dir: 'desc' }"
           :loading="releasesPending"
         >
           <template #cell-version="{ row }">
@@ -201,14 +262,18 @@ async function saveChange() {
 
     <div class="mt-4">
       <Panel title="미적용 에이전트" flush>
-        <LoadError v-if="agentsError" :error="agentsError" @retry="refreshAgents" />
+        <LoadError v-if="outdatedError" :error="outdatedError" @retry="refreshOutdated" />
         <DataTable
           v-else
+          v-model:sort="outdatedSort"
+          v-model:page="outdatedPage"
+          v-model:size="outdatedSize"
           :columns="outdatedColumns"
           :rows="outdated"
+          :total="outdatedTotal"
           :row-key="(a) => a.id"
           :row-to="(a) => `/agents/${a.id}`"
-          :loading="agentsPending"
+          :loading="outdatedPending"
         >
           <template #cell-hostname="{ row }">
             <NuxtLink :to="`/agents/${row.id}`" class="font-medium hover:underline">{{ row.hostname }}</NuxtLink>

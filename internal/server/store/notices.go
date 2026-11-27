@@ -34,12 +34,10 @@ type Notice struct {
 	Published *time.Time
 	// Summary is a short English summary, possibly empty.
 	Summary string
-	// CVEIDs are printed in the notice; RelatedCVEIDs are linked by the
-	// feed (same software, published close to the notice).
-	CVEIDs        []string
-	RelatedCVEIDs []string
-	AdvisoryIDs   []string
-	Software      []NoticeSoftware
+	// CVEIDs are printed in the notice.
+	CVEIDs      []string
+	AdvisoryIDs []string
+	Software    []NoticeSoftware
 	// Modified is when the feed last changed the notice or its
 	// classification; nil when not known.
 	Modified *time.Time
@@ -58,6 +56,9 @@ type NoticeFilter struct {
 	Q string
 	// IncludeRead keeps notices that are read.
 	IncludeRead bool
+	// Sort is "" (unread first, then the newest), published, title,
+	// source, assets or last_matched, prefixed with "-" for descending.
+	Sort string
 }
 
 // NoticeRow is a notice with what matches it in the scope.

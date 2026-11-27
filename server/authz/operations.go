@@ -50,6 +50,8 @@ const (
 	OpGetAsset = "GetAsset"
 	// OpGetAssetIntegrity is GET /assets/{id}/integrity.
 	OpGetAssetIntegrity = "GetAssetIntegrity"
+	// OpGetAssetProcess is GET /assets/{id}/processes/{processId}.
+	OpGetAssetProcess = "GetAssetProcess"
 	// OpGetComponent is GET /components/{id}.
 	OpGetComponent = "GetComponent"
 	// OpGetCurrentUser is GET /auth/me.
@@ -136,6 +138,8 @@ const (
 	OpListIntegrityFiles = "ListIntegrityFiles"
 	// OpListK8sClusters is GET /k8s/clusters.
 	OpListK8sClusters = "ListK8sClusters"
+	// OpListK8sNamespaces is GET /k8s/clusters/{id}/namespaces.
+	OpListK8sNamespaces = "ListK8sNamespaces"
 	// OpListK8sWorkloadPods is GET /k8s/workloads/{id}/pods.
 	OpListK8sWorkloadPods = "ListK8sWorkloadPods"
 	// OpListK8sWorkloads is GET /k8s/clusters/{id}/workloads.
@@ -250,6 +254,7 @@ var operations = []string{
 	OpGetAgent,
 	OpGetAsset,
 	OpGetAssetIntegrity,
+	OpGetAssetProcess,
 	OpGetComponent,
 	OpGetCurrentUser,
 	OpGetDashboard,
@@ -293,6 +298,7 @@ var operations = []string{
 	OpListIntegrityFileNodes,
 	OpListIntegrityFiles,
 	OpListK8sClusters,
+	OpListK8sNamespaces,
 	OpListK8sWorkloadPods,
 	OpListK8sWorkloads,
 	OpListListenPorts,

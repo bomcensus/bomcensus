@@ -246,6 +246,13 @@ func integrityFilterArgs(f store.IntegrityFilter) []any {
 func (d *DB) ListIntegrityGroups(ctx context.Context, f store.IntegrityFilter, p store.Page) ([]store.IntegrityGroup, int, error) {
 	const op = "list integrity groups"
 	p = p.Normalize()
+	// Columns of the select list below.
+	order, err := ivOrder(op, f.Sort, "-assets", map[string]string{
+		"assets": "10", "path": "1", "package": "5", "first_seen": "12", "last_seen": "13",
+	}, "path, status, actual_sha256")
+	if err != nil {
+		return nil, 0, err
+	}
 	q, sc, err := scoped(ctx, op, append(integrityFilterArgs(f), p.Limit, p.Offset)...)
 	if err != nil {
 		return nil, 0, err
@@ -260,8 +267,7 @@ func (d *DB) ListIntegrityGroups(ctx context.Context, f store.IntegrityFilter, p
 			count(DISTINCT asset_id) FILTER (WHERE allowed_by IS NOT NULL),
 			min(first_seen), max(last_seen), count(*) OVER ()
 		FROM v WHERE $6 OR allowed_by IS NULL
-		GROUP BY path, status, actual_sha256
-		ORDER BY 10 DESC, path, status, actual_sha256
+		GROUP BY path, status, actual_sha256`+order+`
 		LIMIT $7 OFFSET $8`, q.args...)
 	if err != nil {
 		return nil, 0, mgErr("list integrity groups", err)

@@ -5,9 +5,10 @@
 -->
 
 <script setup lang="ts">
-import type { ComponentAssetRow, ComponentVulnerability } from '~/types'
+import type { ComponentAssetRow, ComponentVulnerability, DetectMethod } from '~/types'
 import type { TableColumn } from '~/types/table'
-import { fetchAll, getComponent, listComponentAssets, listComponentVulnerabilities } from '~/api'
+import type { TriState } from '~/composables/useServerList'
+import { getComponent, listComponentAssets, listComponentVulnerabilities, type QueryOf } from '~/api'
 
 const route = useRoute()
 // When only the id changes on the same page, NuxtPage recreates it, so the value at setup time is enough
@@ -15,11 +16,21 @@ const id = String(route.params.id)
 
 const { data: component, error, refresh } = useLoad(`component:${id}`, () => getComponent(id))
 const {
-  data: installed,
+  items: installed,
+  total: installedTotal,
   pending: installedPending,
   error: installedError,
   refresh: refreshInstalled,
-} = useLoad(`component:${id}:assets`, () => fetchAll((page) => listComponentAssets(id, page)), () => [])
+  q: installedQuery,
+  filters: installedFilters,
+  sort: installedSort,
+  page: installedPage,
+  size: installedSize,
+} = useServerList(`component:${id}:assets`, (p) => listComponentAssets(id, p as QueryOf<typeof listComponentAssets>), {
+  filters: { method: '', inUse: '' as TriState },
+  sort: 'asset',
+})
+const methodOptions = (Object.keys(detectMethodLabel) as DetectMethod[]).map((value) => ({ value, label: detectMethodLabel[value] }))
 
 const {
   data: vulns,
@@ -48,11 +59,11 @@ const matchNote = computed(() => {
 })
 
 const assetColumns: TableColumn<ComponentAssetRow>[] = [
-  { key: 'asset', label: '자산', sortValue: (r) => r.asset.name },
+  { key: 'asset', label: '자산', sort: 'asset' },
   { key: 'locations', label: '위치', hideBelow: 'md' },
-  { key: 'method', label: '탐지 방법', sortValue: (r) => r.method, hideBelow: 'sm' },
-  { key: 'inUse', label: '실행 중', sortValue: (r) => (r.inUse ? 0 : 1) },
-  { key: 'firstSeen', label: '최초 발견', align: 'right', sortValue: (r) => r.firstSeen, hideBelow: 'sm' },
+  { key: 'method', label: '탐지 방법', sort: 'method', hideBelow: 'sm' },
+  { key: 'inUse', label: '실행 중', sort: 'inUse', sortDesc: true },
+  { key: 'firstSeen', label: '최초 발견', align: 'right', sort: 'firstSeen', sortDesc: true, hideBelow: 'sm' },
   { key: 'raw', label: '출력', align: 'right' },
 ]
 
@@ -156,14 +167,24 @@ function showRaw(row: ComponentAssetRow) {
 
       <div class="mt-4">
         <Panel title="설치 자산" flush>
+          <div class="px-3.5 pt-3">
+            <FilterBar :count="installedTotal" unit="곳">
+              <SearchInput v-model="installedQuery" placeholder="자산, 컨테이너, 경로" />
+              <SelectFilter v-model="installedFilters.method" label="탐지 방법" :options="methodOptions" />
+              <SelectFilter v-model="installedFilters.inUse" label="실행" :options="triStateOptions('실행 중', '실행 안 함')" />
+            </FilterBar>
+          </div>
           <LoadError v-if="installedError" :error="installedError" @retry="refreshInstalled" />
           <DataTable
             v-else
+            v-model:sort="installedSort"
+            v-model:page="installedPage"
+            v-model:size="installedSize"
             :columns="assetColumns"
             :rows="installed"
+            :total="installedTotal"
             :row-key="(r) => `${r.assetId}/${r.container ?? ''}`"
             :row-to="(r) => `/assets/${r.assetId}`"
-            :page-size="25"
             :loading="installedPending"
           >
             <template #cell-asset="{ row }">

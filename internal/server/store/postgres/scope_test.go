@@ -303,6 +303,9 @@ func scReads() []scRead {
 		{name: "ListWorkloads", wantOwn: true, call: ctxDB(func(ctx context.Context, db *DB, f F) (any, error) {
 			return two(db.ListWorkloads(ctx, f.ClusterID, store.WorkloadFilter{IncludeGone: true}, scPage()))
 		})},
+		{name: "ListWorkloadNamespaces", wantOwn: true, call: ctxDB(func(ctx context.Context, db *DB, f F) (any, error) {
+			return db.ListWorkloadNamespaces(ctx, f.ClusterID)
+		})},
 		{name: "ListWorkloadPods", wantOwn: true, call: ctxDB(func(ctx context.Context, db *DB, f F) (any, error) {
 			return two(db.ListWorkloadPods(ctx, f.WorkloadID, store.PodFilter{IncludeGone: true}, scPage()))
 		})},
@@ -379,7 +382,7 @@ func scReads() []scRead {
 			return db.GetListenTarget(ctx, f.ListenID)
 		})},
 		{name: "ListListenTargets", wantOwn: true, call: ctxDB(func(ctx context.Context, db *DB, f F) (any, error) {
-			return db.ListListenTargets(ctx)
+			return two(db.ListListenTargets(ctx, store.ListenTargetFilter{}, scPage()))
 		})},
 		{name: "ListCredentials", wantOwn: true, call: ctxDB(func(ctx context.Context, db *DB, f F) (any, error) {
 			return db.ListCredentials(ctx)

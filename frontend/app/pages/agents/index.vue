@@ -18,56 +18,79 @@ import {
   listRegisterKeys,
   toApiError,
   updateListenTarget,
+  type QueryOf,
 } from '~/api'
 
 useHead({ title: '에이전트 · bomcensus' })
 
-const { data: agents, pending, error, refresh } = useLoad('agents', () => fetchAll((page) => listAgents(page)), () => [])
+const route = useRoute()
+const tabKeys = ['agent', 'scanner', 'listen']
+// Read before the lists are set up, so that a tab from the URL does not reset their page.
+const tab = ref(typeof route.query.tab === 'string' && tabKeys.includes(route.query.tab) ? route.query.tab : 'agent')
+const agentKind = computed(() => (tab.value === 'scanner' ? 'scanner' : 'agent'))
+
+const { items: rows, total, pending, error, refresh, q, filters, sort, page, size } = useServerList(
+  'agents',
+  (p) =>
+    tab.value === 'listen'
+      ? Promise.resolve({ items: [] as Agent[], total: 0 })
+      : listAgents({ ...(p as QueryOf<typeof listAgents>), kind: agentKind.value }),
+  { filters: { status: '', connMode: '', tlsMode: '' }, sort: 'hostname', url: true, deps: () => tab.value },
+)
 const {
-  data: targets,
+  items: targets,
+  total: targetsTotal,
   pending: targetsPending,
   error: targetsError,
-  refresh: refreshTargets,
-} = useLoad('listen-targets', () => fetchAll((page) => listListenTargets(page)), () => [])
+  refresh: refreshTargetList,
+  q: targetQ,
+  filters: targetFilters,
+  sort: targetSort,
+  page: targetPage,
+  size: targetSize,
+} = useServerList(
+  'listen-targets',
+  (p) =>
+    tab.value === 'listen'
+      ? listListenTargets(p as QueryOf<typeof listListenTargets>)
+      : Promise.resolve({ items: [] as ListenTarget[], total: 0 }),
+  { filters: { state: '' }, sort: 'address', url: 'listen', deps: () => tab.value },
+)
 const { data: registerKeys } = useLoad('register-keys', () => fetchAll((page) => listRegisterKeys(page)), () => [])
 
-const tab = ref('agent')
-const q = ref('')
-const status = ref('')
-const conn = ref('')
-const tls = ref('')
+// Tab counts and the pending approval count of the current tab, without filters
+const { data: counts, refresh: refreshCounts } = useLoad(
+  () => `agents:counts:${agentKind.value}`,
+  async () => {
+    const [agents, scanners, listen, approval] = await Promise.all([
+      listAgents({ kind: 'agent', limit: 1 }),
+      listAgents({ kind: 'scanner', limit: 1 }),
+      listListenTargets({ limit: 1 }),
+      listAgents({ kind: agentKind.value, status: 'pending_approval', limit: 1 }),
+    ])
+    return { agent: agents.total, scanner: scanners.total, listen: listen.total, pendingApproval: approval.total }
+  },
+)
 
-// Counts are left out until the list has loaded
-const countOf = (loading: boolean, n: number) => (loading ? undefined : n)
 const tabs = computed(() => [
-  { key: 'agent', label: '에이전트', count: countOf(pending.value, agents.value.filter((a) => a.kind === 'agent').length) },
-  { key: 'scanner', label: 'Scanner', count: countOf(pending.value, agents.value.filter((a) => a.kind === 'scanner').length) },
-  { key: 'listen', label: 'listen 대상', count: countOf(targetsPending.value, targets.value.length) },
+  { key: 'agent', label: '에이전트', count: counts.value?.agent },
+  { key: 'scanner', label: 'Scanner', count: counts.value?.scanner },
+  { key: 'listen', label: 'listen 대상', count: counts.value?.listen },
 ])
 
-const ofTab = computed(() => agents.value.filter((a) => a.kind === tab.value))
-const pendingApproval = computed(() => ofTab.value.filter((a) => a.status === 'pending_approval'))
-
-const rows = computed(() => {
-  const needle = q.value.trim().toLowerCase()
-  return ofTab.value.filter((a) => {
-    if (status.value && a.status !== status.value) return false
-    if (conn.value && a.connMode !== conn.value) return false
-    if (tls.value && a.tlsMode !== tls.value) return false
-    if (!needle) return true
-    return [a.hostname, a.description, a.address, a.id, a.os, a.listenAddress].some((v) => v?.toLowerCase().includes(needle))
-  })
-})
+async function refreshTargets() {
+  await Promise.all([refreshTargetList(), refreshCounts()])
+}
 
 const columns: TableColumn<Agent>[] = [
-  { key: 'hostname', label: '호스트명', sortValue: (a) => a.hostname },
-  { key: 'status', label: '상태', sortValue: (a) => a.status },
-  { key: 'version', label: '버전', sortValue: (a) => a.version, hideBelow: 'sm' },
-  { key: 'conn', label: '연결', sortValue: (a) => a.connMode, hideBelow: 'md' },
-  { key: 'tls', label: 'TLS 모드', sortValue: (a) => a.tlsMode, hideBelow: 'md' },
-  { key: 'privilege', label: '권한', sortValue: (a) => a.privilege, hideBelow: 'lg' },
-  { key: 'address', label: '주소', sortValue: (a) => a.address, hideBelow: 'lg' },
-  { key: 'lastSeen', label: '최근 접속', align: 'right', sortValue: (a) => a.lastSeen, hideBelow: 'sm' },
+  { key: 'hostname', label: '호스트명', sort: 'hostname' },
+  { key: 'status', label: '상태', sort: 'status' },
+  { key: 'version', label: '버전', sort: 'version', hideBelow: 'sm' },
+  { key: 'conn', label: '연결', sort: 'connMode', hideBelow: 'md' },
+  { key: 'tls', label: 'TLS 모드', sort: 'tlsMode', hideBelow: 'md' },
+  { key: 'privilege', label: '권한', sort: 'privilege', hideBelow: 'lg' },
+  { key: 'address', label: '주소', sort: 'address', hideBelow: 'lg' },
+  { key: 'lastSeen', label: '최근 접속', align: 'right', sort: 'lastSeen', sortDesc: true, hideBelow: 'sm' },
 ]
 
 const statusOptions = (Object.keys(agentStatusLabel) as AgentStatus[]).map((value) => ({ value, label: agentStatusLabel[value] }))
@@ -88,16 +111,16 @@ const targetStateTone: Record<ListenTargetState, Tone> = {
   disconnected: 'warn',
   failed: 'danger',
 }
+const targetStateOptions = (Object.keys(targetStateLabel) as ListenTargetState[]).map((value) => ({ value, label: targetStateLabel[value] }))
 
-const agentById = computed(() => new Map(agents.value.map((a) => [a.id, a])))
 const keyById = computed(() => new Map(registerKeys.value.map((k) => [k.id, k])))
 
 const targetColumns: TableColumn<ListenTarget>[] = [
-  { key: 'address', label: '주소', sortValue: (t) => t.address },
-  { key: 'agent', label: 'Agent', sortValue: (t) => (t.agentId ? agentById.value.get(t.agentId)?.hostname ?? t.agentId : undefined) },
-  { key: 'state', label: '상태', sortValue: (t) => t.state },
+  { key: 'address', label: '주소', sort: 'address' },
+  { key: 'agent', label: 'Agent', sort: 'agent' },
+  { key: 'state', label: '상태', sort: 'state' },
   { key: 'lastError', label: '최근 오류', hideBelow: 'md' },
-  { key: 'lastConnectedAt', label: '최근 접속', align: 'right', sortValue: (t) => t.lastConnectedAt, hideBelow: 'sm' },
+  { key: 'lastConnectedAt', label: '최근 접속', align: 'right', sort: 'lastConnectedAt', sortDesc: true, hideBelow: 'sm' },
   { key: 'actions', label: '', align: 'right' },
 ]
 
@@ -200,14 +223,22 @@ async function removeTarget() {
     <AppTabs v-model="tab" :tabs="tabs" query-key="tab" class="mb-3" />
 
     <template v-if="tab === 'listen'">
+      <FilterBar :count="targetsTotal" unit="개">
+        <SearchInput v-model="targetQ" placeholder="주소, Agent 호스트명" />
+        <SelectFilter v-model="targetFilters.state" label="상태" :options="targetStateOptions" />
+      </FilterBar>
+
       <Panel flush>
         <LoadError v-if="targetsError" :error="targetsError" @retry="refreshTargets" />
         <DataTable
           v-else
+          v-model:sort="targetSort"
+          v-model:page="targetPage"
+          v-model:size="targetSize"
           :columns="targetColumns"
           :rows="targets"
+          :total="targetsTotal"
           :row-key="(t) => t.id"
-          :initial-sort="{ key: 'address', dir: 'asc' }"
           :loading="targetsPending"
         >
           <template #cell-address="{ row }">
@@ -218,7 +249,7 @@ async function removeTarget() {
           </template>
           <template #cell-agent="{ row }">
             <template v-if="row.agentId">
-              <NuxtLink :to="`/agents/${row.agentId}`" class="link">{{ agentById.get(row.agentId)?.hostname ?? row.agentId }}</NuxtLink>
+              <NuxtLink :to="`/agents/${row.agentId}`" class="link">{{ row.agentHostname ?? row.agentId }}</NuxtLink>
             </template>
             <span v-else class="text-ink-3">—</span>
           </template>
@@ -245,30 +276,33 @@ async function removeTarget() {
 
     <template v-else>
       <button
-        v-if="pendingApproval.length"
+        v-if="counts?.pendingApproval && filters.status !== 'pending_approval'"
         type="button"
         class="mb-3 inline-flex h-7 items-center gap-1.5 whitespace-nowrap rounded-md border border-line-strong bg-surface px-2 text-xs font-medium hover:bg-surface-2"
-        @click="status = 'pending_approval'"
+        @click="filters.status = 'pending_approval'"
       >
-        승인 대기 <span class="mono">{{ pendingApproval.length }}</span>
+        승인 대기 <span class="mono">{{ counts.pendingApproval }}</span>
       </button>
 
-      <FilterBar :count="rows.length" :total="ofTab.length" unit="개">
+      <FilterBar :count="total" unit="개">
         <SearchInput v-model="q" placeholder="호스트명, 설명, 주소, ID" />
-        <SelectFilter v-model="status" label="상태" :options="statusOptions" />
-        <SelectFilter v-model="conn" label="연결 모드" :options="connOptions" />
-        <SelectFilter v-model="tls" label="TLS 모드" :options="tlsOptions" />
+        <SelectFilter v-model="filters.status" label="상태" :options="statusOptions" />
+        <SelectFilter v-model="filters.connMode" label="연결 모드" :options="connOptions" />
+        <SelectFilter v-model="filters.tlsMode" label="TLS 모드" :options="tlsOptions" />
       </FilterBar>
 
       <Panel flush>
         <LoadError v-if="error" :error="error" @retry="refresh" />
         <DataTable
           v-else
+          v-model:sort="sort"
+          v-model:page="page"
+          v-model:size="size"
           :columns="columns"
           :rows="rows"
+          :total="total"
           :row-key="(a) => a.id"
           :row-to="(a) => `/agents/${a.id}`"
-          :initial-sort="{ key: 'hostname', dir: 'asc' }"
           :loading="pending"
         >
           <template #cell-hostname="{ row }">

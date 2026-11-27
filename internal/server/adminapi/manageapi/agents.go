@@ -38,16 +38,26 @@ func (h *Handlers) agentView(ctx context.Context) (agentView, error) {
 	if v.bundleVersion, err = h.st.TrustBundleVersion(ctx); err != nil {
 		return v, err
 	}
-	targets, err := h.st.ListListenTargets(ctx)
+	return v, nil
+}
+
+// loadListenTargets records the listen targets bound to agents.
+func (v agentView) loadListenTargets(ctx context.Context, st store.Store, agents ...store.Agent) error {
+	if len(agents) == 0 {
+		return nil
+	}
+	ids := make([]string, 0, len(agents))
+	for _, a := range agents {
+		ids = append(ids, a.ID)
+	}
+	targets, _, err := st.ListListenTargets(ctx, store.ListenTargetFilter{AgentIDs: ids}, store.Page{Limit: len(ids)})
 	if err != nil {
-		return v, err
+		return err
 	}
 	for _, t := range targets {
-		if t.AgentID != "" {
-			v.listenTargets[t.AgentID] = t.ID
-		}
+		v.listenTargets[t.AgentID] = t.ID
 	}
-	return v, nil
+	return nil
 }
 
 func (v agentView) agent(a store.Agent) gen.Agent {
@@ -93,11 +103,16 @@ func (v agentView) agent(a store.Agent) gen.Agent {
 
 // agentStoreSorts are the sort fields ListAgents handles itself.
 var agentStoreSorts = map[string]string{
-	"hostname":   "hostname",
-	"version":    "version",
-	"address":    "address",
-	"lastSeen":   "last_seen",
-	"enrolledAt": "enrolled_at",
+	"hostname":    "hostname",
+	"status":      "status",
+	"version":     "version",
+	"connMode":    "connect_mode",
+	"tlsMode":     "tls_mode",
+	"privilege":   "privilege",
+	"updateState": "update_state",
+	"address":     "address",
+	"lastSeen":    "last_seen",
+	"enrolledAt":  "enrolled_at",
 }
 
 // ListAgents implements listAgents.
@@ -107,66 +122,40 @@ func (h *Handlers) ListAgents(ctx context.Context, req gen.ListAgentsRequestObje
 	if err != nil {
 		return nil, err
 	}
-	f := store.AgentFilter{
-		Kind:        store.AgentKind(deref(p.Kind)),
-		Status:      store.AgentStatus(deref(p.Status)),
-		OnlineAfter: v.onlineAfter,
-		ConnectMode: store.ConnectMode(deref(p.ConnMode)),
-		TLSMode:     store.TLSVerifyMode(deref(p.TlsMode)),
-		Q:           deref(p.Q),
-	}
-	page := pageOf(p.Limit, p.Offset)
 	field, desc := parseSort(p.Sort, "hostname")
-	storeSort, sortable := agentStoreSorts[field]
-
-	var agents []store.Agent
-	var total int
-	if sortable && p.UpdateState == nil && p.RegisterKeyId == nil && p.Version == nil {
-		if desc {
-			storeSort = "-" + storeSort
-		}
-		f.Sort = storeSort
-		if agents, total, err = h.st.ListAgents(ctx, f, page); err != nil {
-			return nil, err
-		}
-	} else {
-		// Filters and sorts the store does not offer are applied here.
-		all, err := collectAll(func(pg store.Page) ([]store.Agent, int, error) { return h.st.ListAgents(ctx, f, pg) })
+	storeSort, ok := agentStoreSorts[field]
+	if !ok {
+		return nil, apierr.Invalid("unknown sort %q", field)
+	}
+	if desc {
+		storeSort = "-" + storeSort
+	}
+	f := store.AgentFilter{
+		Kind:          store.AgentKind(deref(p.Kind)),
+		Status:        store.AgentStatus(deref(p.Status)),
+		OnlineAfter:   v.onlineAfter,
+		ConnectMode:   store.ConnectMode(deref(p.ConnMode)),
+		TLSMode:       store.TLSVerifyMode(deref(p.TlsMode)),
+		Q:             deref(p.Q),
+		UpdateState:   store.UpdateState(deref(p.UpdateState)),
+		RegisterKeyID: deref(p.RegisterKeyId),
+		Version:       deref(p.Version),
+		Outdated:      deref(p.Outdated),
+		Sort:          storeSort,
+	}
+	if f.Outdated {
+		set, err := h.st.GetUpdateSettings(ctx)
 		if err != nil {
 			return nil, err
 		}
-		kept := all[:0]
-		for _, a := range all {
-			if (p.UpdateState == nil || string(cmp.Or(a.UpdateState, store.UpdateUpToDate)) == string(*p.UpdateState)) &&
-				(p.RegisterKeyId == nil || a.RegisterKeyID == *p.RegisterKeyId) &&
-				(p.Version == nil || a.Version == *p.Version) {
-				kept = append(kept, a)
-			}
-		}
-		sortBy(kept, desc, func(x, y store.Agent) int {
-			var c int
-			switch field {
-			case "status":
-				c = cmp.Compare(x.Status(v.onlineAfter), y.Status(v.onlineAfter))
-			case "connMode":
-				c = cmp.Compare(x.ConnectMode, y.ConnectMode)
-			case "tlsMode":
-				c = cmp.Compare(x.TLSMode, y.TLSMode)
-			case "privilege":
-				c = cmp.Compare(x.Privilege, y.Privilege)
-			case "version":
-				c = cmp.Compare(x.Version, y.Version)
-			case "address":
-				c = cmp.Compare(x.Address, y.Address)
-			case "lastSeen":
-				c = cmpTime(x.LastSeen, y.LastSeen)
-			case "enrolledAt":
-				c = x.EnrolledAt.Compare(y.EnrolledAt)
-			}
-			return cmp.Or(c, cmpFold(x.Hostname, y.Hostname))
-		})
-		total = len(kept)
-		agents = paginate(kept, page)
+		f.TargetVersion = set.TargetVersion
+	}
+	agents, total, err := h.st.ListAgents(ctx, f, pageOf(p.Limit, p.Offset))
+	if err != nil {
+		return nil, err
+	}
+	if err := v.loadListenTargets(ctx, h.st, agents...); err != nil {
+		return nil, err
 	}
 	out := gen.ListAgents200JSONResponse{Items: make([]gen.Agent, 0, len(agents)), Total: total}
 	for _, a := range agents {
@@ -182,6 +171,9 @@ func (h *Handlers) getAgentDTO(ctx context.Context, id string) (gen.Agent, error
 	}
 	v, err := h.agentView(ctx)
 	if err != nil {
+		return gen.Agent{}, err
+	}
+	if err := v.loadListenTargets(ctx, h.st, a); err != nil {
 		return gen.Agent{}, err
 	}
 	return v.agent(a), nil
@@ -326,12 +318,13 @@ func listenState(s store.ListenTargetState) gen.ListenTargetState {
 	return gen.ListenTargetState(s)
 }
 
-func listenTargetDTO(t store.ListenTarget) gen.ListenTarget {
+func listenTargetDTO(t store.ListenTarget, agentHostname string) gen.ListenTarget {
 	return gen.ListenTarget{
 		Id:              t.ID,
 		Address:         t.Address,
 		RegisterKeyId:   optString(t.RegisterKeyID),
 		AgentId:         optString(t.AgentID),
+		AgentHostname:   optString(agentHostname),
 		State:           listenState(t.State),
 		LastError:       optString(t.LastError),
 		LastConnectedAt: t.LastConnectedAt,
@@ -343,43 +336,23 @@ func listenTargetDTO(t store.ListenTarget) gen.ListenTarget {
 // ListListenTargets implements listListenTargets.
 func (h *Handlers) ListListenTargets(ctx context.Context, req gen.ListListenTargetsRequestObject) (gen.ListListenTargetsResponseObject, error) {
 	p := req.Params
-	all, err := h.st.ListListenTargets(ctx)
+	f := store.ListenTargetFilter{Q: deref(p.Q)}
+	if p.Sort != nil {
+		f.Sort = string(*p.Sort)
+	}
+	if p.State != nil {
+		f.State = store.ListenTargetState(*p.State)
+		if *p.State == gen.ListenTargetStateConnecting {
+			f.State = store.ListenNew
+		}
+	}
+	targets, total, err := h.st.ListListenTargets(ctx, f, pageOf(p.Limit, p.Offset))
 	if err != nil {
 		return nil, err
 	}
-	hostnames := map[string]string{}
-	if deref(p.Q) != "" {
-		for _, t := range all {
-			if t.AgentID == "" {
-				continue
-			}
-			if a, err := h.st.GetAgent(ctx, t.AgentID); err == nil {
-				hostnames[t.AgentID] = a.Hostname
-			}
-		}
-	}
-	kept := make([]store.ListenTarget, 0, len(all))
-	for _, t := range all {
-		if (p.State == nil || listenState(t.State) == *p.State) && matches(p.Q, t.Address, hostnames[t.AgentID]) {
-			kept = append(kept, t)
-		}
-	}
-	field, desc := parseSort(p.Sort, "address")
-	sortBy(kept, desc, func(x, y store.ListenTarget) int {
-		var c int
-		switch field {
-		case "state":
-			c = cmp.Compare(listenState(x.State), listenState(y.State))
-		case "createdAt":
-			c = x.CreatedAt.Compare(y.CreatedAt)
-		case "lastConnectedAt":
-			c = cmpTime(x.LastConnectedAt, y.LastConnectedAt)
-		}
-		return cmp.Or(c, cmp.Compare(x.Address, y.Address))
-	})
-	out := gen.ListListenTargets200JSONResponse{Items: []gen.ListenTarget{}, Total: len(kept)}
-	for _, t := range paginate(kept, pageOf(p.Limit, p.Offset)) {
-		out.Items = append(out.Items, listenTargetDTO(t))
+	out := gen.ListListenTargets200JSONResponse{Items: make([]gen.ListenTarget, 0, len(targets)), Total: total}
+	for _, t := range targets {
+		out.Items = append(out.Items, listenTargetDTO(t, t.AgentHostname))
 	}
 	return out, nil
 }
@@ -432,7 +405,7 @@ func (h *Handlers) CreateListenTarget(ctx context.Context, req gen.CreateListenT
 		return nil, err
 	}
 	h.log.Info("listen target added", "address", created.Address, "by", h.who(ctx))
-	return gen.CreateListenTarget201JSONResponse(listenTargetDTO(created)), nil
+	return gen.CreateListenTarget201JSONResponse(listenTargetDTO(created, "")), nil
 }
 
 // checkListenKey checks that id is a register key for agents.
@@ -485,7 +458,13 @@ func (h *Handlers) UpdateListenTarget(ctx context.Context, req gen.UpdateListenT
 		return nil, err
 	}
 	h.log.Info("listen target updated", "listen_target_id", updated.ID, "address", updated.Address, "by", h.who(ctx))
-	return gen.UpdateListenTarget200JSONResponse(listenTargetDTO(updated)), nil
+	var hostname string
+	if updated.AgentID != "" {
+		if a, err := h.st.GetAgent(ctx, updated.AgentID); err == nil {
+			hostname = a.Hostname
+		}
+	}
+	return gen.UpdateListenTarget200JSONResponse(listenTargetDTO(updated, hostname)), nil
 }
 
 // DeleteListenTarget implements deleteListenTarget.

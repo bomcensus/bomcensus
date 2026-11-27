@@ -231,7 +231,7 @@ func (h *Handlers) ListAssetProcesses(ctx context.Context, req gen.ListAssetProc
 		f.Container = ptr(*prm.Container)
 	}
 	if f.Sort, err = sortKey(prm.Sort, map[string]string{
-		"pid": "pid", "user": "user", "exe": "exe", "state": "state", "startedAt": "started_at",
+		"pid": "pid", "user": "user", "exe": "exe", "state": "state", "startedAt": "started_at", "risk": "risk",
 	}); err != nil {
 		return nil, err
 	}
@@ -248,6 +248,21 @@ func (h *Handlers) ListAssetProcesses(ctx context.Context, req gen.ListAssetProc
 		}
 	}
 	return gen.ListAssetProcesses200JSONResponse(processList(rows, total)), nil
+}
+
+// GetAssetProcess implements gen.StrictServerInterface.
+func (h *Handlers) GetAssetProcess(ctx context.Context, req gen.GetAssetProcessRequestObject) (gen.GetAssetProcessResponseObject, error) {
+	if req.ProcessId == "" {
+		return nil, apierr.NotFound("process")
+	}
+	rows, _, err := h.cfg.Store.ListProcesses(ctx, store.ProcessFilter{AssetID: req.Id, ID: req.ProcessId}, store.Page{Limit: 1})
+	if err != nil {
+		return nil, err
+	}
+	if len(rows) == 0 {
+		return nil, apierr.NotFound("process")
+	}
+	return gen.GetAssetProcess200JSONResponse(processInfo(rows[0])), nil
 }
 
 func processList(rows []store.ProcessRow, total int) gen.ProcessList {

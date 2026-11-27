@@ -99,6 +99,11 @@ func (h *Handlers) ListIntegrityFiles(ctx context.Context, req gen.ListIntegrity
 	if p.Q != nil {
 		f.Q = strings.TrimSpace(*p.Q)
 	}
+	if f.Sort, err = sortKey(p.Sort, map[string]string{
+		"assets": "assets", "path": "path", "package": "package", "firstSeen": "first_seen", "lastSeen": "last_seen",
+	}); err != nil {
+		return nil, err
+	}
 	gs, total, err := h.cfg.Store.ListIntegrityGroups(ctx, f, pg)
 	if err != nil {
 		return nil, err

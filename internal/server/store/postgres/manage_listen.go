@@ -16,10 +16,16 @@ import (
 const mgListenColumns = `id::text, address, coalesce(register_key_id, ''), coalesce(agent_id::text, ''), state,
 	last_error, last_connected_at, coalesce(lease_owner, ''), lease_expires_at, created_at, scope_id`
 
-func mgScanListen(r mgRow) (store.ListenTarget, error) {
+// mgListenColumnsT is mgListenColumns through the alias t.
+const mgListenColumnsT = `t.id::text, t.address, coalesce(t.register_key_id, ''), coalesce(t.agent_id::text, ''), t.state,
+	t.last_error, t.last_connected_at, coalesce(t.lease_owner, ''), t.lease_expires_at, t.created_at, t.scope_id`
+
+// mgScanListen scans mgListenColumns followed by extra.
+func mgScanListen(r mgRow, extra ...any) (store.ListenTarget, error) {
 	var t store.ListenTarget
-	if err := r.Scan(&t.ID, &t.Address, &t.RegisterKeyID, &t.AgentID, &t.State, &t.LastError,
-		&t.LastConnectedAt, &t.LeaseOwner, &t.LeaseExpiresAt, &t.CreatedAt, &t.ScopeID); err != nil {
+	dest := []any{&t.ID, &t.Address, &t.RegisterKeyID, &t.AgentID, &t.State, &t.LastError,
+		&t.LastConnectedAt, &t.LeaseOwner, &t.LeaseExpiresAt, &t.CreatedAt, &t.ScopeID}
+	if err := r.Scan(append(dest, extra...)...); err != nil {
 		return store.ListenTarget{}, err
 	}
 	t.LastConnectedAt = mgUTCPtr(t.LastConnectedAt)
@@ -103,15 +109,71 @@ func (d *DB) GetListenTarget(ctx context.Context, id string) (store.ListenTarget
 	return t, nil
 }
 
+// mgListenState is the state as the console shows it: new is connecting.
+const mgListenState = `(CASE WHEN t.state = 'new' THEN 'connecting' ELSE t.state END)`
+
+var mgListenSort = map[string]string{
+	"address":         "t.address",
+	"agent":           "coalesce(a.hostname, '')",
+	"state":           mgListenState,
+	"createdAt":       "t.created_at",
+	"lastConnectedAt": "t.last_connected_at",
+}
+
+// mgListenFrom joins the bound agent and filters with $1 q, $2 state, $3
+// agent ids (NULL for any) and the scope of the call.
+func mgListenFrom(sc sqlScope) string {
+	return ` FROM listen_targets t LEFT JOIN agents a ON a.id = t.agent_id AND ` + sc.shared("a.kind", "a.scope_id") + `
+	WHERE ($1 = '' OR strpos(lower(t.address), lower($1)) > 0 OR strpos(lower(coalesce(a.hostname, '')), lower($1)) > 0)
+	  AND ($2 = '' OR t.state = $2)
+	  AND ($3::text[] IS NULL OR t.agent_id::text = ANY ($3::text[]))
+	  AND ` + sc.col("t.scope_id")
+}
+
 // ListListenTargets implements store.ListenTargets.
-func (d *DB) ListListenTargets(ctx context.Context) ([]store.ListenTarget, error) {
+func (d *DB) ListListenTargets(ctx context.Context, f store.ListenTargetFilter, p store.Page) ([]store.ListenTarget, int, error) {
 	const op = "list listen targets"
-	q, sc, err := scoped(ctx, op)
+	p = p.Normalize()
+	order, err := mgOrder(op, f.Sort, "address", mgListenSort, true, "t.address, t.id")
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
-	return d.mgQueryListen(ctx, op,
-		`SELECT `+mgListenColumns+` FROM listen_targets WHERE `+sc.col("scope_id")+` ORDER BY address, id`, q.args...)
+	var ids any
+	if f.AgentIDs != nil {
+		ids = f.AgentIDs
+	}
+	q, sc, err := scoped(ctx, op, f.Q, string(f.State), ids)
+	if err != nil {
+		return nil, 0, err
+	}
+	args := q.args
+	n := len(args)
+	rows, err := d.q.Query(ctx, `SELECT `+mgListenColumnsT+`, coalesce(a.hostname, ''), count(*) OVER ()`+mgListenFrom(sc)+
+		order+fmt.Sprintf(` LIMIT $%d OFFSET $%d`, n+1, n+2), append(args, p.Limit, p.Offset)...)
+	if err != nil {
+		return nil, 0, mgErr(op, err)
+	}
+	defer rows.Close()
+	out := []store.ListenTarget{}
+	total := 0
+	for rows.Next() {
+		var host string
+		t, err := mgScanListen(rows, &host, &total)
+		if err != nil {
+			return nil, 0, mgErr(op, err)
+		}
+		t.AgentHostname = host
+		out = append(out, t)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, mgErr(op, err)
+	}
+	if len(out) == 0 && p.Offset > 0 {
+		if err := d.q.QueryRow(ctx, `SELECT count(*)`+mgListenFrom(sc), args[:n]...).Scan(&total); err != nil {
+			return nil, 0, mgErr(op, err)
+		}
+	}
+	return out, total, nil
 }
 
 // UpdateListenTarget implements store.ListenTargets. A new register key

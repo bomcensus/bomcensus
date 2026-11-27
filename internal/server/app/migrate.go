@@ -33,6 +33,7 @@ func Migrate(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 	if err := migrateStore(ctx, db); err != nil {
 		return err
 	}
+	warnSearchIndexes(ctx, db, log)
 	if err := job.NewRiver(db.Pool(), log.With("component", "queue"), job.RiverConfig{}).Migrate(ctx); err != nil {
 		return err
 	}
@@ -60,4 +61,17 @@ func migrateStore(ctx context.Context, db *postgres.DB) (err error) {
 		}
 	}()
 	return db.Migrate(ctx)
+}
+
+// warnSearchIndexes logs when the trigram search indexes are missing because
+// pg_trgm could not be created. Searches still work, by scanning.
+func warnSearchIndexes(ctx context.Context, db *postgres.DB, log *slog.Logger) {
+	ok, err := db.TrigramSearch(ctx)
+	switch {
+	case err != nil:
+		log.Warn("checking search indexes", "err", err)
+	case !ok:
+		log.Warn("pg_trgm is not available: list searches scan tables instead of using indexes; " +
+			"a privileged role can run CREATE EXTENSION pg_trgm, the next start adds the indexes")
+	}
 }

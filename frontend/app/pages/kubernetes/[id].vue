@@ -8,6 +8,7 @@
 import { Pencil, RefreshCw, Trash2 } from '@lucide/vue'
 import type { K8sWorkload } from '~/types'
 import type { TableColumn } from '~/types/table'
+import type { TriState } from '~/composables/useServerList'
 import {
   deleteK8sCluster,
   fetchAll,
@@ -15,9 +16,11 @@ import {
   getK8sCluster,
   listAgents,
   listCredentials,
+  listK8sNamespaces,
   listK8sWorkloadPods,
   listK8sWorkloads,
   optional,
+  type QueryOf,
   syncK8sCluster,
   toApiError,
   updateK8sCluster,
@@ -40,44 +43,45 @@ const {
   return { cluster, scanner }
 })
 const {
-  data: workloads,
+  items: workloads,
+  total: workloadTotal,
   pending: workloadsPending,
   error: workloadsError,
   refresh: refreshWorkloads,
-} = useLoad(`k8s:${id}:workloads`, () => fetchAll((page) => listK8sWorkloads(id, page)), () => [])
+  q,
+  filters,
+  sort,
+  page,
+  size,
+} = useServerList(
+  `k8s:${id}:workloads`,
+  (p) => listK8sWorkloads(id, p as QueryOf<typeof listK8sWorkloads>),
+  { filters: { namespace: '', excluded: '' as TriState }, sort: 'namespace', url: true },
+)
+const { data: namespaces } = useLoad(`k8s:${id}:namespaces`, async () => (await listK8sNamespaces(id)).items, () => [])
 
 const cluster = computed(() => detail.value?.cluster)
 const scanner = computed(() => detail.value?.scanner)
 
 useHead({ title: computed(() => `${cluster.value?.name ?? 'Kubernetes'} · bomcensus`) })
 
-const q = ref('')
-const namespace = ref('')
-const selectedId = ref('')
+const namespaceOptions = computed(() => namespaces.value.map((n) => ({ value: n.name, label: `${n.name} (${n.workloadCount})` })))
 
-const namespaceOptions = computed(() =>
-  [...new Set(workloads.value.map((w) => w.namespace))].sort().map((value) => ({ value, label: value })),
-)
-
-const rows = computed(() => {
-  const needle = q.value.trim().toLowerCase()
-  return workloads.value.filter((w) => {
-    if (namespace.value && w.namespace !== namespace.value) return false
-    if (!needle) return true
-    return [w.name, w.namespace, w.kind].some((v) => v.toLowerCase().includes(needle))
-  })
-})
-
-const selected = computed(() => workloads.value.find((w) => w.id === selectedId.value))
+// The workload whose pods are shown; kept while the workload page changes
+const selected = ref<K8sWorkload>()
+const selectedId = computed(() => selected.value?.id ?? '')
 const {
-  data: selectedPods,
+  items: selectedPods,
+  total: podTotal,
   pending: podsPending,
   error: podsError,
   refresh: refreshPods,
-} = useLoad(
-  () => `k8s:workload:${selectedId.value}:pods`,
-  () => (selectedId.value ? fetchAll((page) => listK8sWorkloadPods(selectedId.value, page)) : Promise.resolve([])),
-  () => [],
+  page: podPage,
+  size: podSize,
+} = useServerList(
+  'k8s:workload-pods',
+  (p) => (selectedId.value ? listK8sWorkloadPods(selectedId.value, p as QueryOf<typeof listK8sWorkloadPods>) : Promise.resolve({ items: [], total: 0 })),
+  { sort: 'name', deps: () => selectedId.value },
 )
 
 const filterRows = computed(() => {
@@ -91,10 +95,10 @@ const filterRows = computed(() => {
 })
 
 const columns: TableColumn<K8sWorkload>[] = [
-  { key: 'namespace', label: 'namespace', sortValue: (w) => w.namespace, hideBelow: 'sm' },
-  { key: 'kind', label: '종류', sortValue: (w) => w.kind, hideBelow: 'md' },
-  { key: 'name', label: '이름', sortValue: (w) => w.name },
-  { key: 'replicas', label: 'replicas', align: 'right', sortValue: (w) => w.replicas, hideBelow: 'md' },
+  { key: 'namespace', label: 'namespace', sort: 'namespace', hideBelow: 'sm' },
+  { key: 'kind', label: '종류', sort: 'kind', hideBelow: 'md' },
+  { key: 'name', label: '이름', sort: 'name' },
+  { key: 'replicas', label: 'replicas', align: 'right', sort: 'replicas', sortDesc: true, hideBelow: 'md' },
   { key: 'coverage', label: '수집 범위' },
   { key: 'pods', label: '' },
 ]
@@ -251,20 +255,24 @@ async function remove() {
         exec 수집이 꺼져 있습니다. 이미지 인벤토리만 수집하며 패키지, 프로세스, listen 포트는 확인하지 못합니다.
       </p>
 
-      <FilterBar :count="rows.length" :total="workloads.length" unit="개" class="mt-4">
+      <FilterBar :count="workloadTotal" unit="개" class="mt-4">
         <SearchInput v-model="q" placeholder="이름, namespace, 종류" />
-        <SelectFilter v-model="namespace" label="namespace" :options="namespaceOptions" />
+        <SelectFilter v-model="filters.namespace" label="namespace" :options="namespaceOptions" />
+        <SelectFilter v-model="filters.excluded" label="수집" :options="triStateOptions('제외됨', '수집 대상')" />
       </FilterBar>
 
       <Panel title="워크로드" flush>
         <LoadError v-if="workloadsError" :error="workloadsError" @retry="refreshWorkloads" />
         <DataTable
           v-else
+          v-model:sort="sort"
+          v-model:page="page"
+          v-model:size="size"
           :loading="workloadsPending"
           :columns="columns"
-          :rows="rows"
+          :rows="workloads"
+          :total="workloadTotal"
           :row-key="(w) => w.id"
-          :page-size="25"
         >
           <template #cell-namespace="{ row }"><span class="mono whitespace-nowrap">{{ row.namespace }}</span></template>
           <template #cell-kind="{ row }">{{ row.kind }}</template>
@@ -286,17 +294,17 @@ async function remove() {
             <span v-else class="text-ink-3">—</span>
           </template>
           <template #cell-pods="{ row }">
-            <AppButton size="sm" @click="selectedId = row.id">pod 보기</AppButton>
+            <AppButton size="sm" @click="selected = row">pod 보기</AppButton>
           </template>
         </DataTable>
       </Panel>
 
       <Panel v-if="selected" :title="`pod · ${selected.name}`" class="mt-4" flush>
         <template #actions>
-          <AppButton size="sm" variant="ghost" @click="selectedId = ''">닫기</AppButton>
+          <AppButton size="sm" variant="ghost" @click="selected = undefined">닫기</AppButton>
         </template>
         <LoadError v-if="podsError" :error="podsError" @retry="refreshPods" />
-        <LoadingText v-else-if="podsPending" />
+        <LoadingText v-else-if="podsPending && selectedPods.length === 0" />
         <p v-else-if="selectedPods.length === 0" class="px-3 py-3 text-sm text-ink-2">
           {{ selected.excluded ? '제외된 워크로드라 수집한 pod가 없습니다.' : '수집한 pod가 없습니다.' }}
         </p>
@@ -334,6 +342,7 @@ async function remove() {
               </template>
             </tbody>
           </table>
+          <TablePager v-if="podTotal > podSize || podPage > 0" v-model:page="podPage" v-model:size="podSize" :total="podTotal" />
         </div>
       </Panel>
 

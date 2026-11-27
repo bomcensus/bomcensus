@@ -5,9 +5,11 @@
 package postgres
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -136,7 +138,7 @@ func (d *DB) mgInTx(ctx context.Context, fn func(tx *DB) error) error {
 		return fmt.Errorf("postgres: begin: %w", err)
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck // no-op after commit
-	if err := fn(&DB{pool: d.pool, q: tx, inTx: true}); err != nil {
+	if err := fn(&DB{pool: d.pool, q: tx, inTx: true, feat: d.feat}); err != nil {
 		return err
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -154,4 +156,25 @@ func mgExactlyOne(op string, tag pgconn.CommandTag, err error) error {
 		return mgNotFound(op)
 	}
 	return nil
+}
+
+// mgOrder maps sort ("key" or "-key", def when empty) to an ORDER BY
+// clause. keys gives the expression of each key; tie, sorted ascending,
+// makes the order total so pages do not overlap. With nullsLow NULL sorts
+// below every value, otherwise last in both directions.
+func mgOrder(op, sort, def string, keys map[string]string, nullsLow bool, tie string) (string, error) {
+	s := cmp.Or(sort, def)
+	key, desc := strings.CutPrefix(s, "-")
+	expr, ok := keys[key]
+	if !ok {
+		return "", fmt.Errorf("postgres: %s: sort %q: %w", op, sort, store.ErrInvalid)
+	}
+	dir, nulls := " ASC", " NULLS LAST"
+	if desc {
+		dir = " DESC"
+	}
+	if nullsLow && !desc {
+		nulls = " NULLS FIRST"
+	}
+	return " ORDER BY " + expr + dir + nulls + ", " + tie, nil
 }
