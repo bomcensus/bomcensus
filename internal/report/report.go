@@ -340,6 +340,10 @@ type Process struct {
 	ContainerID string `json:"container_id,omitempty"`
 	// MountNS is the inode of the mount namespace, zero when unreadable.
 	MountNS uint64 `json:"mount_ns,omitempty"`
+	// OtherNetNS is set when the process is known to be in another network
+	// namespace than PID 1 (a pod or container network). Its Listen
+	// sockets are then not ports of the host's own addresses.
+	OtherNetNS bool `json:"other_netns,omitempty"`
 	// Packages are the OS packages that own the executable and the files
 	// the process maps for execution (shared libraries), as named by the
 	// package database of the process's root. Only meaningful when
@@ -402,6 +406,17 @@ type Container struct {
 	// Runtime lists artifacts added or changed after start, when the writable
 	// layer could be told apart.
 	RuntimeArtifacts []Artifact `json:"runtime_artifacts,omitempty"`
+	// Pod is set for a container that the kubelet created for a pod.
+	Pod *PodRef `json:"pod,omitempty"`
+}
+
+// PodRef identifies the Kubernetes pod container a runtime container runs,
+// as the kubelet labels it.
+type PodRef struct {
+	UID       string `json:"uid"`
+	Namespace string `json:"namespace"`
+	Name      string `json:"name"`
+	Container string `json:"container"`
 }
 
 type Image struct {

@@ -105,7 +105,7 @@ func (s *Service) applyK8sContainer(ctx context.Context, tx store.Store, subj su
 			}
 		}
 		if digest != "" {
-			if _, err := tx.PutImageContent(ctx, store.ImageContent{Digest: digest, Coverage: cov, CollectedAt: at,
+			if _, err := tx.PutImageContent(ctx, store.ImageContent{Digest: digest, Coverage: cov, CollectedAt: at, Exec: true,
 				Packages: content.Packages, Artifacts: content.Artifacts}); err != nil {
 				return "", fmt.Errorf("ingest: put image content: %w", err)
 			}
@@ -482,6 +482,9 @@ func k8sInventory(inv dto.K8sInventory, at time.Time) (store.K8sInventory, []sto
 			continue
 		}
 		po := store.K8sPodObservation{Name: p.Name, Node: p.Node, Phase: string(p.Phase)}
+		if p.Uid != nil {
+			po.UID = *p.Uid
+		}
 		if p.StartedAt != nil {
 			po.StartedAt = p.StartedAt.UTC()
 		}

@@ -103,8 +103,12 @@ type ImageContent struct {
 	Digest      string
 	Coverage    Coverage
 	CollectedAt time.Time
-	Packages    []ComponentObservation
-	Artifacts   []ComponentObservation
+	// Exec is set when the content was collected inside a container of the
+	// image (exec into a pod), where version commands may run. Content read
+	// from a container root on the host has static versions only.
+	Exec      bool
+	Packages  []ComponentObservation
+	Artifacts []ComponentObservation
 }
 
 // FileHash links a file's SHA-256 to a component.

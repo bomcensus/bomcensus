@@ -31,6 +31,11 @@ type ContainerObservation struct {
 	Coverage       Coverage
 	CoverageReason string
 	StartedAt      time.Time // zero when unknown
+	// PodUID and PodContainer are set for a host container that the
+	// kubelet created for a pod: the pod's uid and the container's name in
+	// the pod.
+	PodUID       string
+	PodContainer string
 }
 
 // Container is a container of an asset.
@@ -51,6 +56,19 @@ type Container struct {
 	FirstSeen   time.Time
 	LastSeen    time.Time
 	GoneAt      *time.Time
+	// PodUID and PodContainer are as in ContainerObservation.
+	PodUID       string
+	PodContainer string
+	// Workload is the workload asset that owns a pod container of a host:
+	// its findings are the workload's. Read-only.
+	Workload *ContainerWorkload
+}
+
+// ContainerWorkload is the workload asset a host container is linked to.
+type ContainerWorkload struct {
+	AssetID string
+	Name    string
+	Pod     string
 }
 
 // ImageObservation is an image seen on a host or in a cluster.

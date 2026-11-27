@@ -48,8 +48,11 @@ const (
 	labelCRIKind      = "io.cri-containerd.kind"
 	labelPodNamespace = "io.kubernetes.pod.namespace"
 	labelPodName      = "io.kubernetes.pod.name"
+	labelPodUID       = "io.kubernetes.pod.uid"
 	labelContainer    = "io.kubernetes.container.name"
 	labelNerdctlName  = "nerdctl/name"
+	// labelDockerType is set by cri-dockerd: "podsandbox" or "container".
+	labelDockerType = "io.kubernetes.docker.type"
 )
 
 // CRI annotations in the OCI spec of a task.
@@ -316,6 +319,7 @@ func (c *collector) containerdContainers(r *cdRoot) {
 				Name:     containerName(mc.id, mc.labels),
 				Runtime:  RuntimeContainerd,
 				ImageRef: normalizeRef(mc.image),
+				Pod:      podRef(mc.labels),
 			}
 			ct.ImageDigest, ct.Reason = c.containerImage(r, ns, mc, ct.ImageRef)
 			c.taskState(r, nsName, &ct)
@@ -433,6 +437,21 @@ func containerName(id string, labels map[string]string) string {
 		return n
 	}
 	return id
+}
+
+// podRef reads the pod a container belongs to from the kubelet's labels,
+// which containerd and cri-dockerd both set. Sandbox containers ("POD" in
+// cri-dockerd) and containers without a pod uid give nil.
+func podRef(labels map[string]string) *report.PodRef {
+	r := report.PodRef{
+		UID: labels[labelPodUID], Namespace: labels[labelPodNamespace],
+		Name: labels[labelPodName], Container: labels[labelContainer],
+	}
+	if r.UID == "" || r.Name == "" || r.Container == "" || r.Container == "POD" ||
+		labels[labelDockerType] == "podsandbox" {
+		return nil
+	}
+	return &r
 }
 
 // taskState fills InitPID, Running and (as a fallback) StartedAt from the

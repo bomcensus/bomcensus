@@ -124,6 +124,7 @@ const coverageMax = computed(() => Math.max(1, ...(dashboard.value?.coverage.map
                 <td class="px-3 py-2">
                   <NuxtLink :to="`/assets/${p.assetId}?tab=processes`" class="hover:underline">{{ p.assetName }}</NuxtLink>
                   <span v-if="p.container" class="mono ml-1 text-xs text-ink-3">{{ p.container }}</span>
+                  <span v-if="p.node" class="mono ml-1 text-xs text-ink-3">@ {{ p.node }}</span>
                 </td>
                 <td class="mono px-3 py-2 text-xs break-all text-ink-2">{{ p.exePath }}</td>
                 <td class="mono px-3 py-2 text-xs">{{ p.listen.length ? p.listen.map((l) => `${l.proto}/${l.port}`).join(', ') : '—' }}</td>

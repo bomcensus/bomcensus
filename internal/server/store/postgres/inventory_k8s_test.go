@@ -6,10 +6,12 @@ package postgres
 
 import (
 	"errors"
+	"slices"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/bomcensus/bomcensus/internal/server/store"
 )
@@ -186,5 +188,65 @@ func TestReplaceClusterInventory(t *testing.T) {
 	ivMust(t, db.DeleteCluster(ctx, c.ID))
 	if n := ivCount(t, db, `SELECT count(*) FROM assets`); n != 0 {
 		t.Fatalf("assets after cluster delete: %d", n)
+	}
+}
+
+// TestSyncPrunesGonePodProcesses: processes and ports an exec collection
+// stored for a pod go when a sync no longer finds the pod.
+func TestSyncPrunesGonePodProcesses(t *testing.T) {
+	db := newTestDB(t)
+	ctx := ivCtx(t)
+	c, err := db.CreateCluster(ctx, store.K8sClusterConfig{Name: "prod", Connection: store.K8sInCluster})
+	ivMust(t, err)
+	pod := func(name string) store.K8sPodObservation {
+		return store.K8sPodObservation{UID: "uid-" + name, Name: name, Node: "worker-1", Phase: "Running", StartedAt: ivT0,
+			Containers: []store.K8sPodContainerObservation{{Name: "nginx", ImageRef: "nginx:1", ImageDigest: "sha256:bbbb"}}}
+	}
+	inv := func(at time.Time, pods ...store.K8sPodObservation) store.K8sInventory {
+		return store.K8sInventory{At: at, Workloads: []store.K8sWorkloadObservation{{
+			Namespace: "default", Kind: "Deployment", Name: "web", Replicas: len(pods), Pods: pods}}}
+	}
+	res, err := db.ReplaceClusterInventory(ctx, c.ID, inv(ivT0, pod("web-a"), pod("web-b")))
+	ivMust(t, err)
+	wl := res.Workloads[0].AssetID
+	for i, name := range []string{"web-a", "web-b"} {
+		_, err = db.ReplaceProcesses(ctx, store.ProcessScope{AssetID: wl, Pod: name, Container: "nginx"},
+			store.ProcessSnapshot{At: ivT0, Processes: []store.ProcessObservation{{PID: 9 + i, Exe: "/usr/sbin/nginx", StartedAt: ivT0,
+				Listen: []store.ListenAddr{{Proto: "tcp", Address: "0.0.0.0", Port: 8080}}}},
+				UnownedPorts: []store.UnownedPort{{ListenAddr: store.ListenAddr{Proto: "udp", Address: "0.0.0.0", Port: 53}}}})
+		ivMust(t, err)
+	}
+	version := func() int {
+		t.Helper()
+		var v int
+		ivMust(t, db.q.QueryRow(ctx, `SELECT coalesce((SELECT vulns_version FROM asset_findings_state WHERE asset_id = $1), 0)`, wl).Scan(&v))
+		return v
+	}
+	before := version()
+
+	_, err = db.ReplaceClusterInventory(ctx, c.ID, inv(ivT0.Add(time.Minute), pod("web-b")))
+	ivMust(t, err)
+	pods := func(table string) []string {
+		t.Helper()
+		rows, err := db.q.Query(ctx, `SELECT DISTINCT pod FROM `+table+` WHERE asset_id = $1 ORDER BY pod`, wl)
+		ivMust(t, err)
+		out, err := pgx.CollectRows(rows, pgx.RowTo[string])
+		ivMust(t, err)
+		return out
+	}
+	if got := pods("processes"); !slices.Equal(got, []string{"web-b"}) {
+		t.Fatalf("processes of pods %v", got)
+	}
+	if got := pods("listen_ports"); !slices.Equal(got, []string{"web-b"}) {
+		t.Fatalf("listen ports of pods %v", got)
+	}
+	var events int
+	ivMust(t, db.q.QueryRow(ctx, `SELECT count(*) FROM process_events WHERE asset_id = $1 AND pod = 'web-a' AND kind = 'disappeared'`,
+		wl).Scan(&events))
+	if events != 1 {
+		t.Fatalf("disappeared events %d", events)
+	}
+	if version() == before {
+		t.Fatal("findings of the workload not marked out of date")
 	}
 }

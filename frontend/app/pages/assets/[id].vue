@@ -526,7 +526,9 @@ const tabs = computed(() => [
                 <StatusBadge v-if="row.exeSource === 'cmdline'" label="추정" title="권한이 없어 cmdline에서 추정한 경로" />
               </span>
               <div class="mono break-all text-xs text-ink-3">{{ row.exePath }}</div>
-              <div v-if="row.container" class="text-xs text-ink-3">컨테이너 {{ row.container }}</div>
+              <div v-if="row.container" class="text-xs text-ink-3">
+                컨테이너 {{ row.container }}<span v-if="row.node" class="mono"> @ {{ row.node }}</span>
+              </div>
             </template>
             <template #cell-state="{ row }">
               <span v-if="procFlags(row).length === 0" class="text-ink-3">정상</span>
@@ -593,6 +595,10 @@ const tabs = computed(() => [
                 <span v-if="selectedContainer" class="mono ml-1 text-ink-2">{{ selectedContainer.imageRef }}</span>
               </dd>
             </template>
+            <template v-if="selectedProc.node">
+              <dt>노드</dt>
+              <dd class="mono">{{ selectedProc.node }}</dd>
+            </template>
             <template v-if="selectedComponent">
               <dt>컴포넌트</dt>
               <dd>
@@ -634,6 +640,11 @@ const tabs = computed(() => [
           >
             <template #cell-name="{ row }">
               <span class="font-medium">{{ row.name }}</span>
+              <div v-if="row.workload" class="text-xs text-ink-3">
+                워크로드
+                <NuxtLink :to="`/assets/${row.workload.assetId}`" class="hover:underline">{{ row.workload.name }}</NuxtLink>
+                · 취약점은 워크로드에 집계
+              </div>
             </template>
             <template #cell-image="{ row }">
               <template v-if="row.imageDigest">

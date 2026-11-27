@@ -400,12 +400,17 @@ func (d *DB) PutImageContent(ctx context.Context, c store.ImageContent) (bool, e
 		}
 		var known *time.Time
 		var stored store.Coverage
-		err := d.q.QueryRow(ctx, `SELECT content_collected_at, content_coverage FROM images WHERE digest = $1 FOR UPDATE`,
-			c.Digest).Scan(&known, &stored)
+		var storedExec bool
+		err := d.q.QueryRow(ctx, `SELECT content_collected_at, content_coverage, content_exec FROM images WHERE digest = $1 FOR UPDATE`,
+			c.Digest).Scan(&known, &stored, &storedExec)
 		if err != nil {
 			return ivErr(op, err)
 		}
-		if known != nil && !(stored != store.CoverageFull && coverage == store.CoverageFull) {
+		// Content from inside a container is not replaced by content read
+		// from the host, or exec planning would collect the image again.
+		upgrade := stored != store.CoverageFull && coverage == store.CoverageFull && (c.Exec || !storedExec)
+		execUpgrade := !storedExec && c.Exec && (stored != store.CoverageFull || coverage == store.CoverageFull)
+		if known != nil && !upgrade && !execUpgrade {
 			return nil
 		}
 		if _, err := d.ivUpsertComponents(ctx, list, at); err != nil {
@@ -431,8 +436,8 @@ func (d *DB) PutImageContent(ctx context.Context, c store.ImageContent) (bool, e
 			return ivErr(op, err)
 		}
 		if _, err := d.q.Exec(ctx, `
-			UPDATE images SET content_coverage = $2, content_collected_at = $3 WHERE digest = $1`,
-			c.Digest, string(coverage), at); err != nil {
+			UPDATE images SET content_coverage = $2, content_collected_at = $3, content_exec = $4 WHERE digest = $1`,
+			c.Digest, string(coverage), at, c.Exec); err != nil {
 			return ivErr(op, err)
 		}
 		written = true
@@ -445,7 +450,8 @@ func (d *DB) PutImageContent(ctx context.Context, c store.ImageContent) (bool, e
 func (d *DB) KnownImageContent(ctx context.Context, digests []string) ([]string, error) {
 	const op = "known image content"
 	rows, err := d.q.Query(ctx, `
-		SELECT digest FROM images WHERE digest = ANY($1) AND content_collected_at IS NOT NULL ORDER BY digest`,
+		SELECT digest FROM images WHERE digest = ANY($1) AND content_collected_at IS NOT NULL AND content_exec
+		ORDER BY digest`,
 		ivStrings(digests))
 	if err != nil {
 		return nil, ivErr(op, err)

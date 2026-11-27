@@ -692,6 +692,9 @@ func scWrites() []scWrite {
 		w("SetPodContainerCoverage", nf, func(ctx context.Context, db *DB, b F) error {
 			return db.SetPodContainerCoverage(ctx, b.ClusterID, b.Namespace, b.Pod, "c", store.CoverageFull, "")
 		}),
+		w("TouchPodLinks", nf, func(ctx context.Context, db *DB, b F) error {
+			return db.TouchPodLinks(ctx, b.AssetID)
+		}),
 		w("UpsertWorkloadAsset", nf, func(ctx context.Context, db *DB, b F) error {
 			_, err := db.UpsertWorkloadAsset(ctx, store.WorkloadIdentity{ClusterID: b.ClusterID, Namespace: "n", Kind: "Pod", Name: "p"},
 				store.AssetInit{})

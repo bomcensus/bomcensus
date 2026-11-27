@@ -40,6 +40,7 @@ type SymbolStore interface {
 	GetAsset(ctx context.Context, id string) (store.AssetDetail, error)
 	GetAgent(ctx context.Context, id string) (store.Agent, error)
 	PutGoSymbolQuery(ctx context.Context, q store.GoSymbolQuery) error
+	GoSymbolQueryFor(ctx context.Context, assetID, container string) (store.GoSymbolQuery, error)
 }
 
 // Enqueuer delivers a directive to an agent.
@@ -140,26 +141,12 @@ func (c *SymbolChecker) check(ctx context.Context, assetID string, now time.Time
 			}
 			count++
 		}
-		return count, nil
+		// A node agent that runs a pod of the workload is asked too: it
+		// sees the runtime layer and the processes of the pod.
+		n, err := c.askNodes(ctx, in.NodeContainers, needs, now)
+		return count + n, err
 	case asset.AgentID != "":
-		agent, err := c.st.GetAgent(ctx, asset.AgentID)
-		if err != nil {
-			return 0, err
-		}
-		if agent.State == store.AgentRevoked || !agent.HasFeature(store.FeatureGoSymbols) {
-			return 0, nil
-		}
-		q := buildQuery(needs, containerRuntime(runtimeID))
-		if len(q.Files) == 0 {
-			return 0, nil
-		}
-		if err := c.put(ctx, assetID, "", q, now); err != nil {
-			return 0, err
-		}
-		if err := c.deliver(ctx, agent.ID, q); err != nil {
-			return 0, err
-		}
-		return 1, nil
+		return c.askAgent(ctx, asset, needs, nil, runtimeID, now)
 	case asset.ScanTargetID != "":
 		q := buildQuery(needs, containerRuntime(runtimeID))
 		if len(q.Files) == 0 {
@@ -168,6 +155,141 @@ func (c *SymbolChecker) check(ctx context.Context, assetID string, now time.Time
 		return 1, c.put(ctx, assetID, "", q, now)
 	}
 	return 0, nil
+}
+
+// askAgent sends the agent of a host the query for needs and for extra,
+// the needs of workloads in the host's pod containers. runtimeID maps the
+// host's container names to runtime ids.
+func (c *SymbolChecker) askAgent(ctx context.Context, asset store.AssetDetail, needs, extra []SymbolNeed, runtimeID map[string]string, now time.Time) (int, error) {
+	if asset.AgentID == "" {
+		return 0, nil
+	}
+	agent, err := c.st.GetAgent(ctx, asset.AgentID)
+	if err != nil {
+		return 0, err
+	}
+	if agent.State == store.AgentRevoked || !agent.HasFeature(store.FeatureGoSymbols) {
+		return 0, nil
+	}
+	q := buildQuery(append(slices.Clone(needs), extra...), containerRuntime(runtimeID))
+	if len(q.Files) == 0 {
+		return 0, nil
+	}
+	if len(extra) > 0 {
+		// Workloads of several pods on the host ask through it in turn;
+		// a waiting query keeps what it asks.
+		old, err := c.st.GoSymbolQueryFor(ctx, asset.ID, "")
+		switch {
+		case err == nil && old.CreatedAt.After(now.Add(-SymbolQueryTTL)):
+			var oq report.GoSymbolQuery
+			if json.Unmarshal(old.Query, &oq) == nil {
+				q = mergeQuery(oq, q)
+			}
+		case err != nil && !errors.Is(err, store.ErrNotFound):
+			return 0, err
+		}
+	}
+	if err := c.put(ctx, asset.ID, "", q, now); err != nil {
+		return 0, err
+	}
+	if err := c.deliver(ctx, agent.ID, q); err != nil {
+		return 0, err
+	}
+	return 1, nil
+}
+
+// askNodes asks the agents of the hosts that recently saw a workload's pod
+// containers about the needs of those containers, together with the
+// hosts' own needs: a host keeps one query at a time. One host is asked
+// per workload container.
+func (c *SymbolChecker) askNodes(ctx context.Context, nodes []store.FindingNodeContainer, needs []SymbolNeed, now time.Time) (int, error) {
+	pick := map[string]store.FindingNodeContainer{}
+	for _, n := range nodes {
+		if _, ok := pick[n.Container]; !ok && n.Fresh && n.RuntimeID != "" {
+			pick[n.Container] = n
+		}
+	}
+	extra := map[string][]SymbolNeed{}
+	runtimes := map[string]map[string]string{}
+	var hosts []string
+	for _, need := range needs {
+		n, ok := pick[need.Container]
+		if !ok {
+			continue
+		}
+		if runtimes[n.HostID] == nil {
+			runtimes[n.HostID] = map[string]string{}
+			hosts = append(hosts, n.HostID)
+		}
+		runtimes[n.HostID][n.HostContainer] = n.RuntimeID
+		need.Container = n.HostContainer
+		extra[n.HostID] = append(extra[n.HostID], need)
+	}
+	count := 0
+	for _, id := range hosts {
+		hin, err := c.st.FindingInputs(ctx, id)
+		if errors.Is(err, store.ErrNotFound) {
+			continue
+		}
+		if err != nil {
+			return count, err
+		}
+		host, err := c.st.GetAsset(ctx, id)
+		if errors.Is(err, store.ErrNotFound) {
+			continue
+		}
+		if err != nil {
+			return count, err
+		}
+		rt := runtimes[id]
+		for _, ct := range host.Containers {
+			if ct.GoneAt == nil && ct.Instances > 0 && ct.RuntimeID != "" {
+				rt[ct.Name] = ct.RuntimeID
+			}
+		}
+		n, err := c.askAgent(ctx, host, SymbolNeeds(hin, now.Add(-SymbolRetryAfter)), extra[id], rt, now)
+		if err != nil {
+			return count, err
+		}
+		count += n
+	}
+	return count, nil
+}
+
+// mergeQuery adds the files and names of add to q within the probe's
+// limits.
+func mergeQuery(q, add report.GoSymbolQuery) report.GoSymbolQuery {
+	type fileKey struct{ container, path, sha string }
+	index := map[fileKey]int{}
+	total := 0
+	for i, f := range q.Files {
+		index[fileKey{f.Container, f.Path, f.SHA256}] = i
+		total += len(f.Names)
+	}
+	for _, f := range add.Files {
+		k := fileKey{f.Container, f.Path, f.SHA256}
+		i, ok := index[k]
+		if !ok {
+			if len(q.Files) == report.MaxGoSymbolFiles {
+				continue
+			}
+			i = len(q.Files)
+			index[k] = i
+			q.Files = append(q.Files, report.GoSymbolFile{Container: f.Container, Path: f.Path, SHA256: f.SHA256})
+		}
+		for _, n := range f.Names {
+			if total == report.MaxGoSymbolNames || len(q.Files[i].Names) == report.MaxGoSymbolNamesPerFile {
+				break
+			}
+			if !slices.Contains(q.Files[i].Names, n) {
+				q.Files[i].Names = append(q.Files[i].Names, n)
+				total++
+			}
+		}
+	}
+	// A file kept without names would be rejected.
+	q.Files = slices.DeleteFunc(q.Files, func(f report.GoSymbolFile) bool { return len(f.Names) == 0 })
+	return q
 }
 
 func containerRuntime(ids map[string]string) func(string) (string, bool) {

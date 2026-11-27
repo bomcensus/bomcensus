@@ -21,10 +21,11 @@ export function locationWhere(l: VulnLocation): string {
   return `${kind} · ${l.container} · ${findingLayerLabel[l.layer]}`
 }
 
-/** One loading process: executable, pid and listening ports. */
+/** One loading process: executable, pid, the node that saw it and listening ports. */
 function processLine(p: VulnLocation['processes'][number], full = false): string {
   const exe = full ? p.exe : (p.exe.split('/').pop() ?? p.exe)
-  return `${exe} · pid ${p.pid}${p.ports.length ? ` · ${p.ports.join(', ')}` : ''}`
+  const node = p.node ? ` @ ${p.node}` : ''
+  return `${exe} · pid ${p.pid}${node}${p.ports.length ? ` · ${p.ports.join(', ')}` : ''}`
 }
 
 /** Loading processes of a location, those running exe first. */

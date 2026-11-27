@@ -186,7 +186,8 @@ type dockerConfig struct {
 		StartedAt time.Time `json:"StartedAt"`
 	} `json:"State"`
 	Config struct {
-		Image string `json:"Image"`
+		Image  string            `json:"Image"`
+		Labels map[string]string `json:"Labels"`
 	} `json:"Config"`
 }
 
@@ -212,6 +213,7 @@ func (c *collector) dockerContainer(d *dockerRoots, id string) (report.Container
 		Name:     strings.TrimPrefix(cfg.Name, "/"),
 		Runtime:  RuntimeDocker,
 		ImageRef: dockerImageRef(cfg.Config.Image, cfg.Image),
+		Pod:      podRef(cfg.Config.Labels),
 	}
 	if !cfg.State.StartedAt.IsZero() {
 		ct.StartedAt = cfg.State.StartedAt.UTC()

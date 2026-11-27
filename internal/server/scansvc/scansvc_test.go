@@ -515,7 +515,7 @@ func testInventory() *kube.Inventory {
 
 func (f *fixture) knownImage() {
 	f.t.Helper()
-	_, err := f.db.PutImageContent(f.ctx, store.ImageContent{Digest: digestKnown, Coverage: store.CoverageFull, CollectedAt: time.Now()})
+	_, err := f.db.PutImageContent(f.ctx, store.ImageContent{Digest: digestKnown, Coverage: store.CoverageFull, CollectedAt: time.Now(), Exec: true})
 	must(f.t, err)
 }
 

@@ -67,10 +67,15 @@ type ComponentIngest interface {
 	ReplaceAssetComponents(ctx context.Context, scope ComponentScope, obs []ComponentObservation, opts ReplaceOptions) (ReplaceResult, error)
 	// PutImageContent stores the content of an image digest. Content is
 	// written once: it is skipped when the digest already has content,
-	// unless the stored content is not full coverage and the new one is.
+	// unless the stored content is not full coverage and the new one is
+	// (and not Exec content replaced by content that is not), or the stored
+	// content is not Exec, the new one is and its coverage is not lower.
 	// Written reports whether it was stored.
 	PutImageContent(ctx context.Context, c ImageContent) (written bool, err error)
-	// KnownImageContent returns the subset of digests whose content is known.
+	// KnownImageContent returns the subset of digests whose content is known
+	// from a collection inside a container (ImageContent.Exec). Content read
+	// by a node agent does not count, so exec planning still collects such
+	// an image once for the versions of its version commands.
 	KnownImageContent(ctx context.Context, digests []string) ([]string, error)
 	// ImageContentCoverage returns the coverage of the known content of a
 	// digest (the best one collected so far), or "" when the content is not
@@ -114,6 +119,10 @@ type ContainerIngest interface {
 	// list now stops being current, unless opts.KeepMissing is set. An empty
 	// images still replaces the tag set.
 	UpsertImages(ctx context.Context, src ImageSource, images []ImageObservation, opts ReplaceOptions) error
+	// TouchPodLinks marks the findings of the workload assets linked to the
+	// host's pod containers, now or before, out of date: what the host saw
+	// of them is part of theirs.
+	TouchPodLinks(ctx context.Context, hostID string) error
 }
 
 // ProcessIngest records running processes.

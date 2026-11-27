@@ -154,7 +154,12 @@ func rowSummary(r store.AssetRow) gen.AssetSummary {
 }
 
 func assetContainer(c store.Container) gen.AssetContainer {
+	var w *gen.ContainerWorkload
+	if c.Workload != nil {
+		w = &gen.ContainerWorkload{AssetId: c.Workload.AssetID, Name: c.Workload.Name, Pod: c.Workload.Pod}
+	}
 	return gen.AssetContainer{
+		Workload:       w,
 		Name:           c.Name,
 		ImageRef:       c.ImageRef,
 		ImageDigest:    str(c.ImageDigest),
@@ -238,6 +243,7 @@ func processInfo(r store.ProcessRow) gen.ProcessInfo {
 		DeletedLibs: libs,
 		Listen:      listen,
 		Container:   str(r.Container),
+		Node:        str(r.Node),
 		ComponentId: str(r.ComponentID),
 	}
 }

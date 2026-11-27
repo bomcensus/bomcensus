@@ -93,6 +93,7 @@ func processObservations(ps []report.Process, container func(id string) string) 
 		o := store.ProcessObservation{
 			PID: p.PID, PPID: p.PPID, User: p.User, UID: p.UID, Exe: p.Exe, ExeSource: p.ExeSource,
 			ExeState: p.ExeState, SHA256: p.SHA256, Cmdline: p.Cmdline, StartedAt: p.StartedAt,
+			OtherNetNS: p.OtherNetNS,
 		}
 		for _, l := range p.Libs {
 			o.Libs = append(o.Libs, store.MappedLib{Path: l.Path, State: l.State, SHA256: l.SHA256})

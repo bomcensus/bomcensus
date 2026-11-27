@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"maps"
+	"path"
 	"slices"
 	"strings"
 	"time"
@@ -601,6 +602,25 @@ func containerStatus(p *corev1.Pod, name string) *corev1.ContainerStatus {
 		}
 	}
 	return nil
+}
+
+// hostPathDirs returns the mount paths of the container's hostPath volumes.
+// They show files of the node, not of the image; the node agent reports
+// them.
+func hostPathDirs(p *corev1.Pod, ct *corev1.Container) []string {
+	host := map[string]bool{}
+	for _, v := range p.Spec.Volumes {
+		if v.HostPath != nil {
+			host[v.Name] = true
+		}
+	}
+	var out []string
+	for _, m := range ct.VolumeMounts {
+		if host[m.Name] && strings.HasPrefix(m.MountPath, "/") {
+			out = append(out, path.Clean(m.MountPath))
+		}
+	}
+	return out
 }
 
 // writableDirs returns the mount paths of the container's writable emptyDir

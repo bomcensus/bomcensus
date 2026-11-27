@@ -9,6 +9,11 @@ import (
 	"time"
 )
 
+// NodeEvidenceMaxAge is how recently the host of a node agent must have
+// reported for its view of a pod container to stand for the workload's:
+// its processes replace those of exec collections.
+const NodeEvidenceMaxAge = 2 * time.Hour
+
 // Exposure of a finding, most exposed first.
 const (
 	ExposureListening = "listening"
@@ -41,8 +46,11 @@ type FindingSource struct {
 // FindingProcess is a process of an asset, with what links it to
 // components.
 type FindingProcess struct {
-	Container   string
-	Pod         string
+	Container string
+	Pod       string
+	// Node is the host asset name of a process a node agent saw for a
+	// workload.
+	Node        string
 	PID         int
 	Exe         string
 	SHA256      string
@@ -83,8 +91,28 @@ type FindingInputs struct {
 	// GoBinaries are the Go executables of the asset and of the images of
 	// its current containers.
 	GoBinaries []FindingGoBinary
-	// SymbolResults are the asset's answers by executable hash and name.
+	// SymbolResults are the asset's answers by executable hash and name,
+	// with those of the hosts in NodeContainers for a workload.
 	SymbolResults map[string]map[string]GoSymbolResult
+	// NodeContainers are, for a workload, the host containers that node
+	// agents saw for its pods. Their runtime layer, processes and Go
+	// binaries are part of the inputs; the hosts leave them out of theirs.
+	NodeContainers []FindingNodeContainer
+}
+
+// FindingNodeContainer is a host container of a workload's pod.
+type FindingNodeContainer struct {
+	// Container and Pod name it in the workload.
+	Container string
+	Pod       string
+	HostID    string
+	HostName  string
+	// HostContainer and RuntimeID name it on the host.
+	HostContainer string
+	RuntimeID     string
+	// Fresh is set when the host reported within NodeEvidenceMaxAge; only
+	// then do its processes count.
+	Fresh bool
 }
 
 // SymbolKey is the key of FindingInputs.Symbols.
@@ -95,6 +123,7 @@ type FindingProcessRef struct {
 	PID   int      `json:"pid"`
 	Exe   string   `json:"exe"`
 	Pod   string   `json:"pod,omitempty"`
+	Node  string   `json:"node,omitempty"`
 	Ports []string `json:"ports,omitempty"`
 }
 

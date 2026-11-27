@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"sort"
 	"time"
 
@@ -45,12 +46,13 @@ func (d *DB) ReplaceProcesses(ctx context.Context, scope store.ProcessScope, sna
 		Packages     []string          `json:"packages"`
 	}
 	type listenRow struct {
-		Container string    `json:"container"`
-		PID       int       `json:"pid"`
-		StartedAt time.Time `json:"started_at"`
-		Proto     string    `json:"proto"`
-		Address   string    `json:"address"`
-		Port      int       `json:"port"`
+		Container  string    `json:"container"`
+		PID        int       `json:"pid"`
+		StartedAt  time.Time `json:"started_at"`
+		Proto      string    `json:"proto"`
+		Address    string    `json:"address"`
+		Port       int       `json:"port"`
+		OtherNetNS bool      `json:"other_netns"`
 	}
 	type unownedRow struct {
 		Proto   string `json:"proto"`
@@ -98,7 +100,7 @@ func (d *DB) ReplaceProcesses(ctx context.Context, scope store.ProcessScope, sna
 			ComponentID: comp, Packages: p.Packages,
 		}
 		for _, l := range p.Listen {
-			listens[listenKey{k, l.Proto, l.Address, l.Port}] = listenRow{container, p.PID, started, l.Proto, l.Address, l.Port}
+			listens[listenKey{k, l.Proto, l.Address, l.Port}] = listenRow{container, p.PID, started, l.Proto, l.Address, l.Port, p.OtherNetNS}
 		}
 	}
 	unownedSet := map[unownedRow]bool{}
@@ -202,14 +204,14 @@ func (d *DB) ReplaceProcesses(ctx context.Context, scope store.ProcessScope, sna
 			return ivErr(op, err)
 		}
 		_, err = d.q.Exec(ctx, `
-			INSERT INTO listen_ports (asset_id, pod, container, process_id, proto, address, port, uid)
-			SELECT $1, $2, p.container, p.id, l.proto, l.address, l.port, NULL
+			INSERT INTO listen_ports (asset_id, pod, container, process_id, proto, address, port, uid, other_netns)
+			SELECT $1, $2, p.container, p.id, l.proto, l.address, l.port, NULL, l.other_netns
 			FROM jsonb_to_recordset($4::jsonb) AS l(container text, pid integer, started_at timestamptz,
-				proto text, address text, port integer)
+				proto text, address text, port integer, other_netns boolean)
 			JOIN processes p ON `+scopeCond+` AND p.container = l.container AND p.pid = l.pid
 				AND p.started_at = l.started_at
 			UNION ALL
-			SELECT $1, $2, $3, NULL, u.proto, u.address, u.port, u.uid
+			SELECT $1, $2, $3, NULL, u.proto, u.address, u.port, u.uid, false
 			FROM jsonb_to_recordset($5::jsonb) AS u(proto text, address text, port integer, uid integer)`,
 			scope.AssetID, scope.Pod, scope.Container, listenJS, unownedJS)
 		return ivErr(op, err)
@@ -277,6 +279,38 @@ func ivOptComponent(c store.Component) *store.Component {
 	return &c
 }
 
+// ivExecShown is the condition on a row t of processes or listen_ports that
+// keeps it: rows of an exec collection of a pod container that a node agent
+// saw since fresh are left out, as in the findings; the node agent's rows
+// stand for the container.
+func ivExecShown(t, fresh string) string {
+	return `(` + t + `.pod = '' OR NOT EXISTS (SELECT 1 FROM ` + pdLinks + ` lk WHERE lk.workload_id = ` + t + `.asset_id
+		AND lk.pod = ` + t + `.pod AND lk.container = ` + t + `.container AND lk.host_seen >= ` + fresh + `))`
+}
+
+// ivOwnedProcesses lists the processes under the asset they belong to, as
+// the findings do: the processes of a host container linked to a pod go to
+// the pod's workload, with the host as node, while the host reported since
+// fresh; after that the exec collections stand for the container. narrow
+// is an extra condition on processes p.
+func ivOwnedProcesses(fresh, narrow string) string {
+	return `(SELECT p.id, coalesce(k.workload_id, p.asset_id) AS asset_id, coalesce(k.pod, p.pod) AS pod,
+			coalesce(k.container, p.container) AS container, coalesce(k.host_name, '') AS node,
+			p.pid, p.ppid, p.user_name, p.uid, p.exe, p.exe_source, p.exe_state, p.sha256, p.cmdline, p.started_at,
+			p.libs, p.needs_restart, p.suspicious, p.component_id, p.first_seen, p.last_seen
+		FROM processes p
+		LEFT JOIN LATERAL ` + ivNodeLink("p", "true") + ` k ON true
+		WHERE ` + ivExecShown("p", fresh) + ` AND (k.workload_id IS NULL OR k.host_seen >= ` + fresh + `)` + narrow + `)`
+}
+
+// ivNodeLink is the pod link of the host container of a row t of processes
+// or listen_ports, if cond holds.
+func ivNodeLink(t, cond string) string {
+	return `(SELECT lk.workload_id, lk.pod, lk.container, lk.host_name, lk.host_seen FROM ` + pdLinks + ` lk
+			WHERE ` + cond + ` AND lk.host_id = ` + t + `.asset_id AND lk.host_container = ` + t + `.container
+			ORDER BY lk.workload_id LIMIT 1)`
+}
+
 // ListProcesses implements store.InventoryQuery.
 func (d *DB) ListProcesses(ctx context.Context, f store.ProcessFilter, p store.Page) ([]store.ProcessRow, int, error) {
 	const op = "list processes"
@@ -299,10 +333,17 @@ func (d *DB) ListProcesses(ctx context.Context, f store.ProcessFilter, p store.P
 	}
 	q.and(sc.col("a.scope_id"))
 	q.where("a.gone_at IS NULL")
+	fresh := q.arg(mgNow().Add(-store.NodeEvidenceMaxAge))
+	narrow := ""
 	if f.AssetID != "" {
 		if !ivValidID(f.AssetID) {
 			return nil, 0, nil
 		}
+		// The rows of the asset and of the hosts linked to it, read
+		// through the index before ownership is worked out.
+		a := q.arg(f.AssetID)
+		narrow = ` AND (p.asset_id = ` + a + ` OR p.asset_id IN (SELECT lk.host_id FROM ` + pdLinks + ` lk
+			WHERE lk.workload_id = ` + a + `))`
 		q.where("p.asset_id = %s", f.AssetID)
 	}
 	if f.ID != "" {
@@ -341,16 +382,17 @@ func (d *DB) ListProcesses(ctx context.Context, f store.ProcessFilter, p store.P
 		q.where(`(p.exe ILIKE %[1]s OR p.user_name ILIKE %[1]s OR p.cmdline ILIKE %[1]s
 			OR p.pid::text ILIKE %[1]s OR a.name ILIKE %[1]s)`, ivLike(f.Q))
 	}
-	from := `FROM processes p JOIN assets a ON a.id = p.asset_id
+	from := `FROM ` + ivOwnedProcesses(fresh, narrow) + ` p JOIN assets a ON a.id = p.asset_id
 		LEFT JOIN k8s_clusters k ON k.id = a.cluster_id
 		LEFT JOIN components c ON c.id = p.component_id` + q.whereSQL()
 	var out []store.ProcessRow
-	sel := ivProcessCols + ", " + ivBriefCols + ", " + ivComponentCols
+	sel := ivProcessCols + ", p.node, " + ivBriefCols + ", " + ivComponentCols
 	total, err := ivPage(ctx, d, op, q, sel, from, order, p, func(rows pgx.Rows) error {
 		var r store.ProcessRow
 		var s ivProcessScan
 		var c store.Component
-		dest := append(ivProcessDest(&r.Process, &s), ivBriefDest(&r.Asset)...)
+		dest := append(ivProcessDest(&r.Process, &s), &r.Node)
+		dest = append(dest, ivBriefDest(&r.Asset)...)
 		if err := rows.Scan(append(dest, ivComponentDest(&c)...)...); err != nil {
 			return err
 		}
@@ -400,11 +442,21 @@ func (d *DB) ListListenPorts(ctx context.Context, f store.ListenPortFilter, p st
 		q.where(`(l.address ILIKE %[1]s OR l.port::text ILIKE %[1]s OR p.exe ILIKE %[1]s
 			OR p.user_name ILIKE %[1]s OR a.name ILIKE %[1]s)`, ivLike(f.Q))
 	}
-	from := `FROM listen_ports l JOIN assets a ON a.id = l.asset_id
+	// A socket in the network of a host container linked to a pod belongs
+	// to the pod's workload; the node agent's or the exec collections'
+	// sockets are listed as with ivOwnedProcesses.
+	fresh := q.arg(mgNow().Add(-store.NodeEvidenceMaxAge))
+	owned := `(SELECT l.proto, l.address, l.port, l.process_id, l.uid,
+			coalesce(k.workload_id, l.asset_id) AS asset_id, coalesce(k.pod, l.pod) AS pod,
+			coalesce(k.container, l.container) AS container, coalesce(k.host_name, '') AS node
+		FROM listen_ports l
+		LEFT JOIN LATERAL ` + ivNodeLink("l", "l.other_netns") + ` k ON true
+		WHERE ` + ivExecShown("l", fresh) + ` AND (k.workload_id IS NULL OR k.host_seen >= ` + fresh + `))`
+	from := `FROM ` + owned + ` l JOIN assets a ON a.id = l.asset_id
 		LEFT JOIN k8s_clusters k ON k.id = a.cluster_id
 		LEFT JOIN processes p ON p.id = l.process_id
 		LEFT JOIN components c ON c.id = p.component_id` + q.whereSQL()
-	sel := `l.proto, l.address, l.port, ` + ivBriefCols + `, l.pod, l.container, COALESCE(p.id::text, ''),
+	sel := `l.proto, l.address, l.port, ` + ivBriefCols + `, l.pod, l.container, l.node, COALESCE(p.id::text, ''),
 		COALESCE(p.pid, 0), COALESCE(p.exe, ''), COALESCE(p.user_name, ''), COALESCE(l.uid, p.uid, 0), ` + ivComponentCols
 	var out []store.ListenPortRow
 	total, err := ivPage(ctx, d, op, q, sel, from, order, p, func(rows pgx.Rows) error {
@@ -412,7 +464,7 @@ func (d *DB) ListListenPorts(ctx context.Context, f store.ListenPortFilter, p st
 		var c store.Component
 		dest := []any{&r.Proto, &r.Address, &r.Port}
 		dest = append(dest, ivBriefDest(&r.Asset)...)
-		dest = append(dest, &r.Pod, &r.Container, &r.ProcessID, &r.PID, &r.Exe, &r.User, &r.UID)
+		dest = append(dest, &r.Pod, &r.Container, &r.Node, &r.ProcessID, &r.PID, &r.Exe, &r.User, &r.UID)
 		if err := rows.Scan(append(dest, ivComponentDest(&c)...)...); err != nil {
 			return err
 		}
@@ -421,4 +473,55 @@ func (d *DB) ListListenPorts(ctx context.Context, f store.ListenPortFilter, p st
 		return nil
 	})
 	return out, total, err
+}
+
+// ivPruneGonePods removes the processes and listening ports that exec
+// collections stored for pods of a cluster that are no longer running, and
+// marks the findings of their workloads out of date.
+func (d *DB) ivPruneGonePods(ctx context.Context, clusterID string, at time.Time) error {
+	const gonePod = `w.cluster_id = $1 AND w.asset_id = %[1]s.asset_id AND %[1]s.pod <> ''
+		AND NOT EXISTS (SELECT 1 FROM k8s_pods p JOIN k8s_workloads pw ON pw.id = p.workload_id
+			WHERE pw.asset_id = %[1]s.asset_id AND p.name = %[1]s.pod AND p.gone_at IS NULL)`
+	rows, err := d.q.Query(ctx, `
+		WITH gone AS (
+			DELETE FROM processes pr USING k8s_workloads w
+			WHERE `+fmt.Sprintf(gonePod, "pr")+`
+			RETURNING pr.*
+		), ev AS (
+			INSERT INTO process_events (asset_id, at, kind, pod, container, pid, user_name, exe, exe_state, sha256, started_at)
+			SELECT asset_id, $2, 'disappeared', pod, container, pid, user_name, exe, exe_state, sha256, started_at FROM gone
+		)
+		SELECT DISTINCT asset_id::text FROM gone`, clusterID, at)
+	if err != nil {
+		return err
+	}
+	touched, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	if err != nil {
+		return err
+	}
+	// Ports of the removed processes went with them; these are the
+	// sockets without a process.
+	rows, err = d.q.Query(ctx, `
+		DELETE FROM listen_ports l USING k8s_workloads w
+		WHERE `+fmt.Sprintf(gonePod, "l")+`
+		RETURNING l.asset_id::text`, clusterID)
+	if err != nil {
+		return err
+	}
+	ports, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	if err != nil {
+		return err
+	}
+	touched = append(touched, ports...)
+	if len(touched) == 0 {
+		return nil
+	}
+	slices.Sort(touched)
+	_, err = d.q.Exec(ctx, `
+		INSERT INTO asset_findings_state (asset_id, vulns_version)
+		SELECT DISTINCT id, 1 FROM unnest($1::uuid[]) AS id
+		ORDER BY 1
+		ON CONFLICT (asset_id) DO UPDATE SET vulns_version = asset_findings_state.vulns_version + 1`,
+		slices.Compact(touched))
+	return err
 }

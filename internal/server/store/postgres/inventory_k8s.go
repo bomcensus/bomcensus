@@ -254,6 +254,7 @@ func (d *DB) ReplaceClusterInventory(ctx context.Context, clusterID string, inv 
 	}
 	type podRow struct {
 		NewID     string     `json:"new_id"`
+		UID       string     `json:"uid"`
 		Namespace string     `json:"namespace"`
 		WKind     string     `json:"wkind"`
 		WName     string     `json:"wname"`
@@ -284,7 +285,7 @@ func (d *DB) ReplaceClusterInventory(ctx context.Context, clusterID string, inv 
 				return res, ivInvalid(op, "pod without name")
 			}
 			pods[[2]string{w.Namespace, p.Name}] = podRow{
-				ivNewID(), w.Namespace, w.Kind, w.Name, p.Name, p.Node, p.Phase, ivTimeOrNil(p.StartedAt),
+				ivNewID(), p.UID, w.Namespace, w.Kind, w.Name, p.Name, p.Node, p.Phase, ivTimeOrNil(p.StartedAt),
 			}
 			for _, c := range p.Containers {
 				podContainers[[3]string{w.Namespace, p.Name, c.Name}] = podContainerRow{
@@ -413,16 +414,16 @@ func (d *DB) ReplaceClusterInventory(ctx context.Context, clusterID string, inv 
 
 		// Pods and their containers.
 		rows, err = d.q.Query(ctx, `
-			INSERT INTO k8s_pods (id, cluster_id, workload_id, namespace, name, node, phase, started_at,
+			INSERT INTO k8s_pods (id, uid, cluster_id, workload_id, namespace, name, node, phase, started_at,
 				first_seen, last_seen)
-			SELECT x.new_id, $1, w.id, x.namespace, x.name, x.node, x.phase, x.started_at, $3, $3
-			FROM jsonb_to_recordset($2::jsonb) AS x(new_id uuid, namespace text, wkind text, wname text,
+			SELECT x.new_id, COALESCE(x.uid, ''), $1, w.id, x.namespace, x.name, x.node, x.phase, x.started_at, $3, $3
+			FROM jsonb_to_recordset($2::jsonb) AS x(new_id uuid, uid text, namespace text, wkind text, wname text,
 				name text, node text, phase text, started_at timestamptz)
 			JOIN k8s_workloads w ON w.cluster_id = $1 AND w.namespace = x.namespace AND w.kind = x.wkind
 				AND w.name = x.wname
 			ORDER BY x.namespace, x.name
 			ON CONFLICT (cluster_id, namespace, name) DO UPDATE SET
-				workload_id = EXCLUDED.workload_id, node = EXCLUDED.node, phase = EXCLUDED.phase,
+				workload_id = EXCLUDED.workload_id, uid = EXCLUDED.uid, node = EXCLUDED.node, phase = EXCLUDED.phase,
 				started_at = EXCLUDED.started_at,
 				last_seen = GREATEST(k8s_pods.last_seen, EXCLUDED.last_seen), gone_at = NULL
 			RETURNING id::text`, clusterID, pJS, at)
@@ -503,6 +504,12 @@ func (d *DB) ReplaceClusterInventory(ctx context.Context, clusterID string, inv 
 				sync_status_at = GREATEST(sync_status_at, $3)
 			WHERE id = $1`,
 			clusterID, inv.Version, at); err != nil {
+			return ivErr(op, err)
+		}
+		if err := d.pdTouchClusterLinks(ctx, clusterID); err != nil {
+			return ivErr(op, err)
+		}
+		if err := d.ivPruneGonePods(ctx, clusterID, at); err != nil {
 			return ivErr(op, err)
 		}
 
@@ -738,7 +745,7 @@ func (d *DB) ivPods(ctx context.Context, op string, by func(*ivQuery), f store.P
 	if f.Q != "" {
 		q.where("(p.name ILIKE %[1]s OR p.node ILIKE %[1]s)", ivLike(f.Q))
 	}
-	sel := `p.id::text, p.workload_id::text, p.namespace, p.name, p.node, p.phase, p.started_at,
+	sel := `p.id::text, p.uid, p.workload_id::text, p.namespace, p.name, p.node, p.phase, p.started_at,
 		p.first_seen, p.last_seen, p.gone_at,
 		COALESCE((SELECT jsonb_agg(jsonb_build_object('name', pc.name, 'image_ref', pc.image_ref,
 			'image_digest', pc.image_digest, 'coverage', pc.coverage, 'coverage_reason', pc.coverage_reason)
@@ -747,7 +754,7 @@ func (d *DB) ivPods(ctx context.Context, op string, by func(*ivQuery), f store.P
 	total, err := ivPage(ctx, d, op, q, sel, "FROM k8s_pods p"+q.whereSQL(), order, p, func(rows pgx.Rows) error {
 		var r store.K8sPod
 		var cs []byte
-		if err := rows.Scan(&r.ID, &r.WorkloadID, &r.Namespace, &r.Name, &r.Node, &r.Phase, &r.StartedAt,
+		if err := rows.Scan(&r.ID, &r.UID, &r.WorkloadID, &r.Namespace, &r.Name, &r.Node, &r.Phase, &r.StartedAt,
 			&r.FirstSeen, &r.LastSeen, &r.GoneAt, &cs); err != nil {
 			return err
 		}

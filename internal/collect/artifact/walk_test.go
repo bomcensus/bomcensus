@@ -172,6 +172,47 @@ func TestParseMountinfo(t *testing.T) {
 	}
 }
 
+func TestMarkHostDirs(t *testing.T) {
+	const host = `22 1 8:1 / / rw - ext4 /dev/sda1 rw
+23 22 0:21 / /proc rw - proc proc rw
+24 22 8:2 / /srv rw - xfs /dev/sdb1 rw
+25 22 0:60 / /var/lib/kubelet/pods/u1/volumes/kubernetes.io~configmap/cfg rw - tmpfs tmpfs rw
+26 22 0:70 / /run/containerd/io.containerd.runtime.v2.task/k8s.io/c1/rootfs rw - overlay overlay rw
+27 22 8:3 / /mnt/hidden rw - ext4 /dev/sdc1 rw
+28 27 8:4 / /mnt/hidden/inner rw - ext4 /dev/sdd1 rw
+`
+	const ctr = `40 39 0:70 / / rw - overlay overlay rw
+41 40 0:80 / /proc rw - proc proc rw
+42 40 8:1 / /host rw - ext4 /dev/sda1 rw
+43 40 8:1 /var/lib/kubelet/pods/u1/volumes/kubernetes.io~empty-dir/data /data rw - ext4 /dev/sda1 rw
+44 40 0:60 / /etc/cfg rw - tmpfs tmpfs rw
+45 40 8:2 /app /opt/app rw - xfs /dev/sdb1 rw
+46 40 8:1 /var/lib/docker/volumes/v/_data /vol rw - ext4 /dev/sda1 rw
+47 40 8:5 / /pvc rw - ext4 /dev/sde1 rw
+48 40 8:1 /etc/ssl /etc/ssl rw - ext4 /dev/sda1 rw
+49 40 8:3 /inner /hidden rw - ext4 /dev/sdc1 rw
+`
+	h := parseMountinfo(strings.NewReader(host))
+	c := parseMountinfo(strings.NewReader(ctr))
+	excluded := func(p string) bool { return (&collector{excludes: buildExcludes([]string{"/etc/ssl"})}).excluded(p) }
+	c.markHostDirs(h, excluded)
+	for p, want := range map[string]bool{
+		"/":        false,
+		"/host":    true,  // the node root
+		"/data":    false, // emptyDir in kubelet storage
+		"/etc/cfg": false, // configMap tmpfs in kubelet storage
+		"/opt/app": true,  // hostPath of another file system
+		"/vol":     false, // docker volume
+		"/pvc":     false, // not mounted on the host
+		"/etc/ssl": false, // excluded from the host walk by policy
+		"/hidden":  false, // hidden on the host by another mount
+	} {
+		if got := c.hostDirs[p]; got != want {
+			t.Errorf("%s host dir = %v, want %v", p, got, want)
+		}
+	}
+}
+
 func TestExcluded(t *testing.T) {
 	c := newCollector(testEnv("/"), Inputs{})
 	c.excludes = buildExcludes([]string{"/opt/skip/", "/home/*/cache"})

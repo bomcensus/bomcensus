@@ -270,6 +270,9 @@ func (s *Service) applyHostContainers(ctx context.Context, tx store.Store, asset
 		if c.Running {
 			o.Instances = 1
 		}
+		if c.Pod != nil {
+			o.PodUID, o.PodContainer = c.Pod.UID, c.Pod.Container
+		}
 		obs = append(obs, o)
 	}
 	if err := tx.ReplaceContainers(ctx, assetID, obs, store.ReplaceOptions{At: p.at, KeepMissing: p.keepMissing}); err != nil {

@@ -2622,6 +2622,11 @@ type AssetContainer struct {
 	Name      string           `json:"name"`
 	Runtime   ContainerRuntime `json:"runtime"`
 	StartedAt *time.Time       `json:"startedAt,omitempty"`
+
+	// Workload The workload asset of a host container that the kubelet created for
+	// one of the workload's pods. Its findings are the workload's, not the
+	// host's.
+	Workload *ContainerWorkload `json:"workload,omitempty"`
 }
 
 // AssetGroup defines model for AssetGroup.
@@ -3017,6 +3022,15 @@ type ContainerImageList struct {
 
 // ContainerRuntime defines model for ContainerRuntime.
 type ContainerRuntime string
+
+// ContainerWorkload The workload asset of a host container that the kubelet created for
+// one of the workload's pods. Its findings are the workload's, not the
+// host's.
+type ContainerWorkload struct {
+	AssetId string `json:"assetId"`
+	Name    string `json:"name"`
+	Pod     string `json:"pod"`
+}
 
 // Coverage `full`: everything collected. `partial`: some items could not be read.
 // `process_only`: only the processes section (replicas of a workload).
@@ -3452,9 +3466,12 @@ type FindingLayer string
 
 // FindingProcess defines model for FindingProcess.
 type FindingProcess struct {
-	Exe string  `json:"exe"`
-	Pid int     `json:"pid"`
-	Pod *string `json:"pod,omitempty"`
+	Exe string `json:"exe"`
+
+	// Node Host asset name, for a process of a workload that the node agent of that host saw.
+	Node *string `json:"node,omitempty"`
+	Pid  int     `json:"pid"`
+	Pod  *string `json:"pod,omitempty"`
 
 	// Ports Non-loopback listening sockets, `tcp/443`.
 	Ports []string `json:"ports"`
@@ -3879,8 +3896,11 @@ type ListenPortRow struct {
 	ComponentName *string `json:"componentName,omitempty"`
 	Container     *string `json:"container,omitempty"`
 	ExePath       *string `json:"exePath,omitempty"`
-	Pid           *int    `json:"pid,omitempty"`
-	Port          int     `json:"port"`
+
+	// Node Host whose node agent saw the socket, for a socket in the network of a pod container; the row then belongs to the pod's workload.
+	Node *string `json:"node,omitempty"`
+	Pid  *int    `json:"pid,omitempty"`
+	Port int     `json:"port"`
 
 	// ProcessId Absent when the owning process could not be determined.
 	ProcessId *string     `json:"processId,omitempty"`
@@ -4143,15 +4163,18 @@ type ProcessInfo struct {
 	ExeSource ExeSource `json:"exeSource"`
 
 	// ExeState `replaced`: another file now exists at the path. `deleted`: nothing exists at the path. `memfd`: executed from an anonymous memory file.
-	ExeState  ExeState     `json:"exeState"`
-	Id        string       `json:"id"`
-	Listen    []ListenPort `json:"listen"`
-	Pid       int          `json:"pid"`
-	Ppid      *int         `json:"ppid,omitempty"`
-	Sha256    *string      `json:"sha256,omitempty"`
-	StartedAt time.Time    `json:"startedAt"`
-	Uid       *int         `json:"uid,omitempty"`
-	User      string       `json:"user"`
+	ExeState ExeState     `json:"exeState"`
+	Id       string       `json:"id"`
+	Listen   []ListenPort `json:"listen"`
+
+	// Node Host whose node agent saw the process, for a process of a pod container; the process then belongs to the pod's workload.
+	Node      *string   `json:"node,omitempty"`
+	Pid       int       `json:"pid"`
+	Ppid      *int      `json:"ppid,omitempty"`
+	Sha256    *string   `json:"sha256,omitempty"`
+	StartedAt time.Time `json:"startedAt"`
+	Uid       *int      `json:"uid,omitempty"`
+	User      string    `json:"user"`
 }
 
 // ProcessList defines model for ProcessList.

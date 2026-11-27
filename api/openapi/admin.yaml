@@ -3835,6 +3835,22 @@ components:
         startedAt:
           type: string
           format: date-time
+        workload:
+          $ref: "#/components/schemas/ContainerWorkload"
+    ContainerWorkload:
+      description: |
+        The workload asset of a host container that the kubelet created for
+        one of the workload's pods. Its findings are the workload's, not the
+        host's.
+      type: object
+      required: [assetId, name, pod]
+      properties:
+        assetId:
+          type: string
+        name:
+          type: string
+        pod:
+          type: string
     AssetSummary:
       type: object
       required: [id, scopeId, name, kind, group, tags, method, coverage, containerCount, firstSeen, lastSeen]
@@ -4279,6 +4295,11 @@ components:
         container:
           description: Name of the container the process runs in.
           type: string
+        node:
+          description: >-
+            Host whose node agent saw the process, for a process of a pod
+            container; the process then belongs to the pod's workload.
+          type: string
         componentId:
           description: Component that owns the executable, when known.
           type: string
@@ -4307,6 +4328,11 @@ components:
         assetName:
           type: string
         container:
+          type: string
+        node:
+          description: >-
+            Host whose node agent saw the socket, for a socket in the network
+            of a pod container; the row then belongs to the pod's workload.
           type: string
         processId:
           description: Absent when the owning process could not be determined.
@@ -6087,6 +6113,9 @@ components:
         exe:
           type: string
         pod:
+          type: string
+        node:
+          description: Host asset name, for a process of a workload that the node agent of that host saw.
           type: string
         ports:
           description: Non-loopback listening sockets, `tcp/443`.

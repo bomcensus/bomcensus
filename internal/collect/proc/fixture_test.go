@@ -306,6 +306,12 @@ func TestCollectFixture(t *testing.T) {
 	if !slices.Equal(p300.Listen, []report.Listen{{Proto: "tcp", Address: "0.0.0.0", Port: 9000}}) {
 		t.Errorf("pid 300 listen %+v", p300.Listen)
 	}
+	// Only pid 300 is in another network namespace than pid 1.
+	for _, p := range sec.Processes {
+		if p.OtherNetNS != (p.PID == 300) {
+			t.Errorf("pid %d other netns %v", p.PID, p.OtherNetNS)
+		}
+	}
 
 	if p := findProc(sec, 200); p.MountNS != 0 {
 		t.Errorf("pid 200 without a mount namespace link: %d", p.MountNS)

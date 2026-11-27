@@ -266,6 +266,28 @@ func TestImageContentSharedByDigest(t *testing.T) {
 		t.Fatalf("image components: %+v", ic)
 	}
 
+	// Content from the host is not known to exec planning; content from
+	// inside a container replaces it and is not replaced by it.
+	known, err = db.KnownImageContent(ctx, []string{digest, "sha256:2222"})
+	ivMust(t, err)
+	if len(known) != 0 {
+		t.Fatalf("known from the host: %v", known)
+	}
+	written, err = db.PutImageContent(ctx, store.ImageContent{Digest: digest, Coverage: store.CoveragePartial, Exec: true, Packages: ivPkgObs(musl)})
+	ivMust(t, err)
+	if written {
+		t.Fatal("partial exec content replaced full content")
+	}
+	written, err = db.PutImageContent(ctx, store.ImageContent{Digest: digest, Coverage: store.CoverageFull, Exec: true, Packages: ivPkgObs(musl)})
+	ivMust(t, err)
+	if !written {
+		t.Fatal("exec content not written")
+	}
+	written, err = db.PutImageContent(ctx, store.ImageContent{Digest: digest, Coverage: store.CoverageFull, Packages: ivPkgObs(musl, busybox)})
+	ivMust(t, err)
+	if written {
+		t.Fatal("host content replaced exec content")
+	}
 	known, err = db.KnownImageContent(ctx, []string{digest, "sha256:2222"})
 	ivMust(t, err)
 	if len(known) != 1 {

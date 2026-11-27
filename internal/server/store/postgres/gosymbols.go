@@ -216,7 +216,7 @@ func (d *DB) ClusterGoSymbolQueries(ctx context.Context, clusterID string) ([]st
 
 // gsFindingInputs adds what the reachability of the asset's findings is
 // computed from.
-func (d *DB) gsFindingInputs(ctx context.Context, assetID string, in *store.FindingInputs, compIDs []string) error {
+func (d *DB) gsFindingInputs(ctx context.Context, assetID string, in *store.FindingInputs, compIDs []string, pods fiPods) error {
 	in.Symbols = map[string][]store.GoImport{}
 	in.SymbolResults = map[string]map[string]store.GoSymbolResult{}
 	rows, err := d.q.Query(ctx, `
@@ -247,11 +247,21 @@ func (d *DB) gsFindingInputs(ctx context.Context, assetID string, in *store.Find
 	}
 
 	rows, err = d.q.Query(ctx, `
-		SELECT container, layer, '', path, sha256, goos, goarch FROM go_binaries WHERE asset_id = $1
+		WITH n AS (SELECT * FROM `+fiNodes+`)
+		SELECT container, layer, '', path, sha256, goos, goarch FROM go_binaries
+		WHERE asset_id = $1 AND container <> ALL($2::text[])
 		UNION ALL
 		SELECT ct.name, 'image', ct.image_digest, g.path, g.sha256, g.goos, g.goarch
 		FROM asset_containers ct JOIN image_go_binaries g ON g.digest = ct.image_digest
-		WHERE ct.asset_id = $1 AND ct.gone_at IS NULL AND ct.image_digest <> ''`, assetID)
+		WHERE ct.asset_id = $1 AND ct.gone_at IS NULL AND ct.image_digest <> '' AND ct.name <> ALL($2::text[])
+		UNION ALL
+		SELECT DISTINCT n.container, g.layer, '', g.path, g.sha256, g.goos, g.goarch
+		FROM n JOIN go_binaries g ON g.asset_id = n.host_id AND g.container = n.host_container
+		UNION ALL
+		SELECT DISTINCT n.container, 'image', ct.image_digest, g.path, g.sha256, g.goos, g.goarch
+		FROM n JOIN asset_containers ct ON ct.asset_id = n.host_id AND ct.name = n.host_container
+		JOIN image_go_binaries g ON g.digest = ct.image_digest
+		WHERE ct.image_digest <> ''`, assetID, pods.excluded, pods.nodes)
 	if err != nil {
 		return mgErr("finding inputs", err)
 	}
@@ -268,8 +278,11 @@ func (d *DB) gsFindingInputs(ctx context.Context, assetID string, in *store.Find
 		return mgErr("finding inputs", err)
 	}
 
+	// Answers are about an executable's content: those of the hosts of
+	// node containers hold for the workload as well. The latest one wins.
 	rows, err = d.q.Query(ctx, `
-		SELECT sha256, name, result, reason, checked_at FROM go_symbol_results WHERE asset_id = $1`, assetID)
+		SELECT sha256, name, result, reason, checked_at FROM go_symbol_results
+		WHERE asset_id = ANY($1::uuid[]) ORDER BY checked_at`, append([]string{assetID}, pods.hosts...))
 	if err != nil {
 		return mgErr("finding inputs", err)
 	}

@@ -341,6 +341,24 @@ func TestWritableDirs(t *testing.T) {
 	}
 }
 
+func TestHostPathDirs(t *testing.T) {
+	p := &corev1.Pod{Spec: corev1.PodSpec{
+		Volumes: []corev1.Volume{
+			{Name: "root", VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{Path: "/"}}},
+			{Name: "logs", VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{Path: "/var/log"}}},
+			{Name: "e1", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}},
+		},
+		Containers: []corev1.Container{{Name: "c", VolumeMounts: []corev1.VolumeMount{
+			{Name: "root", MountPath: "/host/", ReadOnly: true},
+			{Name: "e1", MountPath: "/scratch"},
+			{Name: "logs", MountPath: "/var/log/node", SubPath: "pods"},
+		}}},
+	}}
+	if got := hostPathDirs(p, &p.Spec.Containers[0]); !slices.Equal(got, []string{"/host", "/var/log/node"}) {
+		t.Errorf("host path dirs %v", got)
+	}
+}
+
 func TestListAllPaging(t *testing.T) {
 	pages := map[string]struct {
 		items []int
